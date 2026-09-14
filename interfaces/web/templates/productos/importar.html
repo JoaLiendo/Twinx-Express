@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block titulo %}Importar productos{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Importar productos</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm space-y-6 dark:border-slate-800 dark:bg-slate-900">
+
+    <div>
+      <p class="text-sm text-slate-600 dark:text-slate-400">
+        Subí un archivo <strong>.csv</strong> o <strong>.xlsx</strong> con las siguientes columnas en la primera fila:
+      </p>
+      <code class="block mt-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-700 overflow-x-auto whitespace-nowrap
+                   dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
+        codigo_barras, nombre, precio_costo, precio_venta, stock_actual, stock_minimo
+      </code>
+      <ul class="text-xs text-slate-500 dark:text-slate-400 mt-3 space-y-1 list-disc list-inside">
+        <li>Los precios pueden llevar punto o coma decimal (ej. "150.50" o "150,50").</li>
+        <li>Los códigos de barras ya existentes se omiten (no se sobrescriben).</li>
+        <li>Las filas con datos inválidos se informan al finalizar, sin detener el resto de la importación.</li>
+      </ul>
+    </div>
+
+    <form method="post" action="/productos/importar" enctype="multipart/form-data" class="space-y-5">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Archivo</label>
+        <input id="input-archivo-importar" type="file" name="archivo" accept=".csv,.xlsx" required class="sr-only" />
+        <div class="flex items-center gap-3">
+          <label for="input-archivo-importar" class="cursor-pointer shrink-0 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2.5 shadow-sm">
+            Elegir archivo
+          </label>
+          <span id="nombre-archivo-importar" class="text-sm text-slate-500 dark:text-slate-400 truncate">Ningún archivo seleccionado</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
+          Importar
+        </button>
+        <a href="/productos" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+  // El texto nativo del navegador ("No file chosen") no se puede
+  // traducir vía CSS; ver C1-05. El input real queda oculto (`sr-only`)
+  // y este listener solo refleja el nombre elegido, sin tocar la
+  // subida/validación real (ocurre en el backend igual que antes).
+  document.getElementById('input-archivo-importar').addEventListener('change', function () {
+    var archivo = this.files[0];
+    document.getElementById('nombre-archivo-importar').textContent =
+      archivo ? archivo.name : 'Ningún archivo seleccionado';
+  });
+</script>
+{% endblock %}

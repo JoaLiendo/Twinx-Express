@@ -1,0 +1,114 @@
+KioscoApp - Guia rapida
+=======================
+
+Esta carpeta contiene todo lo necesario para usar KioscoApp. No hace
+falta instalar nada mas.
+
+
+1) DONDE COLOCAR ESTA CARPETA
+------------------------------
+
+Colocala en:
+
+    C:\KioscoApp\
+
+No la pongas dentro de Escritorio, Documentos ni ninguna carpeta que
+se sincronice con OneDrive: puede volverse lenta o dar problemas.
+
+No hace falta ser administrador de la computadora para usarla.
+
+
+2) COMO ABRIR LA APLICACION
+-----------------------------
+
+Hace doble clic en:
+
+    KioscoApp.exe
+
+Se va a abrir una ventana negra (es normal, no la cierres) y despues
+el navegador con KioscoApp adentro.
+
+La primera vez que abras KioscoApp, te va a pedir crear el usuario
+del dueño (nombre, usuario y contraseña). Despues de eso, cada vez
+que abras la aplicacion vas a ver la pantalla de inicio de sesion
+normal.
+
+Para cerrar KioscoApp: cerra la ventana negra. Con eso alcanza.
+
+
+3) DONDE SE GUARDAN TUS DATOS
+--------------------------------
+
+Tus productos, ventas e imagenes NO se guardan dentro de esta carpeta.
+Se guardan aparte, en una carpeta propia de tu usuario de Windows, para
+que nunca se pierdan aunque reemplaces o actualices KioscoApp.
+
+Esto es automatico, no tenes que hacer nada para que funcione. Solo
+es importante saberlo para el paso de "Actualizar" (mas abajo).
+
+
+4) COMO HACER UN BACKUP (copia de seguridad)
+-----------------------------------------------
+
+Dentro de la aplicacion, en la seccion de Configuracion (solo la ve
+el dueño), hay un boton "Crear backup". Al tocarlo, se genera un
+archivo con toda tu informacion: productos, ventas e imagenes.
+
+Ese archivo se guarda solo, en la misma carpeta de datos mencionada
+arriba (no hace falta elegir nada).
+
+Recomendacion: de vez en cuando, copia ese archivo de backup a otro
+lugar (un pendrive, otra computadora, la nube). Si algo le pasa a
+esta computadora, un backup que quedo solo en ella no te va a servir.
+
+
+5) COMO RESTAURAR UN BACKUP
+------------------------------
+
+Usa esto unicamente si perdiste datos o queres volver a un backup
+anterior. Restaurar reemplaza los datos actuales por los del backup
+que elijas, asi que fijate bien cual archivo estas por usar.
+
+Pasos:
+
+  1. Cerra KioscoApp por completo (cerra la ventana negra).
+  2. Hace doble clic en "Restaurar_backup.bat" (esta en esta misma
+     carpeta).
+  3. Cuando te lo pida, arrastra el archivo de backup (termina en
+     ".zip") sobre la ventana, o escribi su ubicacion completa.
+  4. Segui las indicaciones en pantalla hasta que diga que el
+     restore se completo.
+  5. Volve a abrir KioscoApp normalmente.
+
+
+6) COMO ACTUALIZAR KIOSCOAPP SIN PERDER DATOS
+-------------------------------------------------
+
+Cuando recibas una version nueva de KioscoApp:
+
+  1. Cerra KioscoApp por completo.
+  2. Por las dudas, hace un backup antes de actualizar (ver punto 4).
+  3. NO borres la carpeta actual todavia: cambiale el nombre, por
+     ejemplo de "KioscoApp" a "KioscoApp_anterior".
+  4. Coloca la carpeta nueva en "C:\KioscoApp\" (el mismo lugar de
+     siempre).
+  5. Abri KioscoApp.exe de la carpeta nueva. Tus datos van a seguir
+     ahi, porque -como se explica en el punto 3- viven aparte de esta
+     carpeta.
+
+Importante: los datos NO estan dentro de esta carpeta, asi que no
+hace falta (ni conviene) copiarlos ni borrarlos a mano en ningun
+paso de este proceso.
+
+
+7) SI UNA ACTUALIZACION FALLA (volver a la version anterior)
+------------------------------------------------------------------
+
+  1. Cerra la version nueva si la llegaste a abrir.
+  2. Borra (o mueve a otro lado) la carpeta nueva que no funciono.
+  3. Cambiale el nombre a "KioscoApp_anterior" de vuelta a
+     "KioscoApp".
+  4. Abri KioscoApp.exe como siempre.
+
+Tus datos no se ven afectados por este paso, porque nunca estuvieron
+dentro de ninguna de las dos carpetas.

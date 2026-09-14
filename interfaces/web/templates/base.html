@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block titulo %}Panel de control{% endblock %} · Twinx Express</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏪</text></svg>" />
+
+  <!-- Twinx Express V1.1: detección de tema ANTES de cualquier render (evita
+       flash del tema incorrecto). Debe ejecutarse sincrónicamente, antes del
+       script de Tailwind, para que la clase `dark` ya esté puesta en <html>
+       cuando Tailwind evalúa qué variantes `dark:` aplicar. -->
+  <script>
+    (function () {
+      var guardado = localStorage.getItem('twinx-theme');
+      var prefiereOscuro = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var esOscuro = guardado === 'dark' || (guardado !== 'light' && prefiereOscuro);
+      document.documentElement.classList.toggle('dark', esOscuro);
+    })();
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Plus Jakarta Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+          colors: {
+            primary: { DEFAULT: 'var(--color-primary)', hover: 'var(--color-primary-hover)', subtle: 'var(--color-primary-subtle)' },
+            success: 'var(--color-success)',
+            warning: 'var(--color-warning)',
+            error: 'var(--color-error)',
+            info: 'var(--color-info)',
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    /* Plus Jakarta Sans autohospedada (interfaces/web/static/fonts/): sin
+       dependencia de red en tiempo de ejecución -- ver auditoría V1, KioscoApp
+       es una app de escritorio empaquetada que debe poder abrir sin
+       conectividad. Un único archivo variable cubre los pesos 400-800. */
+    @font-face {
+      font-family: 'Plus Jakarta Sans';
+      font-style: normal;
+      font-weight: 400 800;
+      font-display: swap;
+      src: url('/static/fonts/PlusJakartaSans-Variable.woff2') format('woff2');
+    }
+
+    /* Tokens de marca Twinx Express (Fase V1.1). Solo los 5 semánticos
+       pedidos por la auditoría; los grises siguen usando la paleta slate
+       nativa de Tailwind con variantes `dark:` explícitas -- no se
+       introducen tokens nuevos para fondos/bordes/texto en esta fase. */
+    :root {
+      --color-primary: #4338CA;
+      --color-primary-hover: #3730A3;
+      --color-primary-subtle: #EEF2FF;
+      --color-success: #059669;
+      --color-warning: #D97706;
+      --color-error: #E11D48;
+      --color-info: #0284C7;
+    }
+    .dark {
+      --color-primary: #6366F1;
+      --color-primary-hover: #818CF8;
+      --color-primary-subtle: #332C66;
+      --color-success: #34D399;
+      --color-warning: #FBBF24;
+      --color-error: #FB7185;
+      --color-info: #38BDF8;
+    }
+
+    body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-track { background-color: transparent; }
+    .dark ::-webkit-scrollbar-thumb { background-color: #475569; }
+
+    /* Accesibilidad (Fase V1.1): foco visible consistente en todo elemento
+       interactivo, sin depender de que cada página lo defina por separado. */
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+    textarea:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
+
+{% macro icono_nav(clave, tamano='w-[18px] h-[18px]') %}
+  {% if clave == 'dashboard' %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="{{ tamano }} shrink-0">
+      <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+      <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+      <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+      <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+    </svg>
+  {% elif clave == 'ventas' %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="{{ tamano }} shrink-0">
+      <circle cx="9" cy="20" r="1.4" fill="currentColor" stroke="none"></circle>
+      <circle cx="18" cy="20" r="1.4" fill="currentColor" stroke="none"></circle>
+      <path d="M2.5 3 H5 L7.2 14.5 a1.8 1.8 0 0 0 1.8 1.5 H18 a1.8 1.8 0 0 0 1.8-1.4 L21.5 7 H6"></path>
+    </svg>
+  {% elif clave == 'pedidos' %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="{{ tamano }} shrink-0">
+      <rect x="6" y="4" width="12" height="17" rx="2"></rect>
+      <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"></path>
+      <path d="M9 11h6M9 15h4"></path>
+    </svg>
+  {% elif clave == 'precios' %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="{{ tamano }} shrink-0">
+      <path d="M12.5 3H5a2 2 0 0 0-2 2v7.5a2 2 0 0 0 .586 1.414l8.5 8.5a2 2 0 0 0 2.828 0l6.5-6.5a2 2 0 0 0 0-2.828l-8.5-8.5A2 2 0 0 0 12.5 3Z"></path>
+      <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"></circle>
+    </svg>
+  {% elif clave == 'caja' %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="{{ tamano }} shrink-0">
+      <rect x="2.5" y="6" width="19" height="12" rx="2"></rect>
+      <circle cx="12" cy="12" r="2.6"></circle>
+      <path d="M6 6 V18 M18 6 V18"></path>
+    </svg>
+  {% elif clave == 'productos' %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="{{ tamano }} shrink-0">
+      <path d="M21 8 L12 3 3 8 3 16 12 21 21 16 Z"></path>
+      <path d="M3 8 L12 13 21 8"></path>
+      <path d="M12 13 L12 21"></path>
+    </svg>
+  {% elif clave == 'proveedores' %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="{{ tamano }} shrink-0">
+      <rect x="1.5" y="7" width="12" height="9" rx="1"></rect>
+      <path d="M13.5 10h4l3 3v3h-7z"></path>
+      <circle cx="6" cy="18" r="1.6"></circle>
+      <circle cx="17" cy="18" r="1.6"></circle>
+    </svg>
+  {% elif clave == 'compras' %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="{{ tamano }} shrink-0">
+      <path d="M3 3h2l1.2 12.2A2 2 0 0 0 8.2 17h9.6a2 2 0 0 0 2-1.8L21 7H6"></path>
+      <path d="M9 21a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Z" fill="currentColor" stroke="none"></path>
+      <path d="M17.5 21a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Z" fill="currentColor" stroke="none"></path>
+      <path d="M9 11v3m3-3v3m3-3v3"></path>
+    </svg>
+  {% elif clave == 'reportes' %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="{{ tamano }} shrink-0">
+      <rect x="4" y="12" width="3.4" height="8" rx="0.6"></rect>
+      <rect x="10.3" y="6" width="3.4" height="14" rx="0.6"></rect>
+      <rect x="16.6" y="9" width="3.4" height="11" rx="0.6"></rect>
+    </svg>
+  {% elif clave == 'empleados' %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="{{ tamano }} shrink-0">
+      <circle cx="9" cy="8" r="3"></circle>
+      <path d="M3.5 20c0-3 2.5-5.5 5.5-5.5s5.5 2.5 5.5 5.5"></path>
+      <circle cx="17" cy="9" r="2.2"></circle>
+      <path d="M15.3 14.3c2.3.4 4.1 2.4 4.2 4.7"></path>
+    </svg>
+  {% endif %}
+{% endmacro %}
+
+{% macro item_nav(item, con_etiqueta=true) %}
+  {% set activo = (request.url.path == item.href) or (item.href != '/' and request.url.path.startswith(item.href)) %}
+  <a href="{{ item.href }}" title="{{ item.etiqueta }}{{ ' (próximamente)' if item.proximamente else '' }}"
+     class="flex items-center {{ 'gap-3 px-3.5' if con_etiqueta else 'justify-center px-2' }} py-2.5 rounded-lg text-sm font-medium transition-colors
+            {{ 'bg-primary text-white shadow-sm' if activo else 'text-slate-300 hover:bg-slate-800 hover:text-white' }}">
+    {{ icono_nav(item.icono) }}
+    {% if con_etiqueta %}
+      <span class="flex-1 truncate">{{ item.etiqueta }}</span>
+      {% if item.proximamente %}
+        <span class="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-800/80 rounded px-1.5 py-0.5">Pronto</span>
+      {% endif %}
+    {% endif %}
+  </a>
+{% endmacro %}
+
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar desktop (>=1024px) -->
+    <aside class="hidden lg:flex lg:w-64 shrink-0 bg-slate-900 text-slate-100 flex-col">
+      <div class="px-6 py-6 flex items-center gap-2.5 border-b border-slate-800">
+        <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-primary text-white text-lg font-bold shadow-lg shadow-primary/40">T</span>
+        <div class="leading-tight">
+          <p class="font-semibold text-white tracking-tight">Twinx Express</p>
+          <p class="text-xs text-slate-400">Panel de control</p>
+        </div>
+      </div>
+      <nav class="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
+        {% for item in nav_items %}{{ item_nav(item, true) }}{% endfor %}
+      </nav>
+      <div class="px-4 py-4 border-t border-slate-800 text-xs text-slate-500">
+        Sistema de stock
+      </div>
+    </aside>
+
+    <!-- Rail tablet (768px - 1023px) -->
+    <aside class="hidden md:flex lg:hidden md:w-16 shrink-0 bg-slate-900 text-slate-100 flex-col items-center py-4">
+      <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-primary text-white text-lg font-bold shadow-lg shadow-primary/40">T</span>
+      <nav class="flex-1 w-full px-2 py-5 space-y-1">
+        {% for item in nav_items %}{{ item_nav(item, false) }}{% endfor %}
+      </nav>
+    </aside>
+
+    <!-- Drawer mobile (<768px) -->
+    <div id="drawer-backdrop" class="fixed inset-0 bg-slate-900/50 z-40 hidden md:hidden" onclick="alternarDrawer(false)"></div>
+    <aside id="drawer-nav"
+           class="fixed inset-y-0 left-0 z-50 w-72 max-w-[80vw] bg-slate-900 text-slate-100 flex flex-col -translate-x-full transition-transform duration-200 md:hidden">
+      <div class="px-5 py-5 flex items-center justify-between border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-primary text-white text-lg font-bold shadow-lg shadow-primary/40">T</span>
+          <div class="leading-tight">
+            <p class="font-semibold text-white tracking-tight">Twinx Express</p>
+            <p class="text-xs text-slate-400">Panel de control</p>
+          </div>
+        </div>
+        <button id="boton-cerrar-nav" type="button" aria-label="Cerrar menú" onclick="alternarDrawer(false)"
+                class="w-11 h-11 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-5 h-5"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <nav class="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
+        {% for item in nav_items %}{{ item_nav(item, true) }}{% endfor %}
+      </nav>
+    </aside>
+
+    <!-- Contenido principal -->
+    <div class="flex-1 flex flex-col min-w-0">
+      <header class="h-16 shrink-0 border-b border-slate-200 bg-white/80 backdrop-blur flex items-center justify-between px-4 md:px-6 lg:px-8 gap-3
+                     dark:border-slate-800 dark:bg-slate-900/80">
+        <div class="flex items-center gap-2 min-w-0">
+          <button id="boton-abrir-nav" type="button" aria-label="Abrir menú" onclick="alternarDrawer(true)"
+                  class="md:hidden -ml-1.5 w-11 h-11 flex items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 shrink-0
+                         dark:text-slate-400 dark:hover:bg-slate-800">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-5 h-5"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <div class="min-w-0">
+            {% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Panel de control</h1>{% endblock %}
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <a href="/caja" class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition
+                    {{ 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/30 dark:hover:bg-emerald-500/20' if caja_abierta else 'bg-slate-100 text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700 dark:hover:bg-slate-700' }}">
+            <span class="w-1.5 h-1.5 rounded-full {{ 'bg-emerald-500' if caja_abierta else 'bg-slate-400' }}"></span>
+            <span class="hidden sm:inline">Caja {{ 'abierta' if caja_abierta else 'cerrada' }}</span>
+          </a>
+          <button type="button" id="boton-tema" onclick="alternarTema()" aria-label="Cambiar entre tema claro y oscuro"
+                  class="w-11 h-11 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 transition-colors
+                         dark:text-slate-400 dark:hover:bg-slate-800">
+            <svg id="icono-tema-sol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+            </svg>
+            <svg id="icono-tema-luna" class="hidden w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"></path>
+            </svg>
+          </button>
+          {% if usuario_actual %}
+            <a href="/mi-cuenta/password" title="{{ usuario_actual.nombre_completo }} · Cambiar mi contraseña"
+               class="inline-flex items-center justify-center w-11 h-11 rounded-full text-slate-700 text-xs font-bold uppercase transition-colors
+                      hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
+              <span class="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800">{{ usuario_actual.nombre_completo[0] }}</span>
+            </a>
+          {% endif %}
+        </div>
+      </header>
+
+      <main class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div id="toast-container" aria-live="polite" class="fixed top-4 right-4 z-50 flex flex-col gap-3 w-[calc(100%-2rem)] sm:w-80 pointer-events-none"></div>
+  <script>
+    function alternarDrawer(abrir) {
+      const backdrop = document.getElementById('drawer-backdrop');
+      const drawer = document.getElementById('drawer-nav');
+      if (abrir) {
+        backdrop.classList.remove('hidden');
+        drawer.classList.remove('-translate-x-full');
+      } else {
+        backdrop.classList.add('hidden');
+        drawer.classList.add('-translate-x-full');
+      }
+    }
+
+    function mostrarToast(mensaje, tipo) {
+      tipo = tipo || 'success';
+      const estilos = {
+        success: 'border-success bg-white text-slate-800 dark:bg-slate-800 dark:text-slate-100',
+        error: 'border-error bg-white text-slate-800 dark:bg-slate-800 dark:text-slate-100',
+        warning: 'border-warning bg-white text-slate-800 dark:bg-slate-800 dark:text-slate-100',
+      };
+      const contenedor = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'pointer-events-auto border-l-4 rounded-lg shadow-lg shadow-slate-900/10 px-4 py-3 text-sm font-medium ' +
+        'transition duration-300 ease-out translate-x-[120%] opacity-0 ' + (estilos[tipo] || estilos.success);
+      toast.textContent = mensaje;
+      contenedor.appendChild(toast);
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-x-[120%]', 'opacity-0');
+      });
+      setTimeout(() => {
+        toast.classList.add('translate-x-[120%]', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+      }, 4200);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const msg = params.get('msg');
+      const tipo = params.get('tipo');
+      if (msg) {
+        mostrarToast(msg, tipo || 'success');
+        params.delete('msg');
+        params.delete('tipo');
+        const query = params.toString();
+        const nuevaUrl = window.location.pathname + (query ? `?${query}` : '');
+        window.history.replaceState({}, '', nuevaUrl);
+      }
+    });
+
+    // Twinx Express V1.1: alterna el tema y guarda la preferencia explícita
+    // del usuario. La detección inicial (antes del primer render) vive en un
+    // script separado al comienzo de <head> -- acá solo se maneja el click.
+    function alternarTema() {
+      const esOscuro = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('twinx-theme', esOscuro ? 'dark' : 'light');
+      actualizarIconoTema();
+    }
+
+    function actualizarIconoTema() {
+      const esOscuro = document.documentElement.classList.contains('dark');
+      document.getElementById('icono-tema-sol').classList.toggle('hidden', esOscuro);
+      document.getElementById('icono-tema-luna').classList.toggle('hidden', !esOscuro);
+    }
+
+    document.addEventListener('DOMContentLoaded', actualizarIconoTema);
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

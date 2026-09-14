@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Caja{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Caja</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-8">
+
+  <!-- Estado -->
+  <div class="rounded-2xl border p-6 flex items-center justify-between
+              {{ 'border-success/20 bg-success/5' if caja_abierta else 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900' }}">
+    <div class="flex items-center gap-4">
+      <span class="flex items-center justify-center w-12 h-12 rounded-full
+                   {{ 'bg-success/10 text-success' if caja_abierta else 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6">
+          <rect x="2.5" y="6" width="19" height="12" rx="2"></rect>
+          <circle cx="12" cy="12" r="2.6"></circle>
+          <path d="M6 6 V18 M18 6 V18"></path>
+        </svg>
+      </span>
+      <div>
+        <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Estado actual</p>
+        <p class="text-xl font-bold tracking-tight {{ 'text-success' if caja_abierta else 'text-slate-900 dark:text-slate-100' }}">
+          {{ 'Caja abierta' if caja_abierta else 'Caja cerrada' }}
+        </p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="/caja/arqueo" class="inline-flex items-center gap-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 transition text-slate-700 text-sm font-semibold px-4 py-2
+                                    dark:bg-slate-900 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
+        Ver arqueo del día
+      </a>
+      {{ ui.badge('ABIERTA' if caja_abierta else 'CERRADA', 'exito' if caja_abierta else 'neutral') }}
+    </div>
+  </div>
+
+  {% if not caja_abierta %}
+    <!-- Abrir caja -->
+    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm max-w-md dark:border-slate-800 dark:bg-slate-900">
+      <p class="font-semibold text-slate-900 dark:text-slate-100 mb-4">Abrir caja</p>
+      <form method="post" action="/caja/abrir" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Monto inicial ($)</label>
+          <input type="text" name="monto_inicial" required placeholder="0.00" inputmode="decimal"
+                 class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                        focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Descripción (opcional)</label>
+          <input type="text" name="descripcion" placeholder="Apertura turno mañana"
+                 class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                        focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+        </div>
+        <button type="submit" class="w-full rounded-lg bg-success hover:opacity-90 transition text-white text-sm font-semibold px-4 py-2.5 shadow-sm">
+          Abrir caja
+        </button>
+      </form>
+    </div>
+  {% else %}
+    <!-- Movimientos manuales + cierre -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p class="font-semibold text-slate-900 dark:text-slate-100 mb-4">Registrar ingreso</p>
+        <form method="post" action="/caja/ingreso" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Monto ($)</label>
+            <input type="text" name="monto" required placeholder="0.00" inputmode="decimal"
+                   class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Descripción</label>
+            <input type="text" name="descripcion" required placeholder="Cambio adicional"
+                   class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+          </div>
+          <button type="submit" class="w-full rounded-lg bg-success hover:opacity-90 transition text-white text-sm font-semibold px-4 py-2.5 shadow-sm">
+            Registrar ingreso
+          </button>
+        </form>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p class="font-semibold text-slate-900 dark:text-slate-100 mb-4">Registrar egreso</p>
+        <form method="post" action="/caja/egreso" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Monto ($)</label>
+            <input type="text" name="monto" required placeholder="0.00" inputmode="decimal"
+                   class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Descripción</label>
+            <input type="text" name="descripcion" required placeholder="Pago a proveedor"
+                   class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+          </div>
+          <button type="submit" class="w-full rounded-lg bg-error hover:opacity-90 transition text-white text-sm font-semibold px-4 py-2.5 shadow-sm">
+            Registrar egreso
+          </button>
+        </form>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p class="font-semibold text-slate-900 dark:text-slate-100 mb-4">Cerrar caja</p>
+        <form method="post" action="/caja/cerrar" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Monto final contado ($)</label>
+            <input type="text" name="monto_final" required placeholder="0.00" inputmode="decimal"
+                   class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Descripción (opcional)</label>
+            <input type="text" name="descripcion" placeholder="Cierre turno mañana"
+                   class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+          </div>
+          <button type="submit" class="w-full rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-semibold px-4 py-2.5 shadow-sm">
+            Cerrar caja
+          </button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- Historial -->
+  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+      <p class="font-semibold text-slate-900 dark:text-slate-100">Historial de movimientos</p>
+    </div>
+    {% if movimientos %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide border-b border-slate-100 dark:border-slate-800">
+              <th class="px-6 py-3">Fecha</th>
+              <th class="px-6 py-3">Tipo</th>
+              <th class="px-6 py-3">Descripción</th>
+              <th class="px-6 py-3 text-right">Monto</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            {% set variantes_movimiento = {'APERTURA': 'info', 'CIERRE': 'neutral', 'INGRESO': 'exito', 'EGRESO': 'alerta'} %}
+            {% for movimiento in movimientos %}
+              <tr class="hover:bg-slate-50/60 dark:hover:bg-slate-800/60 transition">
+                <td class="px-6 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ movimiento.fecha }}</td>
+                <td class="px-6 py-3">
+                  {{ ui.badge(movimiento.tipo, variantes_movimiento.get(movimiento.tipo, 'neutral')) }}
+                </td>
+                <td class="px-6 py-3 text-slate-600 dark:text-slate-400">{{ movimiento.descripcion or '—' }}</td>
+                <td class="px-6 py-3 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">${{ movimiento.monto_centavos | dinero_ar }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      {{ ui.estado_vacio("Todavía no hay movimientos de caja.") }}
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

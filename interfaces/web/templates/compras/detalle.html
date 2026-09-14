@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block titulo %}Compra #{{ compra.id }}{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Compra #{{ compra.id }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+      <div>
+        <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Proveedor</p>
+        <p class="mt-1 font-medium text-slate-900 dark:text-slate-100">{{ compra.proveedor_nombre }}</p>
+      </div>
+      <div>
+        <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Fecha</p>
+        <p class="mt-1 font-medium text-slate-900 dark:text-slate-100">{{ compra.fecha }}</p>
+      </div>
+      <div>
+        <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Usuario</p>
+        <p class="mt-1 font-medium text-slate-900 dark:text-slate-100">{{ compra.usuario_nombre_completo }}</p>
+      </div>
+      <div>
+        <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Total</p>
+        <p class="mt-1 font-semibold text-slate-900 dark:text-slate-100 tabular-nums">${{ compra.total_centavos | dinero_ar }}</p>
+      </div>
+    </div>
+    {% if compra.observaciones %}
+      <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+        <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Observaciones</p>
+        <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">{{ compra.observaciones }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  {% set etiquetas_unidad = {'UNIDAD': 'Unidad', 'KG': 'Kg', 'G': 'Gramos', 'LITRO': 'Litro', 'ML': 'Ml'} %}
+  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <th class="px-5 py-3">Producto</th>
+            <th class="px-5 py-3 text-right">Cantidad</th>
+            <th class="px-5 py-3 text-right">Costo unitario</th>
+            <th class="px-5 py-3 text-right">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for linea in detalle %}
+            <tr class="border-b border-slate-50 dark:border-slate-800 last:border-0">
+              <td class="px-5 py-3.5 font-medium text-slate-800 dark:text-slate-200">
+                {{ linea.producto_nombre }}
+                <span class="text-slate-400 dark:text-slate-500 font-normal">· {{ etiquetas_unidad.get(linea.producto_unidad_medida, linea.producto_unidad_medida) }}</span>
+              </td>
+              <td class="px-5 py-3.5 text-right text-slate-600 dark:text-slate-400 tabular-nums">{{ linea.cantidad }}</td>
+              <td class="px-5 py-3.5 text-right text-slate-600 dark:text-slate-400 tabular-nums">${{ linea.costo_unitario_centavos | dinero_ar }}</td>
+              <td class="px-5 py-3.5 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">${{ linea.subtotal_centavos | dinero_ar }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t border-slate-200 dark:border-slate-800">
+            <td class="px-5 py-3.5 font-semibold text-slate-700 dark:text-slate-300" colspan="3">Total</td>
+            <td class="px-5 py-3.5 text-right font-bold text-slate-900 dark:text-slate-100 tabular-nums">${{ compra.total_centavos | dinero_ar }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <a href="/compras" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver al listado</a>
+</div>
+{% endblock %}

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ticket #{{ venta.id }}</title>
+  <style>
+    /* Fase 5D: página standalone -- sin Tailwind CDN ni base.html.
+       Diseñada para ~80mm de papel térmico, pero sin asumir que el
+       navegador/impresora respeta ese tamaño físico: el contenido usa
+       max-width:80mm en vez de depender de @page para no romperse si
+       termina imprimiéndose en A4/Carta. */
+    @page {
+      size: 80mm auto;
+      margin: 0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 16px 0;
+      background: #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: 'Courier New', Courier, monospace;
+      color: #111;
+    }
+    .ticket {
+      width: 100%;
+      max-width: 80mm;
+      background: #fff;
+      padding: 10px 12px;
+    }
+    .encabezado {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .encabezado p { margin: 2px 0; }
+    .separador {
+      border: none;
+      border-top: 1px dashed #333;
+      margin: 8px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    th, td {
+      text-align: left;
+      padding: 2px 0;
+      vertical-align: top;
+    }
+    th.cant, td.cant { text-align: center; width: 12%; }
+    th.precio, td.precio, th.subtotal, td.subtotal { text-align: right; width: 24%; }
+    .total {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 16px;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+    .medio-pago {
+      margin-top: 4px;
+      font-size: 12px;
+    }
+    .acciones {
+      max-width: 80mm;
+      margin: 12px auto 0;
+      text-align: center;
+    }
+    .acciones button, .acciones a {
+      display: inline-block;
+      padding: 8px 16px;
+      margin: 0 4px;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+      color: #1e293b;
+      background: #e2e8f0;
+      border: none;
+      border-radius: 6px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .ticket { max-width: none; padding: 0; }
+      .acciones { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ticket">
+    <div class="encabezado">
+      <p><strong>Kiosco</strong></p>
+      <p>Ticket #{{ venta.id }}</p>
+      <p>{{ venta.fecha }}</p>
+    </div>
+    <hr class="separador" />
+    <table>
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th class="cant">Cant.</th>
+          <th class="precio">P. unit.</th>
+          <th class="subtotal">Subtotal</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for linea in lineas %}
+        <tr>
+          <td>{{ linea.producto_nombre }}</td>
+          <td class="cant">{{ linea.cantidad }}</td>
+          <td class="precio">{{ linea.precio_unitario_centavos | dinero_ar }}</td>
+          <td class="subtotal">{{ linea.subtotal_centavos | dinero_ar }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <hr class="separador" />
+    <div class="total">
+      <span>TOTAL</span>
+      <span>${{ venta.total_centavos | dinero_ar }}</span>
+    </div>
+    <p class="medio-pago">Medio de pago: {{ venta.tipo_pago }}</p>
+  </div>
+  <div class="acciones">
+    <button type="button" onclick="window.print()">Imprimir</button>
+    <a href="/ventas">Volver al POS</a>
+  </div>
+</body>
+</html>

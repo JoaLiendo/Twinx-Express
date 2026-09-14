@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Pedidos{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Pedidos</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+  {% call ui.card() %}
+    {{ ui.estado_vacio("Pedidos todavía no está disponible", "Esta sección se habilita en una fase posterior, cuando exista la lógica de pedidos a proveedores.") }}
+    <ul class="mt-6 text-sm text-slate-500 space-y-2 max-w-md mx-auto text-left list-disc list-inside">
+      <li>Crear y enviar pedidos a proveedores</li>
+      <li>Seguimiento de estado (pendiente, enviado, recibido)</li>
+      <li>Vincular pedidos recibidos con reposición de stock</li>
+    </ul>
+  {% endcall %}
+</div>
+{% endblock %}

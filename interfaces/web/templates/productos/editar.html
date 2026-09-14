@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block titulo %}Editar producto{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Editar producto</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <form method="post" action="/productos/{{ producto.id }}/editar" enctype="multipart/form-data" class="space-y-5">
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Imagen</label>
+        <div class="flex items-center gap-4">
+          <div class="w-16 h-16 shrink-0 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center dark:border-slate-700 dark:bg-slate-800">
+            {% if producto.imagen_archivo %}
+              <img id="preview-imagen" src="/media/productos/{{ producto.imagen_archivo }}" alt="" class="w-full h-full object-cover" />
+              <svg id="placeholder-imagen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="hidden w-6 h-6 text-slate-300 dark:text-slate-600">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <path d="m21 15-5-5L5 21"></path>
+              </svg>
+            {% else %}
+              <img id="preview-imagen" alt="" class="hidden w-full h-full object-cover" />
+              <svg id="placeholder-imagen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-slate-300 dark:text-slate-600">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <path d="m21 15-5-5L5 21"></path>
+              </svg>
+            {% endif %}
+          </div>
+          <div class="min-w-0 flex-1 space-y-1.5">
+            <input id="input-imagen" type="file" name="imagen" accept="image/jpeg,image/png,image/webp" class="sr-only" />
+            <div class="flex items-center gap-2">
+              <label for="input-imagen" class="cursor-pointer shrink-0 rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-xs font-semibold px-3 py-2
+                                                dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">
+                Elegir archivo
+              </label>
+              <span id="nombre-archivo-imagen" class="text-xs text-slate-500 dark:text-slate-400 truncate">Ningún archivo seleccionado</span>
+            </div>
+            <p class="text-xs text-slate-400 dark:text-slate-500">JPG, PNG o WEBP. Máximo 2MB.</p>
+            {% if producto.imagen_archivo %}
+              <label class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <input id="checkbox-quitar-imagen" type="checkbox" name="quitar_imagen" value="true"
+                       class="rounded border-slate-300 text-error focus:ring-error dark:border-slate-600" />
+                Quitar la imagen actual
+              </label>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Código de barras</label>
+        <input type="text" name="codigo_barras" required autofocus value="{{ producto.codigo_barras }}"
+               class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nombre</label>
+        <input type="text" name="nombre" required value="{{ producto.nombre }}"
+               class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Precio de costo ($)</label>
+          <input type="text" name="precio_costo" required placeholder="0.00" inputmode="decimal"
+                 pattern="^\s*[0-9]+([.,][0-9]{1,2})?\s*$" title="Un número positivo, ej. 150.50"
+                 value="{{ producto.precio_costo_centavos | dinero }}"
+                 class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 tabular-nums
+                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                        focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Precio de venta ($)</label>
+          <input type="text" name="precio_venta" required placeholder="0.00" inputmode="decimal"
+                 pattern="^\s*[0-9]+([.,][0-9]{1,2})?\s*$" title="Un número positivo, ej. 150.50"
+                 value="{{ producto.precio_venta_centavos | dinero }}"
+                 class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 tabular-nums
+                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                        focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Categoría</label>
+          <select name="categoria_id"
+                  class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
+                         dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                         focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+            <option value="" {{ 'selected' if not producto.categoria_id else '' }}>Sin categoría</option>
+            {% for categoria in categorias %}
+              <option value="{{ categoria.id }}" {{ 'selected' if categoria.id == producto.categoria_id else '' }}>{{ categoria.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Unidad de medida</label>
+          <select name="unidad_medida"
+                  class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
+                         dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                         focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+            <option value="UNIDAD" {{ 'selected' if producto.unidad_medida == 'UNIDAD' else '' }}>Unidad</option>
+            <option value="KG" {{ 'selected' if producto.unidad_medida == 'KG' else '' }}>Kg</option>
+            <option value="G" {{ 'selected' if producto.unidad_medida == 'G' else '' }}>Gramos</option>
+            <option value="LITRO" {{ 'selected' if producto.unidad_medida == 'LITRO' else '' }}>Litro</option>
+            <option value="ML" {{ 'selected' if producto.unidad_medida == 'ML' else '' }}>Ml</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Stock actual</label>
+          <input type="number" value="{{ producto.stock_actual }}" disabled
+                 class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-500 tabular-nums
+                        dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400" />
+          <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">El stock solo cambia con las ventas.</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Stock mínimo</label>
+          <input type="number" name="stock_minimo" value="{{ producto.stock_minimo }}" min="0"
+                 class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 tabular-nums
+                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                        focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
+          Guardar cambios
+        </button>
+        <a href="/productos" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/producto_imagen.js"></script>
+{% endblock %}

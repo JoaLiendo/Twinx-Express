@@ -1,0 +1,89 @@
+{# Macros Jinja reutilizables: botón, badge, card, estado vacío, input.
+
+   Formalizan patrones que ya estaban repetidos en dashboard.html,
+   productos/lista.html y caja/panel.html (ver Fase 1 de rediseño
+   visual). No reemplazan esos usos existentes salvo donde el propio
+   plan lo pide explícitamente: evita reescribir páginas que ya
+   funcionan solo por prolijidad. #}
+
+{% macro boton(texto, href=none, tipo='button', variante='primario', tamano='normal', icono_svg=none, extra='', name=none, value=none, disabled=false) %}
+  {# Twinx Express V1.1: variantes en inglés (primary/secondary/danger/success/ghost)
+     como API canónica; las claves en español (primario/secundario/peligro/oscuro/
+     contorno) se conservan como alias -- no hay ningún call site real hoy que las
+     use, pero se mantienen para no romper compatibilidad si llegaran a usarse. #}
+  {% set estilos = {
+    'primary': 'bg-primary hover:bg-primary-hover text-white shadow-sm',
+    'primario': 'bg-primary hover:bg-primary-hover text-white shadow-sm',
+    'secondary': 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200',
+    'secundario': 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200',
+    'danger': 'bg-error/10 hover:bg-error/20 text-error',
+    'peligro': 'bg-error/10 hover:bg-error/20 text-error',
+    'success': 'bg-success hover:opacity-90 text-white shadow-sm',
+    'ghost': 'bg-transparent hover:bg-slate-100 text-slate-600 dark:hover:bg-slate-800 dark:text-slate-300',
+    'oscuro': 'bg-slate-900 hover:bg-slate-800 text-white',
+    'contorno': 'bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 dark:bg-slate-900 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200',
+  } %}
+  {% set tamanos = {
+    'normal': 'px-4 py-2.5',
+    'compact': 'px-3 py-1.5 text-xs',
+  } %}
+  {% set clases = 'inline-flex items-center justify-center gap-1.5 rounded-lg text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none '
+    ~ tamanos.get(tamano, tamanos['normal']) ~ ' ' ~ estilos.get(variante, estilos['primary']) ~ ' ' ~ extra %}
+  {% if href %}
+    <a href="{{ href }}" class="{{ clases }}">{% if icono_svg %}{{ icono_svg | safe }}{% endif %}{{ texto }}</a>
+  {% else %}
+    <button type="{{ tipo }}"{% if name %} name="{{ name }}"{% endif %}{% if value %} value="{{ value }}"{% endif %}{% if disabled %} disabled{% endif %} class="{{ clases }}">{% if icono_svg %}{{ icono_svg | safe }}{% endif %}{{ texto }}</button>
+  {% endif %}
+{% endmacro %}
+
+{% macro badge(texto, variante='neutral') %}
+  {# API sin cambios (claves en español, ya en uso real en dashboard.html):
+     solo se realinearon los colores internos a los tokens semánticos nuevos.
+     Dos diccionarios separados (pastilla / punto) en vez de un string
+     partido por espacios -- más simple y sin depender de que todas las
+     variantes tengan la misma cantidad de clases. #}
+  {% set pastilla = {
+    'exito': 'bg-success/10 text-success ring-success/20',
+    'alerta': 'bg-error/10 text-error ring-error/20',
+    'advertencia': 'bg-warning/10 text-warning ring-warning/20',
+    'info': 'bg-info/10 text-info ring-info/20',
+    'neutral': 'bg-slate-100 text-slate-500 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700',
+  } %}
+  {% set punto = {
+    'exito': 'bg-success', 'alerta': 'bg-error', 'advertencia': 'bg-warning',
+    'info': 'bg-info', 'neutral': 'bg-slate-400',
+  } %}
+  <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset {{ pastilla.get(variante, pastilla['neutral']) }}">
+    <span class="w-1.5 h-1.5 rounded-full {{ punto.get(variante, punto['neutral']) }}"></span>
+    {{ texto }}
+  </span>
+{% endmacro %}
+
+{% macro card(extra='', interactiva=false) %}
+  {# `interactiva=true` agrega elevación sutil al hover -- opcional, no rompe
+     ningún uso existente de `ui.card()` sin argumentos. #}
+  <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900
+              {{ 'transition hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700' if interactiva else '' }} {{ extra }}">
+    {{ caller() }}
+  </div>
+{% endmacro %}
+
+{% macro estado_vacio(titulo, subtitulo=none, extra='') %}
+  <div class="rounded-2xl border border-dashed border-slate-300 bg-white py-16 px-6 text-center dark:border-slate-700 dark:bg-slate-900 {{ extra }}">
+    <p class="text-slate-600 text-sm font-semibold dark:text-slate-300">{{ titulo }}</p>
+    {% if subtitulo %}<p class="mt-1.5 text-slate-500 text-sm max-w-md mx-auto dark:text-slate-400">{{ subtitulo }}</p>{% endif %}
+  </div>
+{% endmacro %}
+
+{% macro campo_input(label, name, tipo='text', valor='', placeholder='', requerido=false, extra='', error=none, disabled=false) %}
+  <div>
+    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{{ label }}</label>
+    <input type="{{ tipo }}" name="{{ name }}" value="{{ valor }}" placeholder="{{ placeholder }}"
+           {{ 'required' if requerido else '' }}{{ ' disabled' if disabled else '' }}
+           class="w-full rounded-lg border px-3.5 py-2.5 text-sm placeholder:text-slate-400 bg-white dark:bg-slate-900 dark:text-slate-100
+                  disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 dark:disabled:bg-slate-800
+                  focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary
+                  {{ 'border-error focus:ring-error focus:border-error' if error else 'border-slate-300 dark:border-slate-700' }} {{ extra }}" />
+    {% if error %}<p class="mt-1.5 text-xs text-error">{{ error }}</p>{% endif %}
+  </div>
+{% endmacro %}

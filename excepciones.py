@@ -1,0 +1,146 @@
+"""Excepciones de dominio del proyecto.
+
+Todas las excepciones propias de la aplicación heredan de
+`ErrorAplicacion`, para poder capturarlas de forma genérica en los
+bordes de la aplicación (interfaces/) sin capturar `Exception` a secas.
+"""
+
+
+class ErrorAplicacion(Exception):
+    """Excepción base de la aplicación. No se usa directamente."""
+
+
+class ErrorBaseDatos(ErrorAplicacion):
+    """Error al acceder o modificar la base de datos.
+
+    Traduce errores de bajo nivel de sqlite3 en un error de dominio,
+    para que las capas superiores no dependan de sqlite3.
+    """
+
+
+class ProductoNoEncontradoError(ErrorAplicacion):
+    """No existe un producto con el código o id solicitado."""
+
+
+class CodigoBarrasDuplicadoError(ErrorAplicacion):
+    """Ya existe un producto registrado con ese código de barras."""
+
+
+class DatosInvalidosError(ErrorAplicacion):
+    """Los datos provistos violan una regla de negocio del dominio.
+
+    Ej.: precios o stock negativos, campos obligatorios vacíos.
+    """
+
+
+class StockInsuficienteError(ErrorAplicacion):
+    """La operación requiere más stock del disponible."""
+
+
+class CajaError(ErrorAplicacion):
+    """Error en una operación de caja (apertura, cierre o movimiento)."""
+
+
+class ArchivoImportacionInvalidoError(DatosInvalidosError):
+    """El archivo subido para importación masiva no tiene un formato,
+    extensión o columnas válidas."""
+
+
+class NombreUsuarioDuplicadoError(ErrorAplicacion):
+    """Ya existe un usuario registrado con ese nombre de usuario."""
+
+
+class CredencialesInvalidasError(ErrorAplicacion):
+    """Nombre de usuario o contraseña incorrectos.
+
+    Se usa tanto si el usuario no existe como si la contraseña es
+    incorrecta: `services.servicio_auth.iniciar_sesion` levanta esta
+    misma excepción, con el mismo mensaje, en ambos casos para no
+    revelar cuál de los dos datos falló (ver docstring del módulo).
+    """
+
+
+class NoAutenticadoError(ErrorAplicacion):
+    """La acción requiere una sesión válida y no hay ninguna (fase 2D+).
+
+    Distinta de `PermisoDenegadoError`: acá no sabemos quién es el
+    usuario. Traducir esto a una respuesta HTTP (ej. redirigir a
+    `/login`) es responsabilidad de una fase posterior; ver
+    `interfaces.web.auth.requiere_rol`.
+    """
+
+
+class PermisoDenegadoError(ErrorAplicacion):
+    """Hay un usuario autenticado, pero su rol no alcanza para la acción
+    (fase 2D+). Distinta de `NoAutenticadoError`: acá sí sabemos quién
+    es, simplemente no tiene el permiso necesario."""
+
+
+class UsuarioInactivoError(ErrorAplicacion):
+    """El usuario existe y la contraseña sería válida, pero está desactivado.
+
+    Se distingue de `CredencialesInvalidasError` solo para uso interno
+    (por ejemplo, un log de auditoría). Cualquier capa que la exponga
+    hacia afuera (la interfaz web, en una fase posterior) debe
+    mostrarla con el mismo mensaje genérico que una credencial
+    inválida: el mensaje de esta excepción puede ser más específico
+    porque está pensado para consumo interno, no para mostrarse tal
+    cual al usuario final.
+    """
+
+
+class NombreCategoriaDuplicadoError(ErrorAplicacion):
+    """Ya existe una categoría registrada con ese nombre."""
+
+
+class CategoriaNoEncontradaError(ErrorAplicacion):
+    """No existe una categoría con el id o nombre solicitado."""
+
+
+class ArchivoImagenInvalidoError(DatosInvalidosError):
+    """La imagen subida para un producto no tiene un formato, tamaño o
+    contenido válido (ver `services.servicio_imagenes`)."""
+
+
+class NombreProveedorDuplicadoError(ErrorAplicacion):
+    """Ya existe un proveedor registrado con ese nombre."""
+
+
+class ProveedorNoEncontradoError(ErrorAplicacion):
+    """No existe un proveedor con el id solicitado."""
+
+
+class ProductoDuplicadoEnCompraError(DatosInvalidosError):
+    """Un mismo producto aparece en más de una línea de la misma compra
+    (ver `services.servicio_compras.registrar_compra`: cada producto
+    puede aparecer como máximo una vez por compra)."""
+
+
+class ClaveIdempotenciaReutilizadaError(ErrorAplicacion):
+    """Una `clave_idempotencia` de venta (Fase 5A) ya se usó antes con
+    un contenido distinto (otra cantidad, otro producto u otro tipo de
+    pago). Distinta de un reintento legítimo: ahí el contenido
+    coincide y `services.servicio_ventas.registrar_venta` devuelve la
+    venta existente en vez de levantar esta excepción."""
+
+
+class UsuarioNoEncontradoError(ErrorAplicacion):
+    """No existe un usuario con el id solicitado."""
+
+
+class UltimoOwnerActivoError(ErrorAplicacion):
+    """La operación dejaría al sistema sin ningún usuario OWNER activo
+    (desactivar al último OWNER activo, o cambiarle el rol a CASHIER).
+    Ver `services.servicio_usuarios`."""
+
+
+class ErrorBackup(ErrorAplicacion):
+    """No se pudo generar el backup (ver `services.servicio_backup`)."""
+
+
+class ErrorRestore(ErrorAplicacion):
+    """El backup no es válido o no se pudo restaurar (ver
+    `services.servicio_restore`). El mensaje está pensado para
+    mostrarse tal cual al usuario final: nunca se ejecuta ninguna
+    modificación sobre la instalación real antes de que todas las
+    validaciones representadas por esta excepción hayan pasado."""

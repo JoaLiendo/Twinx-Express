@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Nueva compra{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Nueva compra</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+
+    {% if not productos %}
+      {{ ui.estado_vacio("Todavía no hay productos cargados.", "Cargá al menos uno en Stock antes de registrar una compra.") }}
+    {% elif not proveedores %}
+      {{ ui.estado_vacio("Todavía no hay proveedores activos.", "Cargá uno en Proveedores antes de registrar una compra.") }}
+    {% else %}
+      <form method="post" action="/compras/nueva" id="form-compra" class="space-y-6">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Proveedor</label>
+            <select name="proveedor_id" required
+                    class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
+                           dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                           focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+              <option value="">Seleccionar...</option>
+              {% for proveedor in proveedores %}
+                <option value="{{ proveedor.id }}">{{ proveedor.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Observaciones (opcional)</label>
+            <input type="text" name="observaciones"
+                   class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">Productos</label>
+            <button type="button" id="boton-agregar-linea"
+                    class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-xs font-semibold px-3 py-1.5
+                           dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><path d="M12 5v14M5 12h14"/></svg>
+              Agregar línea
+            </button>
+          </div>
+
+          <div id="lineas-compra" class="space-y-3"></div>
+
+          <template id="plantilla-linea-compra">
+            <div class="linea-compra grid grid-cols-12 gap-2 items-start rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+              <div class="col-span-12 sm:col-span-5">
+                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Producto</label>
+                <select name="producto_id" required
+                        class="linea-producto w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900
+                               dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                               focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+                  <option value="">Seleccionar...</option>
+                  {% for producto in productos %}
+                    <option value="{{ producto.id }}">{{ producto.nombre }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-span-4 sm:col-span-2">
+                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Cantidad</label>
+                <input type="number" name="cantidad" min="1" step="1" required
+                       class="linea-cantidad w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 tabular-nums
+                              dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                              focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+              </div>
+              <div class="col-span-4 sm:col-span-2">
+                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Costo unitario</label>
+                <input type="text" name="costo_unitario" placeholder="0.00" inputmode="decimal" required
+                       pattern="^\s*[0-9]+([.,][0-9]{1,2})?\s*$" title="Un número positivo, ej. 150.50"
+                       class="linea-costo w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 tabular-nums placeholder:text-slate-400
+                              dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                              focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+              </div>
+              <div class="col-span-3 sm:col-span-2">
+                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subtotal</label>
+                <p class="linea-subtotal px-1 py-2 text-sm font-semibold text-slate-800 dark:text-slate-200 tabular-nums">$0.00</p>
+              </div>
+              <div class="col-span-1 flex items-end justify-end h-full pb-1">
+                <button type="button" class="boton-quitar-linea text-slate-300 hover:text-error dark:text-slate-600 dark:hover:text-error" aria-label="Quitar línea">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <p class="text-sm text-slate-500 dark:text-slate-400">Total:</p>
+          <p id="total-compra" class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">$0.00</p>
+        </div>
+
+        <div class="flex items-center gap-3 pt-2">
+          <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
+            Registrar compra
+          </button>
+          <a href="/compras" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+        </div>
+      </form>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/compra_form.js"></script>
+{% endblock %}

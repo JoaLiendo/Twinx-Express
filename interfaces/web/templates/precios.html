@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Precios{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Precios</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+  {% call ui.card() %}
+    {{ ui.estado_vacio("Precios todavía no está disponible", "Esta sección se habilita en una fase posterior, cuando exista gestión de listas y reglas de precios.") }}
+    <ul class="mt-6 text-sm text-slate-500 space-y-2 max-w-md mx-auto text-left list-disc list-inside">
+      <li>Listas de precios y actualizaciones masivas</li>
+      <li>Historial de cambios de precio por producto</li>
+      <li>Márgenes sugeridos según precio de costo</li>
+    </ul>
+  {% endcall %}
+</div>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block titulo %}Editar empleado{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Editar empleado</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto space-y-6">
+
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <p class="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1">Nombre de usuario (no editable)</p>
+    <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-6">@{{ usuario.nombre_usuario }}</p>
+
+    <form method="post" action="/empleados/{{ usuario.id }}/editar" class="space-y-5">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nombre completo</label>
+        <input type="text" name="nombre_completo" required autofocus value="{{ usuario.nombre_completo }}"
+               class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+      </div>
+      <div>
+        <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
+          Guardar nombre
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">Rol</p>
+    <form method="post" action="/empleados/{{ usuario.id }}/rol" class="flex items-center gap-3">
+      <select name="rol" class="rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
+                                 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                                 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+        <option value="CASHIER" {{ 'selected' if usuario.rol == 'CASHIER' else '' }}>CASHIER (cajero)</option>
+        <option value="OWNER" {{ 'selected' if usuario.rol == 'OWNER' else '' }}>OWNER (dueño)</option>
+      </select>
+      <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
+        Cambiar rol
+      </button>
+    </form>
+    <p class="mt-2 text-xs text-slate-400 dark:text-slate-500">No se puede quitar el rol OWNER al último OWNER activo del sistema.</p>
+  </div>
+
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">Estado de la cuenta</p>
+    {% if usuario.activo %}
+      <form method="post" action="/empleados/{{ usuario.id }}/desactivar"
+            onsubmit="return confirm('¿Desactivar a &quot;{{ usuario.nombre_completo }}&quot;? No podrá iniciar sesión.');">
+        <button type="submit" class="rounded-lg bg-error/10 hover:bg-error/20 transition text-error text-sm font-semibold px-5 py-2.5">
+          Desactivar usuario
+        </button>
+      </form>
+    {% else %}
+      <form method="post" action="/empleados/{{ usuario.id }}/activar">
+        <button type="submit" class="rounded-lg bg-success/10 hover:bg-success/20 transition text-success text-sm font-semibold px-5 py-2.5">
+          Activar usuario
+        </button>
+      </form>
+    {% endif %}
+    <p class="mt-2 text-xs text-slate-400 dark:text-slate-500">No se puede desactivar al último OWNER activo del sistema.</p>
+  </div>
+
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">Restablecer contraseña</p>
+    <form method="post" action="/empleados/{{ usuario.id }}/resetear-password" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Contraseña nueva</label>
+        <input type="password" name="password_nueva" required
+               class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+      </div>
+      <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
+        Restablecer contraseña
+      </button>
+    </form>
+  </div>
+
+  <a href="/empleados" class="inline-block text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver al listado</a>
+</div>
+{% endblock %}

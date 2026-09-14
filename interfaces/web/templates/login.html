@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Iniciar sesión · Twinx Express</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏪</text></svg>" />
+
+  <script>
+    (function () {
+      var guardado = localStorage.getItem('twinx-theme');
+      var prefiereOscuro = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var esOscuro = guardado === 'dark' || (guardado !== 'light' && prefiereOscuro);
+      document.documentElement.classList.toggle('dark', esOscuro);
+    })();
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Plus Jakarta Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+          colors: {
+            primary: { DEFAULT: 'var(--color-primary)', hover: 'var(--color-primary-hover)', subtle: 'var(--color-primary-subtle)' },
+            success: 'var(--color-success)', warning: 'var(--color-warning)', error: 'var(--color-error)', info: 'var(--color-info)',
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    @font-face {
+      font-family: 'Plus Jakarta Sans';
+      font-style: normal;
+      font-weight: 400 800;
+      font-display: swap;
+      src: url('/static/fonts/PlusJakartaSans-Variable.woff2') format('woff2');
+    }
+    :root {
+      --color-primary: #4338CA; --color-primary-hover: #3730A3; --color-primary-subtle: #EEF2FF;
+      --color-success: #059669; --color-warning: #D97706; --color-error: #E11D48; --color-info: #0284C7;
+    }
+    .dark {
+      --color-primary: #6366F1; --color-primary-hover: #818CF8; --color-primary-subtle: #332C66;
+      --color-success: #34D399; --color-warning: #FBBF24; --color-error: #FB7185; --color-info: #38BDF8;
+    }
+    body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; }
+    a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased min-h-screen flex items-center justify-center p-4 dark:bg-slate-950 dark:text-slate-100">
+  <div class="w-full max-w-sm">
+
+    <div class="flex flex-col items-center gap-2 mb-8">
+      <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary text-white text-xl font-bold shadow-lg shadow-primary/30">T</span>
+      <p class="font-semibold text-slate-900 dark:text-slate-100 tracking-tight text-lg">Twinx Express</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400">Panel de control</p>
+    </div>
+
+    <div class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      {% if error %}
+        <div id="mensaje-error" class="mb-5 rounded-lg bg-error/10 border border-error/20 text-error text-sm font-medium px-3.5 py-2.5">
+          {{ error }}
+        </div>
+      {% endif %}
+
+      <form method="post" action="/login" class="space-y-4">
+        <input type="hidden" name="next" value="{{ next or '/' }}" />
+
+        <div>
+          <label for="nombre_usuario" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Usuario</label>
+          <input id="nombre_usuario" type="text" name="nombre_usuario" required autofocus value="{{ nombre_usuario or '' }}"
+                 class="w-full rounded-lg border border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+        </div>
+
+        <div>
+          <label for="password" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Contraseña</label>
+          <input id="password" type="password" name="password" required
+                 class="w-full rounded-lg border border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+        </div>
+
+        <button type="submit" class="w-full rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2.5 shadow-sm">
+          Ingresar
+        </button>
+      </form>
+    </div>
+
+  </div>
+</body>
+</html>

@@ -1,0 +1,43 @@
+# Entornos virtuales
+.venv/
+venv/
+env/
+ENV/
+
+# Datos de la aplicación (base de datos local, nunca se versiona)
+data/
+
+# Archivos de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Tests y cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Configuración de editores / IDEs
+.vscode/
+.idea/
+*.swp
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Variables de entorno / secretos
+.env
+
+# Tests E2E (Fase 5E): dependencias npm, resultados/reportes de
+# Playwright y la DB temporal que usa tests_e2e/servidor_pruebas.py.
+# package.json y package-lock.json SÍ se versionan.
+node_modules/
+test-results/
+playwright-report/
+tests_e2e/.tmp/

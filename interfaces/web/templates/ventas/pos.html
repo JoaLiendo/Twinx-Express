@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block titulo %}Ventas{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Punto de venta</h1>{% endblock %}
+
+{% block content %}
+<div class="flex flex-col lg:flex-row gap-6 h-full items-start">
+
+  <!-- Grilla de productos -->
+  <div class="flex-1 min-w-0 w-full space-y-5 pb-24 lg:pb-0">
+
+    <div class="flex flex-wrap gap-3">
+      <div class="relative flex-1 min-w-[220px]">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+             class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-primary/70">
+          <rect x="3" y="7" width="2" height="10"></rect><rect x="7" y="7" width="1" height="10"></rect>
+          <rect x="10" y="7" width="3" height="10"></rect><rect x="15" y="7" width="1" height="10"></rect>
+          <rect x="18" y="7" width="2" height="10"></rect>
+        </svg>
+        <input id="input-codigo-barras" type="text" placeholder="Escanear código de barras y presionar Enter..." autofocus
+               aria-label="Código de barras"
+               class="w-full pl-9 pr-3 py-2.5 rounded-lg border border-primary/30 bg-primary-subtle/40 text-sm text-slate-900 placeholder:text-primary/60
+                      dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+      </div>
+      <form method="get" action="/ventas" class="flex flex-1 min-w-[220px] sm:flex-none items-center gap-2">
+        <input type="text" name="q" value="{{ q }}" placeholder="Filtrar por nombre..."
+               class="px-3.5 py-2.5 flex-1 sm:flex-none sm:w-56 rounded-lg border border-slate-300 bg-white text-sm text-slate-900 placeholder:text-slate-400
+                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+        <button type="submit" class="shrink-0 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2.5">
+          Filtrar
+        </button>
+      </form>
+    </div>
+
+    {% if productos %}
+      <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+        {% for producto in productos %}
+          {% set sin_stock = producto.stock_actual <= 0 %}
+          <button type="button"
+                  data-producto-card
+                  data-id="{{ producto.id }}"
+                  data-nombre="{{ producto.nombre }}"
+                  data-precio="{{ producto.precio_venta_centavos }}"
+                  data-stock="{{ producto.stock_actual }}"
+                  {{ 'disabled' if sin_stock else '' }}
+                  class="text-left rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition
+                         dark:border-slate-800 dark:bg-slate-900
+                         {{ 'opacity-50 cursor-not-allowed' if sin_stock else 'hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5 active:translate-y-0' }}">
+            <div class="flex items-start justify-between gap-2">
+              <p class="font-semibold text-slate-900 dark:text-slate-100 text-sm leading-snug line-clamp-2">{{ producto.nombre }}</p>
+              {% if producto.stock_actual <= producto.stock_minimo %}
+                <span class="shrink-0 w-2 h-2 rounded-full bg-error mt-1"></span>
+              {% endif %}
+            </div>
+            <p class="mt-3 text-lg font-bold text-primary tabular-nums">${{ producto.precio_venta_centavos | dinero_ar }}</p>
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ 'Sin stock' if sin_stock else 'Stock: ' ~ producto.stock_actual }}</p>
+          </button>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center dark:border-slate-700 dark:bg-slate-900">
+        <p class="text-slate-500 dark:text-slate-400 text-sm">No se encontraron productos.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Backdrop del carrito (solo mobile/tablet, <lg) -->
+  <div id="carrito-backdrop" class="fixed inset-0 bg-slate-900/50 z-40 hidden lg:hidden"></div>
+
+  <!-- Carrito: sidebar sticky en desktop (>=lg), bottom sheet en mobile/tablet (<lg) -->
+  <aside id="carrito-sheet"
+         class="w-full fixed inset-x-0 bottom-0 z-[45] max-h-[85vh] translate-y-full transition-transform duration-200
+                rounded-t-2xl border border-slate-200 bg-white shadow-xl flex flex-col
+                dark:border-slate-800 dark:bg-slate-900
+                lg:static lg:z-auto lg:w-96 lg:shrink-0 lg:sticky lg:top-0 lg:max-h-[calc(100vh-8.5rem)]
+                lg:translate-y-0 lg:transition-none lg:rounded-2xl lg:shadow-sm">
+    <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+      <p class="font-semibold text-slate-900 dark:text-slate-100">Carrito</p>
+      <svg class="hidden lg:block w-5 h-5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="20" r="1.4" fill="currentColor" stroke="none"></circle>
+        <circle cx="18" cy="20" r="1.4" fill="currentColor" stroke="none"></circle>
+        <path d="M2.5 3 H5 L7.2 14.5 a1.8 1.8 0 0 0 1.8 1.5 H18 a1.8 1.8 0 0 0 1.8-1.4 L21.5 7 H6"></path>
+      </svg>
+      <button type="button" id="carrito-sheet-cerrar" aria-label="Cerrar carrito"
+              class="lg:hidden p-1.5 -m-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600
+                     dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-5 h-5"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+
+    <div id="carrito-vacio" class="flex-1 flex flex-col items-center justify-center px-6 py-10 text-center">
+      <p class="text-sm text-slate-400 dark:text-slate-500">El carrito está vacío.</p>
+      <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">Escaneá un producto o hacé clic en la grilla.</p>
+    </div>
+
+    <!-- Fase 5D: acciones tras un cobro exitoso. Oculto por defecto; lo
+         muestra pos.js en vez de "carrito-vacio" (el carrito ya quedó
+         vacío por el cobro) hasta que el cajero elija una acción o
+         empiece a cargar la próxima venta. -->
+    <div id="post-venta-acciones" class="hidden flex-1 flex flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+      <p class="text-sm font-semibold text-success">Venta registrada.</p>
+      <div class="flex flex-col sm:flex-row gap-2">
+        <a id="post-venta-imprimir" href="#" target="_blank" rel="noopener"
+           class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2.5">
+          Imprimir ticket
+        </a>
+        <button id="post-venta-nueva-venta" type="button"
+                class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2.5">
+          Nueva venta
+        </button>
+      </div>
+    </div>
+
+    <div id="carrito-lista" class="flex-1 overflow-y-auto px-5"></div>
+
+    <div class="border-t border-slate-100 dark:border-slate-800 px-5 py-4 space-y-4">
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-medium text-slate-500 dark:text-slate-400">Total</span>
+        <span id="carrito-total" class="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">$0.00</span>
+      </div>
+
+      <div>
+        <p class="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Tipo de pago</p>
+        <div class="grid grid-cols-2 gap-2">
+          {% for tipo in tipos_pago %}
+            <label class="cursor-pointer">
+              <input type="radio" name="tipo_pago" value="{{ tipo }}" class="peer sr-only" {{ 'checked' if loop.first else '' }} />
+              <span class="block text-center rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300
+                           peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition">
+                {{ tipo }}
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Fase 5C: monto recibido + vuelto -- solo EFECTIVO con total > 0.
+           Estado transitorio de pos.js, nunca viaja en POST /api/ventas. -->
+      <div id="bloque-efectivo" class="hidden space-y-2">
+        <div>
+          <label for="monto-recibido" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Monto recibido</label>
+          <input type="text" inputmode="decimal" id="monto-recibido" placeholder="0.00"
+                 class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                        focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+        </div>
+        <p id="vuelto-resultado" aria-live="polite" class="text-sm font-semibold min-h-[1.25rem]"></p>
+      </div>
+
+      <button id="boton-cobrar" type="button" disabled
+              class="w-full rounded-xl bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-3 shadow-sm shadow-primary/30
+                     opacity-50 cursor-not-allowed">
+        Cobrar
+      </button>
+    </div>
+  </aside>
+
+  <!-- Barra inferior fija del carrito (solo mobile/tablet, <lg) -->
+  <div id="carrito-bar" class="lg:hidden fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white shadow-[0_-4px_12px_-4px_rgba(15,23,42,0.15)]
+                               dark:border-slate-800 dark:bg-slate-900">
+    <div class="flex items-center gap-3 px-4 py-3">
+      <button type="button" id="carrito-bar-toggle" aria-expanded="false" aria-controls="carrito-sheet"
+              class="flex-1 min-w-0 flex items-center gap-3 text-left">
+        <span id="carrito-bar-cantidad" class="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary text-white text-xs font-bold">0</span>
+        <span class="min-w-0">
+          <span class="block text-xs text-slate-500 dark:text-slate-400 leading-tight">Total</span>
+          <span id="carrito-bar-total" class="block text-base font-bold text-slate-900 dark:text-slate-100 leading-tight tabular-nums">$0.00</span>
+        </span>
+      </button>
+      <button id="boton-cobrar-bar" type="button" disabled
+              class="shrink-0 rounded-xl bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-3 shadow-sm shadow-primary/30
+                     opacity-50 cursor-not-allowed">
+        Cobrar
+      </button>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/dinero_cobro.js"></script>
+<script src="/static/js/pos.js"></script>
+{% endblock %}

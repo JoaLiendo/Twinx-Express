@@ -1,0 +1,14 @@
+{
+  "name": "stock-app-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Tests E2E de Stock-app (Fase 5E) con Playwright. No forma parte del ejecutable de producción (ver KioscoApp.spec): es tooling de testing exclusivamente.",
+  "scripts": {
+    "test:e2e": "playwright test --project=desktop-1440 --grep-invert @responsive",
+    "test:e2e:responsive": "playwright test --grep @responsive --project=mobile-375 --project=tablet-768 --project=desktop-1024 --project=desktop-1440",
+    "test:e2e:ui": "playwright test --project=desktop-1440 --grep-invert @responsive --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}
