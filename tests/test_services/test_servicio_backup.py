@@ -6,6 +6,8 @@ import re
 import sqlite3
 import threading
 import zipfile
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -177,4 +179,119 @@ def test_dos_backups_simultaneos_solo_uno_genera_el_zip(datos_de_prueba, tmp_pat
     hilo_b.join()
 
     assert isinstance(resultados["B"], modulo_backup.ErrorBackup)
+    assert not list(destino.glob("*.zip")) if destino.exists() else True
+
+
+# --- ejecutar_backup_automatico_si_corresponde ------------------------------
+#
+# Backup automático V1 (ver auditoría de distribución/backup): al iniciar la
+# app, si el último backup real supera una antigüedad mínima, se genera uno
+# nuevo llamando a `crear_backup` -- ningún mecanismo de generación nuevo,
+# ninguna coordinación de concurrencia nueva.
+
+
+def _crear_archivo_backup_con_fecha(directorio: Path, fecha: datetime) -> Path:
+    """Crea un archivo con el nombre exacto que produce `crear_backup`,
+    para simular que ya existe un backup real con determinada antigüedad."""
+    directorio.mkdir(parents=True, exist_ok=True)
+    ruta = directorio / f"KioscoApp_backup_{fecha.strftime('%Y-%m-%d_%H%M')}.zip"
+    ruta.write_bytes(b"contenido-zip-de-prueba")
+    return ruta
+
+
+def test_automatico_sin_backups_previos_ejecuta_uno_nuevo(datos_de_prueba, tmp_path):
+    destino = tmp_path / "backups"  # todavia no existe
+
+    resultado = modulo_backup.ejecutar_backup_automatico_si_corresponde(
+        destino, ControlEscrituras(), antiguedad_minima_horas=24
+    )
+
+    assert resultado is not None
+    assert zipfile.is_zipfile(resultado)
+
+
+def test_automatico_con_backup_reciente_no_ejecuta_uno_nuevo(datos_de_prueba, tmp_path):
+    destino = tmp_path / "backups"
+    _crear_archivo_backup_con_fecha(destino, datetime.now() - timedelta(hours=1))
+
+    resultado = modulo_backup.ejecutar_backup_automatico_si_corresponde(
+        destino, ControlEscrituras(), antiguedad_minima_horas=24
+    )
+
+    assert resultado is None
+    assert len(list(destino.glob("*.zip"))) == 1
+
+
+def test_automatico_con_backup_viejo_ejecuta_uno_nuevo(datos_de_prueba, tmp_path):
+    destino = tmp_path / "backups"
+    _crear_archivo_backup_con_fecha(destino, datetime.now() - timedelta(hours=48))
+
+    resultado = modulo_backup.ejecutar_backup_automatico_si_corresponde(
+        destino, ControlEscrituras(), antiguedad_minima_horas=24
+    )
+
+    assert resultado is not None
+    assert len(list(destino.glob("*.zip"))) == 2
+
+
+def test_automatico_con_varios_backups_identifica_correctamente_el_ultimo(datos_de_prueba, tmp_path):
+    destino = tmp_path / "backups"
+    _crear_archivo_backup_con_fecha(destino, datetime.now() - timedelta(hours=48))
+    _crear_archivo_backup_con_fecha(destino, datetime.now() - timedelta(hours=1))  # el mas reciente
+
+    resultado = modulo_backup.ejecutar_backup_automatico_si_corresponde(
+        destino, ControlEscrituras(), antiguedad_minima_horas=24
+    )
+
+    assert resultado is None  # el mas reciente todavia no supera la antiguedad minima
+    assert len(list(destino.glob("*.zip"))) == 2
+
+
+def test_automatico_ignora_archivos_que_no_son_backups_reconocibles(datos_de_prueba, tmp_path):
+    destino = tmp_path / "backups"
+    destino.mkdir()
+    (destino / "notas.txt").write_text("no es un backup")
+    (destino / "KioscoApp_backup_fecha-invalida.zip").write_bytes(b"nombre con formato invalido")
+
+    resultado = modulo_backup.ejecutar_backup_automatico_si_corresponde(
+        destino, ControlEscrituras(), antiguedad_minima_horas=24
+    )
+
+    # ningun archivo presente es un backup reconocible -> se trata como si
+    # nunca hubiera existido uno, y se ejecuta.
+    assert resultado is not None
+
+
+def test_automatico_error_durante_la_creacion_no_propaga_y_queda_registrado(
+    datos_de_prueba, tmp_path, monkeypatch, caplog
+):
+    destino = tmp_path / "backups"
+
+    def copytree_falso(*_args, **_kwargs):
+        raise OSError("fallo simulado copiando imagenes_productos")
+
+    monkeypatch.setattr(modulo_backup.shutil, "copytree", copytree_falso)
+
+    with caplog.at_level("ERROR", logger=modulo_backup.logger.name):
+        resultado = modulo_backup.ejecutar_backup_automatico_si_corresponde(
+            destino, ControlEscrituras(), antiguedad_minima_horas=24
+        )
+
+    assert resultado is None
+    assert caplog.records, "el fallo debe quedar registrado por logging"
+    assert not list(destino.glob("*.zip")) if destino.exists() else True
+
+
+def test_automatico_no_ejecuta_si_ya_hay_un_backup_manual_en_curso(datos_de_prueba, tmp_path, caplog):
+    destino = tmp_path / "backups"
+    control = ControlEscrituras()
+    control.iniciar_backup()  # simula un backup manual ya en curso en este mismo proceso
+
+    with caplog.at_level("WARNING", logger=modulo_backup.logger.name):
+        resultado = modulo_backup.ejecutar_backup_automatico_si_corresponde(
+            destino, control, antiguedad_minima_horas=24
+        )
+
+    assert resultado is None
+    assert caplog.records
     assert not list(destino.glob("*.zip")) if destino.exists() else True

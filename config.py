@@ -97,3 +97,14 @@ DIRECTORIO_IMAGENES_PRODUCTOS = DIRECTORIO_DATA / "imagenes_productos"
 # intacta.
 DIRECTORIO_DATA.mkdir(parents=True, exist_ok=True)
 DIRECTORIO_IMAGENES_PRODUCTOS.mkdir(parents=True, exist_ok=True)
+
+# Backups (manual y automático, ver `services/servicio_backup.py`): siempre
+# hermano de `data/`, nunca dentro (mismo motivo que las imágenes: viaja
+# junto a la instalación, sea cual sea `DIRECTORIO_DATA` -- dev o frozen).
+DIRECTORIO_BACKUPS = DIRECTORIO_DATA.parent / "backups"
+
+# Antigüedad mínima del último backup para que el arranque de la app dispare
+# uno nuevo automáticamente (ver `services.servicio_backup.
+# ejecutar_backup_automatico_si_corresponde`). Constante simple: no amerita
+# configuración externa todavía para un kiosco de un solo equipo.
+ANTIGUEDAD_MINIMA_BACKUP_AUTOMATICO_HORAS = 24

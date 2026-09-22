@@ -13,6 +13,7 @@ Para desarrollo con recarga automática ante cambios de código:
     uvicorn interfaces.web.app:app --reload
 """
 
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
@@ -24,7 +25,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from config import DIRECTORIO_IMAGENES_PRODUCTOS
+from config import DIRECTORIO_BACKUPS, DIRECTORIO_IMAGENES_PRODUCTOS
 from db.conexion import inicializar_base_datos
 from excepciones import ErrorAplicacion, NoAutenticadoError, PermisoDenegadoError
 from interfaces.web.plantillas import templates
@@ -44,6 +45,7 @@ from interfaces.web.rutas import (
     ventas,
 )
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
+from services import servicio_backup
 from services.control_escrituras import control_escrituras
 
 _METODOS_DE_LECTURA = {"GET", "HEAD", "OPTIONS"}
@@ -53,7 +55,26 @@ DIRECTORIO_WEB = Path(__file__).resolve().parent
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Backup automático V1 (ver auditoría de distribución/backup): el
+    chequeo corre en un hilo daemon de un solo uso, disparado y olvidado --
+    nunca se espera (`.join()`) desde acá, así un backup lento (o que
+    directamente falla) no demora el arranque del servidor ni la apertura
+    del navegador. `servicio_backup.ejecutar_backup_automatico_si_corresponde`
+    ya no propaga ninguna excepción, pero igual corre en su propio hilo:
+    aunque lo hiciera, un hilo separado no puede tumbar el arranque.
+
+    `ControlEscrituras` es un singleton por proceso: no coordina entre
+    procesos del sistema operativo distintos (ej. el proceso worker que
+    `uvicorn --reload` reinicia en desarrollo), solo entre requests dentro
+    del mismo proceso -- suficiente para el ejecutable single-process real
+    de Twinx Express, que es el único caso que este bloque necesita cubrir.
+    """
     inicializar_base_datos()
+    threading.Thread(
+        target=servicio_backup.ejecutar_backup_automatico_si_corresponde,
+        args=(DIRECTORIO_BACKUPS, control_escrituras),
+        daemon=True,
+    ).start()
     yield
 
 

@@ -8,7 +8,7 @@ nunca como una ruta de este mismo servidor en ejecución.
 
 from fastapi import APIRouter, Depends, Request
 
-from config import DIRECTORIO_DATA
+from config import DIRECTORIO_BACKUPS
 from interfaces.web.auth import requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
@@ -16,8 +16,6 @@ from services import servicio_backup
 from services.control_escrituras import control_escrituras
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
-
-DIRECTORIO_BACKUPS = DIRECTORIO_DATA.parent / "backups"
 
 # Único lugar donde se escribe este path: el middleware de
 # `interfaces/web/app.py` lo importa para excluir este request del
