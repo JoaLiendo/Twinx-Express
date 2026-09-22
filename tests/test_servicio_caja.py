@@ -4,9 +4,25 @@ datos SQLite temporal (ver tests/conftest.py)."""
 
 import pytest
 
+from db.conexion import obtener_conexion
+from db.repositorios import usuarios as repositorio_usuarios
+from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from excepciones import CajaError, DatosInvalidosError
 from services import servicio_caja, servicio_stock, servicio_ventas
+
+
+def _crear_usuario(nombre_usuario="cajera1", rol="CASHIER"):
+    return repositorio_usuarios.crear_usuario(
+        Usuario(nombre_usuario=nombre_usuario, nombre_completo="Test", password_hash="hash", rol=rol)
+    )
+
+
+def _usuario_id_del_ultimo_movimiento():
+    with obtener_conexion() as conexion:
+        return conexion.execute(
+            "SELECT usuario_id FROM caja_movimientos ORDER BY id DESC LIMIT 1"
+        ).fetchone()["usuario_id"]
 
 
 def test_abrir_caja_registra_movimiento_de_apertura(base_datos_temporal):
@@ -113,3 +129,67 @@ def test_arqueo_del_dia_combina_apertura_ventas_e_ingresos_egresos(base_datos_te
     assert arqueo.total_efectivo_ventas_centavos == 20000
     # 100000 (apertura) + 5000 (ingreso) - 2000 (egreso) + 20000 (venta efectivo)
     assert arqueo.efectivo_estimado_centavos == 123000
+
+
+class TestUsuarioDelMovimiento:
+    """Migración 010: cada acción de caja acepta un `usuario_id` opcional
+    y lo persiste tal cual -- el CLI y los llamados existentes sin
+    usuario siguen funcionando igual que antes."""
+
+    def test_abrir_caja_guarda_usuario_id(self, base_datos_temporal):
+        usuario = _crear_usuario()
+
+        servicio_caja.abrir_caja(100000, "Apertura", usuario_id=usuario.id)
+
+        assert _usuario_id_del_ultimo_movimiento() == usuario.id
+
+    def test_cerrar_caja_guarda_usuario_id(self, base_datos_temporal):
+        usuario = _crear_usuario()
+        servicio_caja.abrir_caja(100000)
+
+        servicio_caja.cerrar_caja(100000, usuario_id=usuario.id)
+
+        assert _usuario_id_del_ultimo_movimiento() == usuario.id
+
+    def test_registrar_ingreso_guarda_usuario_id(self, base_datos_temporal):
+        usuario = _crear_usuario()
+        servicio_caja.abrir_caja(100000)
+
+        servicio_caja.registrar_ingreso(5000, "cambio", usuario_id=usuario.id)
+
+        assert _usuario_id_del_ultimo_movimiento() == usuario.id
+
+    def test_registrar_egreso_guarda_usuario_id(self, base_datos_temporal):
+        usuario = _crear_usuario()
+        servicio_caja.abrir_caja(100000)
+
+        servicio_caja.registrar_egreso(2000, "pago a proveedor", usuario_id=usuario.id)
+
+        assert _usuario_id_del_ultimo_movimiento() == usuario.id
+
+    def test_sin_usuario_id_como_hace_el_cli_queda_en_null(self, base_datos_temporal):
+        """Compatibilidad con el CLI: sigue llamando a las 4 funciones sin
+        `usuario_id` -- nunca se inventa un usuario para ese movimiento."""
+        servicio_caja.abrir_caja(100000)
+
+        assert _usuario_id_del_ultimo_movimiento() is None
+
+    def test_owner_y_cashier_quedan_diferenciados(self, base_datos_temporal):
+        owner = _crear_usuario(nombre_usuario="duenio", rol="OWNER")
+        cajera = _crear_usuario(nombre_usuario="cajera1", rol="CASHIER")
+
+        servicio_caja.abrir_caja(100000, usuario_id=owner.id)
+        servicio_caja.registrar_ingreso(5000, "cambio", usuario_id=cajera.id)
+
+        with obtener_conexion() as conexion:
+            filas = conexion.execute("SELECT usuario_id FROM caja_movimientos ORDER BY id").fetchall()
+        assert filas[0]["usuario_id"] == owner.id
+        assert filas[1]["usuario_id"] == cajera.id
+
+    def test_usuario_desactivado_conserva_su_movimiento_historico(self, base_datos_temporal):
+        usuario = _crear_usuario()
+        servicio_caja.abrir_caja(100000, usuario_id=usuario.id)
+
+        repositorio_usuarios.actualizar_activo(usuario.id, False)
+
+        assert _usuario_id_del_ultimo_movimiento() == usuario.id

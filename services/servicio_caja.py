@@ -86,50 +86,61 @@ def calcular_arqueo_del_dia() -> ArqueoCaja:
     )
 
 
-def abrir_caja(monto_inicial_centavos: int, descripcion: str | None = None) -> MovimientoCaja:
+def abrir_caja(
+    monto_inicial_centavos: int, descripcion: str | None = None, usuario_id: int | None = None
+) -> MovimientoCaja:
     """Abre la caja registrando un movimiento de APERTURA con el monto inicial.
 
     Raises:
         CajaError: si ya hay una caja abierta.
         DatosInvalidosError: si `monto_inicial_centavos` es negativo.
+
+    `usuario_id` (migración 010) es opcional: `None` (el default) para
+    el CLI, que no autentica a nadie -- nunca se inventa un usuario.
     """
     if _caja_esta_abierta():
         raise CajaError("La caja ya está abierta: hay que cerrarla antes de abrir una nueva.")
 
     movimiento = MovimientoCaja(tipo="APERTURA", monto_centavos=monto_inicial_centavos, descripcion=descripcion)
-    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento)
+    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento, usuario_id=usuario_id)
     logger.info("Caja abierta con monto inicial %s centavos", movimiento_creado.monto_centavos)
     return movimiento_creado
 
 
-def cerrar_caja(monto_final_centavos: int, descripcion: str | None = None) -> MovimientoCaja:
+def cerrar_caja(
+    monto_final_centavos: int, descripcion: str | None = None, usuario_id: int | None = None
+) -> MovimientoCaja:
     """Cierra la caja registrando un movimiento de CIERRE con el monto contado.
 
     Raises:
         CajaError: si no hay una caja abierta para cerrar.
         DatosInvalidosError: si `monto_final_centavos` es negativo.
+
+    `usuario_id` (migración 010): ver `abrir_caja`.
     """
     if not _caja_esta_abierta():
         raise CajaError("No hay una caja abierta para cerrar.")
 
     movimiento = MovimientoCaja(tipo="CIERRE", monto_centavos=monto_final_centavos, descripcion=descripcion)
-    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento)
+    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento, usuario_id=usuario_id)
     logger.info("Caja cerrada con monto final %s centavos", movimiento_creado.monto_centavos)
     return movimiento_creado
 
 
-def registrar_ingreso(monto_centavos: int, descripcion: str) -> MovimientoCaja:
+def registrar_ingreso(monto_centavos: int, descripcion: str, usuario_id: int | None = None) -> MovimientoCaja:
     """Registra un ingreso manual de dinero (ej. cambio inicial, un aporte).
 
     Raises:
         CajaError: si no hay una caja abierta.
         DatosInvalidosError: si `monto_centavos` es negativo o `descripcion` está vacía.
+
+    `usuario_id` (migración 010): ver `abrir_caja`.
     """
     if not _caja_esta_abierta():
         raise CajaError("No se pueden registrar ingresos sin una caja abierta.")
 
     movimiento = MovimientoCaja(tipo="INGRESO", monto_centavos=monto_centavos, descripcion=descripcion)
-    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento)
+    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento, usuario_id=usuario_id)
     logger.info(
         "Ingreso de caja registrado: %s centavos (%s)",
         movimiento_creado.monto_centavos,
@@ -138,18 +149,20 @@ def registrar_ingreso(monto_centavos: int, descripcion: str) -> MovimientoCaja:
     return movimiento_creado
 
 
-def registrar_egreso(monto_centavos: int, descripcion: str) -> MovimientoCaja:
+def registrar_egreso(monto_centavos: int, descripcion: str, usuario_id: int | None = None) -> MovimientoCaja:
     """Registra un egreso manual de dinero (ej. pago a proveedor, retiro de efectivo).
 
     Raises:
         CajaError: si no hay una caja abierta.
         DatosInvalidosError: si `monto_centavos` es negativo o `descripcion` está vacía.
+
+    `usuario_id` (migración 010): ver `abrir_caja`.
     """
     if not _caja_esta_abierta():
         raise CajaError("No se pueden registrar egresos sin una caja abierta.")
 
     movimiento = MovimientoCaja(tipo="EGRESO", monto_centavos=monto_centavos, descripcion=descripcion)
-    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento)
+    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento, usuario_id=usuario_id)
     logger.info(
         "Egreso de caja registrado: %s centavos (%s)",
         movimiento_creado.monto_centavos,

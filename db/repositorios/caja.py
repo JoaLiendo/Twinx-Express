@@ -26,14 +26,23 @@ def _fila_a_movimiento(fila: sqlite3.Row) -> MovimientoCaja:
     )
 
 
-def registrar_movimiento(movimiento: MovimientoCaja) -> MovimientoCaja:
-    """Inserta un nuevo movimiento de caja y devuelve la entidad persistida."""
+def registrar_movimiento(movimiento: MovimientoCaja, usuario_id: int | None = None) -> MovimientoCaja:
+    """Inserta un nuevo movimiento de caja y devuelve la entidad persistida.
+
+    `usuario_id` (migración 010) es opcional, igual criterio que
+    `ventas.usuario_id`: el CLI no autentica a nadie, así que sus
+    movimientos quedan con `usuario_id = NULL`, nunca con un usuario
+    inventado. No se expone en `MovimientoCaja` (el dominio no cambia en
+    este bloque): quien necesite ese dato hoy lo consulta directo contra
+    `caja_movimientos`, igual que ya ocurre con otras columnas de
+    trazabilidad que tampoco están en el dominio.
+    """
     consulta = f"""
-        INSERT INTO caja_movimientos (tipo, monto_centavos, descripcion)
-        VALUES (?, ?, ?)
+        INSERT INTO caja_movimientos (tipo, monto_centavos, descripcion, usuario_id)
+        VALUES (?, ?, ?, ?)
         RETURNING {_COLUMNAS}
     """
-    parametros = (movimiento.tipo, movimiento.monto_centavos, movimiento.descripcion)
+    parametros = (movimiento.tipo, movimiento.monto_centavos, movimiento.descripcion, usuario_id)
     with obtener_conexion() as conexion:
         fila = conexion.execute(consulta, parametros).fetchone()
     return _fila_a_movimiento(fila)
