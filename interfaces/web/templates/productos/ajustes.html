@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Ajustes de stock{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Ajustes de stock — {{ producto.nombre }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+  {% if ajustes %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <p class="sm:hidden text-xs text-slate-400 dark:text-slate-500 px-5 pt-3">Desliza hacia la derecha para ver más →</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-3">Fecha</th>
+              <th class="px-5 py-3">Motivo</th>
+              <th class="px-5 py-3 text-right">Cantidad</th>
+              <th class="px-5 py-3 text-right">Stock anterior</th>
+              <th class="px-5 py-3 text-right">Stock resultante</th>
+              <th class="px-5 py-3">Usuario</th>
+              <th class="px-5 py-3">Observaciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ajuste in ajustes %}
+              <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ ajuste.fecha }}</td>
+                <td class="px-5 py-3.5">{{ ui.badge(ajuste.motivo, 'exito' if ajuste.delta > 0 else 'advertencia') }}</td>
+                <td class="px-5 py-3.5 text-right font-semibold tabular-nums {{ 'text-success' if ajuste.delta > 0 else 'text-error' }}">
+                  {{ '+%d' % ajuste.delta if ajuste.delta > 0 else ajuste.delta }}
+                </td>
+                <td class="px-5 py-3.5 text-right text-slate-500 dark:text-slate-400 tabular-nums">{{ ajuste.stock_anterior }}</td>
+                <td class="px-5 py-3.5 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">{{ ajuste.stock_resultante }}</td>
+                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ ajuste.usuario_nombre_completo }}</td>
+                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ ajuste.observaciones or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    {{ ui.estado_vacio("Sin ajustes registrados", "Todavía no se registró ningún ajuste manual de stock para este producto.") }}
+  {% endif %}
+
+  <a href="/productos/{{ producto.id }}/editar" class="inline-block text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver</a>
+
+</div>
+{% endblock %}

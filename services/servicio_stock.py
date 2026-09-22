@@ -9,9 +9,17 @@ deberían usar para operar sobre productos: no deben llamar a
 
 import logging
 
+from db.conexion import obtener_conexion
+from db.repositorios import ajustes_stock as repositorio_ajustes_stock
 from db.repositorios import productos as repositorio_productos
+from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario
 from domain.producto import Producto
-from excepciones import CategoriaNoEncontradaError, ErrorBaseDatos, ProductoNoEncontradoError
+from excepciones import (
+    CategoriaNoEncontradaError,
+    ErrorBaseDatos,
+    ProductoNoEncontradoError,
+    StockInsuficienteError,
+)
 from services import servicio_categorias, servicio_imagenes
 
 logger = logging.getLogger(__name__)
@@ -205,6 +213,71 @@ def asignar_imagen(producto_id: int, contenido: bytes, nombre_original: str) -> 
 
     logger.info("Imagen asignada al producto id=%s", producto_id)
     return resultado
+
+
+def ajustar_stock(
+    producto_id: int,
+    delta: int,
+    motivo: str,
+    usuario_id: int,
+    observaciones: str | None = None,
+) -> AjusteStock:
+    """Corrige `stock_actual` fuera de una venta o una compra (merma,
+    rotura, vencimiento, pérdida, robo o una diferencia de recuento),
+    dejando un registro histórico permanente del ajuste.
+
+    `delta` ya viene con signo resuelto (positivo suma, negativo resta)
+    -- la traducción desde "Sumar"/"Restar" + cantidad es responsabilidad
+    de la interfaz. Usa el mismo patrón de concurrencia que
+    `services.servicio_ventas.registrar_venta`: la lectura del stock
+    vigente y la escritura del nuevo valor ocurren dentro de una única
+    transacción con `BEGIN IMMEDIATE`, para que dos ajustes concurrentes
+    sobre el mismo producto no generen un lost update.
+
+    Raises:
+        ProductoNoEncontradoError: si no existe un producto activo con ese id.
+        StockInsuficienteError: si el ajuste dejaría el stock en negativo.
+        DatosInvalidosError: si `motivo`/`delta`/`observaciones` son inválidos
+            (ver `domain.ajuste_stock.AjusteStock`).
+    """
+    with obtener_conexion(inmediata=True) as conexion:
+        producto = repositorio_productos.obtener_por_id_en_conexion(conexion, producto_id)
+        if producto is None:
+            raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
+
+        stock_anterior = producto.stock_actual
+        nuevo_stock = stock_anterior + delta
+        if nuevo_stock < 0:
+            raise StockInsuficienteError(
+                f"El ajuste dejaría el stock de '{producto.nombre}' en negativo: "
+                f"{stock_anterior} + ({delta}) = {nuevo_stock}."
+            )
+
+        producto.actualizar_stock(nuevo_stock)
+        repositorio_productos.actualizar_stock_en_conexion(conexion, producto_id, producto.stock_actual)
+
+        ajuste = AjusteStock(
+            producto_id=producto_id,
+            usuario_id=usuario_id,
+            motivo=motivo,
+            delta=delta,
+            stock_anterior=stock_anterior,
+            stock_resultante=nuevo_stock,
+            observaciones=observaciones,
+        )
+        ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(conexion, ajuste)
+
+    logger.info(
+        "Ajuste de stock registrado: producto_id=%s motivo=%s delta=%s usuario_id=%s",
+        producto_id, motivo, delta, usuario_id,
+    )
+    return ajuste_creado
+
+
+def listar_ajustes(producto_id: int) -> list[AjusteStockConUsuario]:
+    """Historial de ajustes manuales de stock de un producto, más
+    reciente primero (ver `services.servicio_stock.ajustar_stock`)."""
+    return repositorio_ajustes_stock.listar_por_producto(producto_id)
 
 
 def quitar_imagen(producto_id: int) -> Producto:

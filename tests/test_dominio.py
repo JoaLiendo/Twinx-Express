@@ -6,6 +6,7 @@ autovaliden al construirse, en memoria.
 
 import pytest
 
+from domain.ajuste_stock import MOTIVOS_AJUSTE_VALIDOS, AjusteStock
 from domain.caja import MovimientoCaja, clasificar_diferencia
 from domain.producto import Producto
 from domain.venta import ItemVenta, calcular_hash_contenido
@@ -203,3 +204,66 @@ class TestClasificarDiferencia:
 
     def test_cero_es_cuadrada(self):
         assert clasificar_diferencia(0) == "CUADRADA"
+
+
+class TestAjusteStock:
+    def _ajuste(self, **overrides):
+        base = dict(
+            producto_id=1,
+            usuario_id=1,
+            motivo="MERMA",
+            delta=-5,
+            stock_anterior=10,
+            stock_resultante=5,
+        )
+        base.update(overrides)
+        return AjusteStock(**base)
+
+    @pytest.mark.parametrize("motivo", sorted(MOTIVOS_AJUSTE_VALIDOS))
+    def test_acepta_todos_los_motivos_validos(self, motivo):
+        kwargs = {"observaciones": "justificación"} if motivo == "OTRO" else {}
+        ajuste = self._ajuste(motivo=motivo, **kwargs)
+        assert ajuste.motivo == motivo
+
+    def test_rechaza_motivo_invalido(self):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(motivo="DESCUENTO_PROMOCIONAL")
+
+    def test_acepta_delta_positivo(self):
+        ajuste = self._ajuste(motivo="RECUENTO", delta=3, stock_anterior=10, stock_resultante=13)
+        assert ajuste.delta == 3
+
+    def test_acepta_delta_negativo(self):
+        ajuste = self._ajuste(delta=-3, stock_anterior=10, stock_resultante=7)
+        assert ajuste.delta == -3
+
+    def test_rechaza_delta_cero(self):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(delta=0, stock_anterior=10, stock_resultante=10)
+
+    def test_rechaza_inconsistencia_entre_stock_anterior_delta_y_resultante(self):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(stock_anterior=10, delta=-5, stock_resultante=999)
+
+    def test_rechaza_stock_resultante_negativo(self):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(stock_anterior=3, delta=-5, stock_resultante=-2)
+
+    def test_permite_dejar_stock_resultante_en_cero(self):
+        """Distinto de `delta == 0`: acá el RESULTADO es 0, un caso
+        legítimo (se perdió/vendió/ajustó todo el stock restante)."""
+        ajuste = self._ajuste(stock_anterior=5, delta=-5, stock_resultante=0)
+        assert ajuste.stock_resultante == 0
+
+    def test_otro_sin_observaciones_es_rechazado(self):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(motivo="OTRO", observaciones=None)
+
+    def test_otro_con_observaciones_solo_espacios_es_rechazado(self):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(motivo="OTRO", observaciones="   ")
+
+    @pytest.mark.parametrize("motivo", ["MERMA", "ROTURA", "VENCIMIENTO", "PERDIDA", "ROBO", "RECUENTO"])
+    def test_otros_motivos_no_requieren_observaciones(self, motivo):
+        ajuste = self._ajuste(motivo=motivo, observaciones=None)
+        assert ajuste.observaciones is None

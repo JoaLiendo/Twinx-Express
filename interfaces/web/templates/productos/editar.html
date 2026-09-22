@@ -120,7 +120,11 @@
           <input type="number" value="{{ producto.stock_actual }}" disabled
                  class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-500 tabular-nums
                         dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400" />
-          <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">El stock solo cambia con las ventas.</p>
+          <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">
+            <a href="/productos/{{ producto.id }}/ajustar" class="font-medium text-primary hover:text-primary-hover">Ajustar stock</a>
+            ·
+            <a href="/productos/{{ producto.id }}/ajustes" class="font-medium text-primary hover:text-primary-hover">Ver ajustes</a>
+          </p>
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Stock mínimo</label>

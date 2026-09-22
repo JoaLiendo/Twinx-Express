@@ -11,9 +11,10 @@ from datetime import date
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
+from domain.ajuste_stock import MOTIVOS_AJUSTE_VALIDOS
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
-from excepciones import ArchivoImagenInvalidoError
+from excepciones import ArchivoImagenInvalidoError, DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
@@ -311,6 +312,58 @@ def reactivar_producto(producto_id: int):
     return redireccionar_con_mensaje(
         "/productos", "success", f"Producto '{producto.nombre}' reactivado correctamente."
     )
+
+
+@router.get("/productos/{producto_id}/ajustar", dependencies=[_SOLO_OWNER])
+def formulario_ajustar_stock(request: Request, producto_id: int):
+    producto = servicio_stock.obtener_por_id(producto_id)
+    if producto is None:
+        return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
+
+    contexto = {**contexto_base(request), "producto": producto, "motivos": sorted(MOTIVOS_AJUSTE_VALIDOS)}
+    return templates.TemplateResponse(request, "productos/ajustar.html", contexto)
+
+
+@router.post("/productos/{producto_id}/ajustar", dependencies=[_SOLO_OWNER])
+def ajustar_stock(
+    producto_id: int,
+    motivo: str = Form(...),
+    direccion: str = Form(...),
+    cantidad: int = Form(...),
+    observaciones: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    # El usuario no ingresa el signo: la interfaz solo ofrece "sumar" o
+    # "restar" más una cantidad positiva. No confiar en JavaScript para
+    # esto ni para el resto de las reglas (cantidad > 0, OTRO con
+    # observaciones): se revalida acá aunque el HTML ya las sugiera.
+    if cantidad <= 0:
+        raise DatosInvalidosError("La cantidad del ajuste debe ser mayor a cero.")
+    if direccion not in ("sumar", "restar"):
+        raise DatosInvalidosError("La dirección del ajuste no es válida.")
+    delta = cantidad if direccion == "sumar" else -cantidad
+
+    servicio_stock.ajustar_stock(
+        producto_id,
+        delta=delta,
+        motivo=motivo,
+        usuario_id=usuario_actual.id,
+        observaciones=observaciones.strip() or None,
+    )
+    return redireccionar_con_mensaje(
+        f"/productos/{producto_id}/editar", "success", "Ajuste de stock registrado correctamente."
+    )
+
+
+@router.get("/productos/{producto_id}/ajustes", dependencies=[_SOLO_OWNER])
+def listar_ajustes_de_producto(request: Request, producto_id: int):
+    producto = servicio_stock.obtener_por_id(producto_id)
+    if producto is None:
+        return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
+
+    ajustes = servicio_stock.listar_ajustes(producto_id)
+    contexto = {**contexto_base(request), "producto": producto, "ajustes": ajustes}
+    return templates.TemplateResponse(request, "productos/ajustes.html", contexto)
 
 
 @router.get("/api/productos/buscar-codigo/{codigo_barras}", dependencies=[_CONSULTA])

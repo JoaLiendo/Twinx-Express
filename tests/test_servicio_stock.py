@@ -1,11 +1,14 @@
 """Pruebas de integración de services.servicio_stock contra una base de
 datos SQLite real (temporal y aislada, ver tests/conftest.py)."""
 
+import threading
 from pathlib import Path
 
 import pytest
 
 from db.conexion import obtener_conexion
+from db.repositorios import usuarios as repositorio_usuarios
+from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from excepciones import (
     ArchivoImagenInvalidoError,
@@ -13,8 +16,15 @@ from excepciones import (
     CodigoBarrasDuplicadoError,
     DatosInvalidosError,
     ProductoNoEncontradoError,
+    StockInsuficienteError,
 )
 from services import servicio_categorias, servicio_stock, servicio_ventas
+
+
+def _crear_usuario(nombre_usuario="duenio", rol="OWNER"):
+    return repositorio_usuarios.crear_usuario(
+        Usuario(nombre_usuario=nombre_usuario, nombre_completo="Test", password_hash="hash", rol=rol)
+    )
 
 _JPEG_VALIDO = b"\xff\xd8\xff\xe0\x00\x10JFIF" + b"\x00" * 20
 _PNG_VALIDO = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
@@ -501,3 +511,133 @@ def test_baja_fisica_de_producto_sin_imagen_no_falla(base_datos_temporal, direct
     fue_baja_logica = servicio_stock.eliminar_producto(producto.id)  # no debe lanzar
 
     assert fue_baja_logica is False
+
+
+class TestAjustarStock:
+    """Ajuste manual de stock (merma/rotura/vencimiento/pérdida/robo/
+    recuento): corrige `stock_actual` sin pasar por una venta ni una
+    compra, dejando un registro histórico en `ajustes_stock`."""
+
+    def test_ajuste_positivo_incrementa_el_stock(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        ajuste = servicio_stock.ajustar_stock(
+            producto.id, delta=5, motivo="RECUENTO", usuario_id=usuario.id
+        )
+
+        assert ajuste.stock_anterior == 10
+        assert ajuste.stock_resultante == 15
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 15
+
+    def test_ajuste_negativo_decrementa_el_stock(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        ajuste = servicio_stock.ajustar_stock(
+            producto.id, delta=-4, motivo="MERMA", usuario_id=usuario.id
+        )
+
+        assert ajuste.stock_anterior == 10
+        assert ajuste.stock_resultante == 6
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 6
+
+    def test_ajuste_puede_dejar_el_stock_en_cero(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=5)
+        usuario = _crear_usuario()
+
+        ajuste = servicio_stock.ajustar_stock(
+            producto.id, delta=-5, motivo="ROTURA", usuario_id=usuario.id
+        )
+
+        assert ajuste.stock_resultante == 0
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 0
+
+    def test_ajuste_que_dejaria_stock_negativo_es_rechazado(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=3)
+        usuario = _crear_usuario()
+
+        with pytest.raises(StockInsuficienteError):
+            servicio_stock.ajustar_stock(producto.id, delta=-5, motivo="MERMA", usuario_id=usuario.id)
+
+        # nada quedó modificado: ni el stock ni el historial.
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 3
+        with obtener_conexion() as conexion:
+            total = conexion.execute("SELECT COUNT(*) AS n FROM ajustes_stock").fetchone()["n"]
+        assert total == 0
+
+    def test_producto_inexistente_es_rechazado(self, base_datos_temporal):
+        usuario = _crear_usuario()
+
+        with pytest.raises(ProductoNoEncontradoError):
+            servicio_stock.ajustar_stock(9999, delta=-1, motivo="MERMA", usuario_id=usuario.id)
+
+    def test_ajuste_persiste_usuario_motivo_y_delta(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        ajuste = servicio_stock.ajustar_stock(
+            producto.id, delta=-2, motivo="ROBO", usuario_id=usuario.id, observaciones="visto en cámara"
+        )
+
+        assert ajuste.usuario_id == usuario.id
+        assert ajuste.motivo == "ROBO"
+        assert ajuste.delta == -2
+        assert ajuste.observaciones == "visto en cámara"
+
+    def test_fallo_al_persistir_el_ajuste_no_deja_el_stock_modificado(self, base_datos_temporal, monkeypatch):
+        """Atomicidad: si el INSERT del historial falla, el UPDATE de
+        stock (misma transacción) se revierte -- nunca queda el stock
+        cambiado sin su registro correspondiente."""
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        from db.repositorios import ajustes_stock as repositorio_ajustes
+
+        def falla(*_args, **_kwargs):
+            raise sqlite3.IntegrityError("fallo simulado")
+
+        import sqlite3
+
+        monkeypatch.setattr(repositorio_ajustes, "registrar_ajuste_en_conexion", falla)
+
+        with pytest.raises(Exception):
+            servicio_stock.ajustar_stock(producto.id, delta=-3, motivo="MERMA", usuario_id=usuario.id)
+
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    def test_dos_ajustes_concurrentes_no_generan_lost_update(self, base_datos_temporal):
+        """Mismo patrón de test ya usado para ventas
+        (`test_dos_ventas_concurrentes_del_ultimo_stock_no_generan_lost_update`):
+        dos hilos reales, dos conexiones SQLite reales, restando del
+        mismo stock -- `inmediata=True` debe serializarlos."""
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        barrera = threading.Barrier(2)
+        errores = []
+
+        def ajustar():
+            barrera.wait()
+            try:
+                servicio_stock.ajustar_stock(producto.id, delta=-5, motivo="MERMA", usuario_id=usuario.id)
+            except Exception as error:  # noqa: BLE001 -- se inspecciona más abajo, no se ignora
+                errores.append(error)
+
+        hilo_a = threading.Thread(target=ajustar)
+        hilo_b = threading.Thread(target=ajustar)
+        hilo_a.start()
+        hilo_b.start()
+        hilo_a.join(timeout=10)
+        hilo_b.join(timeout=10)
+
+        assert not hilo_a.is_alive()
+        assert not hilo_b.is_alive()
+        # Los dos restan 5 sobre un stock de 10: ambos caben exactamente,
+        # ninguno debería fallar, y el resultado final tiene que ser 0 --
+        # nunca -5 (lost update) ni 5 (un ajuste "perdido").
+        assert errores == []
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 0
+        with obtener_conexion() as conexion:
+            total = conexion.execute("SELECT COUNT(*) AS n FROM ajustes_stock").fetchone()["n"]
+        assert total == 2
