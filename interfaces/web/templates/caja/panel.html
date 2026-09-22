@@ -158,7 +158,21 @@
                   {{ ui.badge(movimiento.tipo, variantes_movimiento.get(movimiento.tipo, 'neutral')) }}
                 </td>
                 <td class="px-6 py-3 text-slate-600 dark:text-slate-400">{{ movimiento.descripcion or '—' }}</td>
-                <td class="px-6 py-3 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">${{ movimiento.monto_centavos | dinero_ar }}</td>
+                <td class="px-6 py-3 text-right tabular-nums">
+                  <p class="font-semibold text-slate-900 dark:text-slate-100">${{ movimiento.monto_centavos | dinero_ar }}</p>
+                  {% if movimiento.tipo == 'CIERRE' and movimiento.diferencia_centavos is not none %}
+                    <p class="text-xs font-medium mt-0.5
+                              {{ 'text-success' if movimiento.diferencia_centavos > 0 else ('text-error' if movimiento.diferencia_centavos < 0 else 'text-slate-400 dark:text-slate-500') }}">
+                      {% if movimiento.diferencia_centavos > 0 %}
+                        Sobrante — +${{ movimiento.diferencia_centavos | dinero_ar }}
+                      {% elif movimiento.diferencia_centavos < 0 %}
+                        Faltante — -${{ (-movimiento.diferencia_centavos) | dinero_ar }}
+                      {% else %}
+                        Caja cuadrada — $0,00
+                      {% endif %}
+                    </p>
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>

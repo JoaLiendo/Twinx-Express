@@ -4,7 +4,8 @@ ingresos/egresos manuales. Cliente delgado sobre `services.servicio_caja`.
 
 from fastapi import APIRouter, Depends, Form, Request
 
-from domain.dinero import texto_a_centavos
+from domain.caja import clasificar_diferencia
+from domain.dinero import centavos_a_texto_localizado, texto_a_centavos
 from domain.usuario import Usuario
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
@@ -12,6 +13,19 @@ from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
 from services import servicio_caja
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
+
+
+def _mensaje_resultado_cierre(diferencia_centavos: int) -> str:
+    """Texto del resultado del cierre para el toast (migración 011).
+    `cerrar_caja` siempre devuelve una diferencia calculada -- nunca
+    `None` -- así que acá no hace falta contemplar ese caso."""
+    resultado = clasificar_diferencia(diferencia_centavos)
+    if resultado == "CUADRADA":
+        return "Caja cuadrada."
+    monto = centavos_a_texto_localizado(abs(diferencia_centavos))
+    signo = "+" if resultado == "SOBRANTE" else "-"
+    etiqueta = "Sobrante" if resultado == "SOBRANTE" else "Faltante"
+    return f"{etiqueta}: {signo}${monto}."
 
 
 @router.get("/caja")
@@ -45,8 +59,8 @@ def cerrar_caja(
     descripcion: str = Form(""),
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
-    servicio_caja.cerrar_caja(texto_a_centavos(monto_final), descripcion or None, usuario_id=usuario_actual.id)
-    return redireccionar_con_mensaje("/caja", "success", "Caja cerrada correctamente.")
+    cierre = servicio_caja.cerrar_caja(texto_a_centavos(monto_final), descripcion or None, usuario_id=usuario_actual.id)
+    return redireccionar_con_mensaje("/caja", "success", f"Caja cerrada correctamente. {_mensaje_resultado_cierre(cierre.diferencia_centavos)}")
 
 
 @router.post("/caja/ingreso")

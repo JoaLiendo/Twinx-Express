@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import ventas as repositorio_ventas
-from domain.caja import MovimientoCaja
+from domain.caja import MovimientoCaja, clasificar_diferencia
 from domain.venta import Venta
 from excepciones import CajaError
 
@@ -110,20 +110,45 @@ def abrir_caja(
 def cerrar_caja(
     monto_final_centavos: int, descripcion: str | None = None, usuario_id: int | None = None
 ) -> MovimientoCaja:
-    """Cierra la caja registrando un movimiento de CIERRE con el monto contado.
+    """Cierra la caja registrando un movimiento de CIERRE con el monto
+    contado y la diferencia contra el efectivo esperado (migración 011:
+    faltante/sobrante).
 
     Raises:
         CajaError: si no hay una caja abierta para cerrar.
         DatosInvalidosError: si `monto_final_centavos` es negativo.
 
     `usuario_id` (migración 010): ver `abrir_caja`.
+
+    `diferencia_centavos = monto_final_centavos - efectivo_estimado_centavos`,
+    con `efectivo_estimado_centavos` resuelto acá mismo, en el momento del
+    cierre, con `calcular_arqueo_del_dia()` -- la misma función que ya
+    usa `/caja/arqueo`, sin duplicar esa lógica. Se calcula recién
+    después de confirmar que la caja está abierta y justo antes de
+    persistir, para no depender de un valor que el usuario haya visto
+    antes en otra pantalla (la única ventana real que queda es la propia
+    ejecución de esta función, no el tiempo que tarde el cajero en mirar
+    el arqueo y completar el formulario de cierre).
     """
     if not _caja_esta_abierta():
         raise CajaError("No hay una caja abierta para cerrar.")
 
-    movimiento = MovimientoCaja(tipo="CIERRE", monto_centavos=monto_final_centavos, descripcion=descripcion)
+    efectivo_estimado_centavos = calcular_arqueo_del_dia().efectivo_estimado_centavos
+    diferencia_centavos = monto_final_centavos - efectivo_estimado_centavos
+
+    movimiento = MovimientoCaja(
+        tipo="CIERRE",
+        monto_centavos=monto_final_centavos,
+        descripcion=descripcion,
+        diferencia_centavos=diferencia_centavos,
+    )
     movimiento_creado = repositorio_caja.registrar_movimiento(movimiento, usuario_id=usuario_id)
-    logger.info("Caja cerrada con monto final %s centavos", movimiento_creado.monto_centavos)
+    logger.info(
+        "Caja cerrada con monto final %s centavos (diferencia %s centavos, %s)",
+        movimiento_creado.monto_centavos,
+        movimiento_creado.diferencia_centavos,
+        clasificar_diferencia(diferencia_centavos),
+    )
     return movimiento_creado
 
 

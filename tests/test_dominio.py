@@ -6,7 +6,7 @@ autovaliden al construirse, en memoria.
 
 import pytest
 
-from domain.caja import MovimientoCaja
+from domain.caja import MovimientoCaja, clasificar_diferencia
 from domain.producto import Producto
 from domain.venta import ItemVenta, calcular_hash_contenido
 from excepciones import DatosInvalidosError
@@ -175,3 +175,31 @@ class TestMovimientoCaja:
     def test_apertura_y_cierre_no_requieren_descripcion(self, tipo):
         movimiento = MovimientoCaja(tipo=tipo, monto_centavos=1000, descripcion=None)
         assert movimiento.descripcion is None
+
+    @pytest.mark.parametrize("diferencia", [500, -500, 0])
+    def test_cierre_acepta_diferencia_positiva_negativa_o_cero(self, diferencia):
+        movimiento = MovimientoCaja(tipo="CIERRE", monto_centavos=1000, diferencia_centavos=diferencia)
+        assert movimiento.diferencia_centavos == diferencia
+
+    def test_cierre_sin_diferencia_sigue_siendo_valido(self):
+        """Compatibilidad con cierres históricos/tests existentes: el
+        campo es opcional, por defecto `None`."""
+        movimiento = MovimientoCaja(tipo="CIERRE", monto_centavos=1000)
+        assert movimiento.diferencia_centavos is None
+
+    @pytest.mark.parametrize("tipo", ["APERTURA", "INGRESO", "EGRESO"])
+    def test_diferencia_en_movimiento_que_no_es_cierre_es_rechazada(self, tipo):
+        descripcion = "justificación del movimiento" if tipo in ("INGRESO", "EGRESO") else None
+        with pytest.raises(DatosInvalidosError):
+            MovimientoCaja(tipo=tipo, monto_centavos=1000, descripcion=descripcion, diferencia_centavos=100)
+
+
+class TestClasificarDiferencia:
+    def test_positiva_es_sobrante(self):
+        assert clasificar_diferencia(500) == "SOBRANTE"
+
+    def test_negativa_es_faltante(self):
+        assert clasificar_diferencia(-500) == "FALTANTE"
+
+    def test_cero_es_cuadrada(self):
+        assert clasificar_diferencia(0) == "CUADRADA"

@@ -5,7 +5,9 @@ datos SQLite temporal (ver tests/conftest.py)."""
 import pytest
 
 from db.conexion import obtener_conexion
+from db.repositorios import caja as repositorio_caja
 from db.repositorios import usuarios as repositorio_usuarios
+from domain.caja import MovimientoCaja
 from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from excepciones import CajaError, DatosInvalidosError
@@ -193,3 +195,82 @@ class TestUsuarioDelMovimiento:
         repositorio_usuarios.actualizar_activo(usuario.id, False)
 
         assert _usuario_id_del_ultimo_movimiento() == usuario.id
+
+
+class TestDiferenciaDeCierre:
+    """Migración 011: `cerrar_caja` calcula
+    `diferencia_centavos = monto_final_centavos - efectivo_estimado_centavos`
+    (este último resuelto con `calcular_arqueo_del_dia()`, sin
+    duplicar esa lógica) y la persiste como parte del cierre."""
+
+    def test_caja_exacta_diferencia_cero(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100000)
+
+        cierre = servicio_caja.cerrar_caja(100000)
+
+        assert cierre.diferencia_centavos == 0
+
+    def test_sobrante_diferencia_positiva(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100000)
+
+        cierre = servicio_caja.cerrar_caja(100500)
+
+        assert cierre.diferencia_centavos == 500
+
+    def test_faltante_diferencia_negativa(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100000)
+
+        cierre = servicio_caja.cerrar_caja(99500)
+
+        assert cierre.diferencia_centavos == -500
+
+    def test_con_ventas_del_dia_la_diferencia_las_contempla(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100000)
+        producto = servicio_stock.registrar_producto(
+            "7790000000001", "Alfajor", 100, 20000, stock_actual=10, stock_minimo=1
+        )
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        # esperado: 100000 (apertura) + 20000 (venta efectivo) = 120000
+
+        cierre = servicio_caja.cerrar_caja(120000)
+
+        assert cierre.diferencia_centavos == 0
+
+    def test_solo_movimientos_manuales_sin_ventas(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100000)
+        servicio_caja.registrar_ingreso(5000, "cambio")
+        servicio_caja.registrar_egreso(2000, "pago")
+        # esperado: 100000 + 5000 - 2000 = 103000
+
+        cierre = servicio_caja.cerrar_caja(103000)
+
+        assert cierre.diferencia_centavos == 0
+
+    def test_la_diferencia_coincide_con_monto_final_menos_arqueo(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100000)
+        servicio_caja.registrar_ingreso(3000, "cambio")
+
+        esperado = servicio_caja.calcular_arqueo_del_dia().efectivo_estimado_centavos
+        cierre = servicio_caja.cerrar_caja(esperado + 777)
+
+        assert cierre.diferencia_centavos == 777
+
+    def test_diferencia_queda_asociada_al_usuario_que_cierra(self, base_datos_temporal):
+        usuario = _crear_usuario()
+        servicio_caja.abrir_caja(100000)
+
+        servicio_caja.cerrar_caja(100500, usuario_id=usuario.id)
+
+        assert _usuario_id_del_ultimo_movimiento() == usuario.id
+
+    def test_cierre_historico_sin_diferencia_se_lista_sin_error(self, base_datos_temporal):
+        """Un cierre anterior a la migración 011 (simulado acá insertando
+        directo un MovimientoCaja sin diferencia_centavos) debe poder
+        seguir leyéndose con normalidad -- `listar_movimientos` no debe
+        fallar ni inventar un valor."""
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000))
+
+        movimientos = servicio_caja.listar_movimientos()
+
+        assert len(movimientos) == 1
+        assert movimientos[0].diferencia_centavos is None

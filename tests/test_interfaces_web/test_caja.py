@@ -3,8 +3,12 @@ ingreso, egreso), con foco en la trazabilidad de usuario (migración 010):
 no existía ningún test a este nivel antes de este bloque -- toda la
 cobertura previa era de `services.servicio_caja` directamente."""
 
+from urllib.parse import unquote
+
 from db.conexion import obtener_conexion
+from db.repositorios import caja as repositorio_caja
 from db.repositorios import usuarios as repositorio_usuarios
+from domain.caja import MovimientoCaja
 from domain.usuario import Usuario
 from interfaces.web.auth import NOMBRE_COOKIE_SESION
 from services import servicio_auth
@@ -135,3 +139,68 @@ class TestFlujoExistenteDeCajaSigueFuncionando:
         with obtener_conexion() as conexion:
             total = conexion.execute("SELECT COUNT(*) AS n FROM caja_movimientos").fetchone()["n"]
         assert total == 0
+
+
+class TestDiferenciaDeCierre:
+    """Migración 011: el toast de cierre y el historial de movimientos
+    reflejan el resultado (sobrante/faltante/cuadrada)."""
+
+    def test_cierre_exacto_muestra_caja_cuadrada(self, base_datos_temporal):
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        solicitud("POST", "/caja/abrir", cookies=cookies, formulario={"monto_inicial": "1000"})
+
+        respuesta = solicitud("POST", "/caja/cerrar", cookies=cookies, formulario={"monto_final": "1000"})
+
+        assert respuesta.status == 303
+        assert "Caja cuadrada" in unquote(respuesta.header("location"))
+
+    def test_cierre_con_sobrante_muestra_el_toast_correcto(self, base_datos_temporal):
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        solicitud("POST", "/caja/abrir", cookies=cookies, formulario={"monto_inicial": "1000"})
+
+        respuesta = solicitud("POST", "/caja/cerrar", cookies=cookies, formulario={"monto_final": "1005"})
+
+        assert respuesta.status == 303
+        assert "Sobrante" in unquote(respuesta.header("location"))
+
+    def test_cierre_con_faltante_muestra_el_toast_correcto(self, base_datos_temporal):
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        solicitud("POST", "/caja/abrir", cookies=cookies, formulario={"monto_inicial": "1000"})
+
+        respuesta = solicitud("POST", "/caja/cerrar", cookies=cookies, formulario={"monto_final": "995"})
+
+        assert respuesta.status == 303
+        assert "Faltante" in unquote(respuesta.header("location"))
+
+    def test_historial_muestra_el_resultado_del_cierre(self, base_datos_temporal):
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        solicitud("POST", "/caja/abrir", cookies=cookies, formulario={"monto_inicial": "1000"})
+        solicitud("POST", "/caja/cerrar", cookies=cookies, formulario={"monto_final": "1005"})
+
+        respuesta = solicitud("GET", "/caja", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Sobrante" in respuesta.texto
+
+    def test_cierre_historico_sin_diferencia_no_rompe_el_historial(self, base_datos_temporal):
+        """Un cierre insertado directo (simulando uno anterior a la
+        migración 011, sin diferencia_centavos) no debe romper el
+        render de /caja ni mostrar ningún resultado inventado."""
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000))
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+
+        respuesta = solicitud("GET", "/caja", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Sobrante" not in respuesta.texto
+        assert "Faltante" not in respuesta.texto
+        assert "Caja cuadrada" not in respuesta.texto
+
+    def test_cashier_tambien_ve_el_resultado_del_cierre(self, base_datos_temporal):
+        _, cookies = _crear_usuario_logueado("CASHIER", "cajera1")
+        solicitud("POST", "/caja/abrir", cookies=cookies, formulario={"monto_inicial": "1000"})
+
+        respuesta = solicitud("POST", "/caja/cerrar", cookies=cookies, formulario={"monto_final": "990"})
+
+        assert respuesta.status == 303
+        assert "Faltante" in unquote(respuesta.header("location"))

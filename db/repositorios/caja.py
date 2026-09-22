@@ -12,7 +12,7 @@ import sqlite3
 from db.conexion import obtener_conexion
 from domain.caja import MovimientoCaja
 
-_COLUMNAS = "id, fecha, tipo, monto_centavos, descripcion"
+_COLUMNAS = "id, fecha, tipo, monto_centavos, descripcion, diferencia_centavos"
 
 
 def _fila_a_movimiento(fila: sqlite3.Row) -> MovimientoCaja:
@@ -23,6 +23,7 @@ def _fila_a_movimiento(fila: sqlite3.Row) -> MovimientoCaja:
         tipo=fila["tipo"],
         monto_centavos=fila["monto_centavos"],
         descripcion=fila["descripcion"],
+        diferencia_centavos=fila["diferencia_centavos"],
     )
 
 
@@ -36,13 +37,26 @@ def registrar_movimiento(movimiento: MovimientoCaja, usuario_id: int | None = No
     este bloque): quien necesite ese dato hoy lo consulta directo contra
     `caja_movimientos`, igual que ya ocurre con otras columnas de
     trazabilidad que tampoco están en el dominio.
+
+    `movimiento.diferencia_centavos` (migración 011, faltante/sobrante
+    del cierre) sí viaja en el propio `MovimientoCaja` -- a diferencia de
+    `usuario_id`, es un hecho financiero permanente sobre el movimiento
+    mismo, no un dato de sesión. Este repositorio no lo calcula: lo
+    persiste tal cual viene, ya resuelto por
+    `services.servicio_caja.cerrar_caja`.
     """
     consulta = f"""
-        INSERT INTO caja_movimientos (tipo, monto_centavos, descripcion, usuario_id)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO caja_movimientos (tipo, monto_centavos, descripcion, usuario_id, diferencia_centavos)
+        VALUES (?, ?, ?, ?, ?)
         RETURNING {_COLUMNAS}
     """
-    parametros = (movimiento.tipo, movimiento.monto_centavos, movimiento.descripcion, usuario_id)
+    parametros = (
+        movimiento.tipo,
+        movimiento.monto_centavos,
+        movimiento.descripcion,
+        usuario_id,
+        movimiento.diferencia_centavos,
+    )
     with obtener_conexion() as conexion:
         fila = conexion.execute(consulta, parametros).fetchone()
     return _fila_a_movimiento(fila)

@@ -20,13 +20,24 @@ TIPOS_QUE_REQUIEREN_DESCRIPCION = frozenset({"INGRESO", "EGRESO"})
 
 @dataclass
 class MovimientoCaja:
-    """Un movimiento de caja, validado al construirse."""
+    """Un movimiento de caja, validado al construirse.
+
+    `diferencia_centavos` (faltante/sobrante del cierre) solo tiene
+    sentido para `tipo == "CIERRE"`: es el resultado de comparar el
+    efectivo contado (`monto_centavos` de esa misma fila) contra el
+    efectivo esperado en ese momento (ver
+    `services.servicio_caja.cerrar_caja`, que es quien lo calcula --
+    este dataclass solo lo transporta y lo valida). `None` para
+    cualquier otro tipo de movimiento, y también para cierres
+    anteriores a que este campo existiera.
+    """
 
     tipo: str
     monto_centavos: int
     descripcion: str | None = None
     id: int | None = None
     fecha: str | None = None
+    diferencia_centavos: int | None = None
 
     def __post_init__(self) -> None:
         self._validar()
@@ -45,3 +56,18 @@ class MovimientoCaja:
             raise DatosInvalidosError(
                 f"Los movimientos de tipo {self.tipo} requieren una descripción que los justifique."
             )
+        if self.diferencia_centavos is not None and self.tipo != "CIERRE":
+            raise DatosInvalidosError(
+                f"Solo un movimiento de tipo CIERRE puede tener diferencia_centavos (recibido: {self.tipo!r})."
+            )
+
+
+def clasificar_diferencia(diferencia_centavos: int) -> str:
+    """Clasifica el resultado de un cierre de caja: 'SOBRANTE' si el
+    efectivo contado superó al esperado, 'FALTANTE' si fue menor,
+    'CUADRADA' si coinciden exactamente."""
+    if diferencia_centavos > 0:
+        return "SOBRANTE"
+    if diferencia_centavos < 0:
+        return "FALTANTE"
+    return "CUADRADA"

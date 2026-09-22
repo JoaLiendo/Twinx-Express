@@ -118,3 +118,96 @@ def test_registrar_movimiento_sigue_devolviendo_el_movimiento_de_dominio(base_da
     assert resultado.tipo == "APERTURA"
     assert resultado.monto_centavos == 100000
     assert not hasattr(resultado, "usuario_id")
+
+
+def test_migracion_011_agrega_la_columna_diferencia_centavos(base_datos_temporal):
+    with obtener_conexion() as conexion:
+        columnas = {fila["name"] for fila in conexion.execute("PRAGMA table_info(caja_movimientos)").fetchall()}
+    assert "diferencia_centavos" in columnas
+
+
+def test_migracion_011_no_inventa_datos_para_cierres_anteriores(tmp_path, monkeypatch):
+    """Simula una DB que ya tenía cierres de caja antes de que existiera
+    esta migración: aplica solo 001-010 a mano, inserta un CIERRE con el
+    esquema viejo, y recién después corre `inicializar_base_datos()`
+    completo (aplica 011 en adelante). El cierre viejo debe quedar con
+    `diferencia_centavos` en NULL -- nunca una diferencia inventada.
+    """
+    ruta_bd = tmp_path / "test_kiosco_pre_011.db"
+    monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", ruta_bd)
+
+    rutas_previas = [
+        ruta
+        for ruta in sorted(modulo_conexion.DIRECTORIO_MIGRACIONES.glob("*.sql"))
+        if ruta.name < "011_diferencia_cierre_caja.sql"
+    ]
+    assert rutas_previas, "no se encontraron migraciones anteriores a la 011"
+
+    with modulo_conexion.obtener_conexion() as conexion:
+        conexion.execute(modulo_conexion._TABLA_MIGRACIONES)
+        for ruta in rutas_previas:
+            conexion.executescript(ruta.read_text(encoding="utf-8"))
+            conexion.execute("INSERT INTO schema_migraciones (nombre_archivo) VALUES (?)", (ruta.name,))
+        conexion.execute(
+            "INSERT INTO caja_movimientos (tipo, monto_centavos, descripcion) VALUES ('CIERRE', 100000, NULL)"
+        )
+
+    modulo_conexion.inicializar_base_datos()
+
+    with modulo_conexion.obtener_conexion() as conexion:
+        fila = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos WHERE id = 1").fetchone()
+    assert fila["diferencia_centavos"] is None
+
+
+class TestDiferenciaDeCierre:
+    """Migración 011: `registrar_movimiento` persiste `diferencia_centavos`
+    tal cual viene en el `MovimientoCaja` -- no la calcula (eso es
+    responsabilidad de `services.servicio_caja.cerrar_caja`)."""
+
+    def test_persiste_diferencia_positiva(self, base_datos_temporal):
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=500))
+
+        with obtener_conexion() as conexion:
+            fila = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos").fetchone()
+        assert fila["diferencia_centavos"] == 500
+
+    def test_persiste_diferencia_negativa(self, base_datos_temporal):
+        repositorio_caja.registrar_movimiento(
+            MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=-500)
+        )
+
+        with obtener_conexion() as conexion:
+            fila = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos").fetchone()
+        assert fila["diferencia_centavos"] == -500
+
+    def test_persiste_diferencia_cero(self, base_datos_temporal):
+        """Cero es un resultado real (caja cuadrada) -- se persiste como
+        `0`, nunca como `NULL` (que significaría "no calculado")."""
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=0))
+
+        with obtener_conexion() as conexion:
+            fila = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos").fetchone()
+        assert fila["diferencia_centavos"] == 0
+
+    def test_otros_movimientos_quedan_null(self, base_datos_temporal):
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=100000))
+        repositorio_caja.registrar_movimiento(
+            MovimientoCaja(tipo="INGRESO", monto_centavos=5000, descripcion="cambio")
+        )
+        repositorio_caja.registrar_movimiento(
+            MovimientoCaja(tipo="EGRESO", monto_centavos=2000, descripcion="pago")
+        )
+
+        with obtener_conexion() as conexion:
+            filas = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos ORDER BY id").fetchall()
+        assert [fila["diferencia_centavos"] for fila in filas] == [None, None, None]
+
+    def test_lectura_devuelve_la_diferencia_correcta(self, base_datos_temporal):
+        repositorio_caja.registrar_movimiento(
+            MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=-300)
+        )
+
+        movimientos = repositorio_caja.listar_movimientos()
+
+        assert len(movimientos) == 1
+        assert movimientos[0].diferencia_centavos == -300
