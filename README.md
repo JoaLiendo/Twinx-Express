@@ -211,3 +211,8 @@ actualizaciones (ver `config.py` y la sección de Build más abajo).
 - [x] Suite de tests automatizados (pytest) sobre dominio y servicios
 - [x] Fase 5: Interfaz web local (FastAPI + Jinja2 + Tailwind CDN) — POS, productos, caja, dashboard
 - [x] Autenticación por sesión (OWNER/CASHIER), categorías, unidad de medida e imágenes de producto
+- [x] Compras, proveedores y empleados (alta/edición), reactivación de productos y categorías dados de baja
+- [x] Backup manual y restore (ver sección "Backup y restore" más arriba)
+- [x] Modo oscuro y layout responsive (375/768/1024/1440)
+- [ ] Pedidos, precios y reportes: solo cascarón visual, sin lógica de negocio todavía
+- [ ] Exportación de datos y backup automático/programado

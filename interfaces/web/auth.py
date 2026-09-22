@@ -1,23 +1,22 @@
-"""Infraestructura web de autenticación (Fase 2D): resolver el usuario
-autenticado a partir de un `Request` y una dependencia reutilizable
-para restringir endpoints por rol en fases posteriores.
+"""Infraestructura web de autenticación: resolver el usuario autenticado
+a partir de un `Request` y una dependencia reutilizable (`requiere_rol`)
+para restringir endpoints por rol.
 
-Fase 2D es solo infraestructura, no autenticación en funcionamiento:
-- No existe todavía ningún `/login` que fije la cookie de sesión (fase
-  2E). En la aplicación real, `obtener_usuario_actual` hoy siempre
-  devuelve `None`, porque ninguna respuesta llegó nunca a poner esa
-  cookie — leerla acá no es "agregar cookies" como funcionalidad, es
-  la mitad de lectura de un mecanismo que todavía no tiene mitad de
-  escritura.
-- `requiere_rol` no está conectada a ningún router (`Depends(...)`)
-  todavía: queda lista para que 2E la use, pero hoy no protege nada.
+Autenticación en funcionamiento, no solo infraestructura:
+- `interfaces.web.rutas.autenticacion` expone `/login` y `/logout` y es
+  el único lugar que escribe/borra la cookie de sesión, con el mismo
+  nombre centralizado acá (`NOMBRE_COOKIE_SESION`).
+- `requiere_rol` está conectada como dependencia en los routers de
+  `interfaces/web/rutas/` (productos, ventas, caja, compras,
+  proveedores, empleados, backup, dashboard, y los cascarones de
+  pedidos/precios/reportes), restringiendo accesos reales por rol
+  (`OWNER`, `CASHIER`).
 - No hay redirecciones ni respuestas HTTP acá: solo se devuelve `None`
   o se levanta una excepción de dominio (`NoAutenticadoError`,
   `PermisoDenegadoError`). Traducir eso a una respuesta HTTP concreta
-  (redirect a `/login`, 403, etc.) es responsabilidad de una fase
-  posterior, con el mismo patrón que ya usa el resto de la app:
-  `interfaces.web.app` traduce `ErrorAplicacion` a una respuesta en un
-  único lugar (ver su exception_handler).
+  (redirect a `/login`, 403, etc.) es responsabilidad de
+  `interfaces.web.app`, que traduce `ErrorAplicacion` a una respuesta
+  en un único lugar (ver su exception_handler).
 
 Reutiliza `services.servicio_auth` para todo lo que ya resuelve
 (sesión válida, expiración, usuario activo): este módulo no vuelve a
@@ -65,11 +64,10 @@ def requiere_rol(*roles: str):
     """Devuelve una dependencia de FastAPI que exige un usuario
     autenticado con alguno de `roles`.
 
-    Pensada para conectarse en una fase posterior como
-    `Depends(requiere_rol("OWNER"))` en un router o una ruta puntual.
-    Por ahora no está conectada a nada: se prueba llamando a la
-    dependencia devuelta directamente con un `Request` (ver
-    tests/test_interfaces_web/test_auth.py).
+    Se usa como `Depends(requiere_rol("OWNER"))` a nivel de router o de
+    ruta puntual (ver `interfaces/web/rutas/`). También se prueba
+    llamando a la dependencia devuelta directamente con un `Request`
+    (ver `tests/test_interfaces_web/test_auth.py`).
 
     Raises:
         NoAutenticadoError: no hay usuario autenticado en el request

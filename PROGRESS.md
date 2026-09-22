@@ -1,53 +1,39 @@
 # PROGRESS.md — Estado del proyecto
 
-> Contexto ultra-resumido para retomar en la próxima sesión. Última actualización: sesión del 2026-09-11 (salida de fase Beta: CRUD completo, importación masiva, arqueo de caja).
+> Contexto ultra-resumido para retomar en la próxima sesión. Última actualización: 2026-09-22 (auditoría de estado + pulido de Fase A: identidad visual, firma de desarrolladores, esta actualización de documento).
 
-## 1. Funcionalidad que quedó funcionando
+## 1. Funcionalidad implementada y funcionando
 
-- **CRUD completo de productos**: alta (ya existía) + **editar** (`GET/POST /productos/{id}/editar`, no toca stock) + **eliminar** (`POST /productos/{id}/eliminar`).
-  - Eliminar hace **DELETE físico** si el producto no tiene ventas; si tiene, hace **baja lógica** (`activo=0`) para no romper el historial de ventas (FK `ON DELETE RESTRICT`).
-  - Productos con `activo=0` quedan invisibles para listados/búsquedas/venta (como si no existieran).
-- **Importación masiva** de productos vía `.csv` o `.xlsx`: `GET/POST /productos/importar`. Reutiliza `servicio_stock.registrar_producto` fila por fila → misma validación que el alta manual. Omite códigos de barras duplicados y reporta errores por fila sin abortar el resto. Requiere `openpyxl` (agregado a `requirements.txt`).
-- **Arqueo de caja del día**: `GET /caja/arqueo` — total vendido hoy, ventas en efectivo, efectivo estimado (apertura + ingresos + ventas efectivo − egresos) y detalle de ventas del día.
-- **Alertas de stock crítico**: ya existían en dashboard/lista; se agregó banner adicional en el listado de productos.
-- **Sistema de migraciones versionadas**: `db/conexion.py` ahora aplica todos los `.sql` de `db/migraciones/` una sola vez cada uno (tabla `schema_migraciones`), en vez de re-ejecutar siempre el mismo script único. Permite `ALTER TABLE` no idempotentes a futuro.
-- Todo probado manualmente end-to-end contra la app real levantada (crear/editar/eliminar/baja lógica/importar/arqueo) y con 91 tests automatizados en verde (`python -m pytest`).
+- **Autenticación y sesiones**: login/logout reales (`interfaces/web/rutas/autenticacion.py`), cookie de sesión httponly, expiración vía `services.servicio_auth`.
+- **Roles OWNER/CASHIER**: `requiere_rol` conectado como dependencia en todos los routers de la interfaz web (productos, ventas, caja, compras, proveedores, empleados, backup, pedidos/precios/reportes-cascarón). No es infraestructura sin usar: restringe accesos reales hoy.
+- **Dark mode**: toggle persistente (`localStorage`) con fallback a `prefers-color-scheme`, aplicado en `base.html` y `login.html`.
+- **Responsive**: layout adaptado a 375/768/1024/1440 (sidebar desktop, rail tablet, drawer mobile).
+- **Productos**: alta, edición, baja lógica/eliminación física según tenga ventas asociadas, y **reactivación** de productos y categorías dados de baja.
+- **Stock**: control de stock con alertas de stock crítico (dashboard y listado).
+- **POS / Ventas**: carrito, cobro en efectivo con cálculo de vuelto, emisión de venta, idempotencia.
+- **Caja**: apertura, cierre, movimientos, arqueo del día.
+- **Compras**: alta y detalle de compras a proveedores, con impacto en stock.
+- **Proveedores**: alta, edición, listado.
+- **Categorías**: alta, edición, baja/reactivación.
+- **Empleados / usuarios**: alta, edición, gestión de cuenta propia (cambio de contraseña).
+- **Backup / restore**: backup manual desde la web (`/backup`, solo OWNER), coordinado con un lock de escrituras (`services/control_escrituras.py`) para evitar backups inconsistentes. Restore solo por CLI con la app cerrada (`KioscoApp.exe --restore <zip>`), con validación de estructura de zip e integridad de SQLite antes de aplicar.
+- **Importación CSV/XLSX** de productos (`/productos/importar`), reutilizando la misma validación que el alta manual.
+- **Impresión de ticket**: vista de ticket con estilos `@media print` y botón "Imprimir".
 
-## 2. Pendientes abiertos (no se tocaron / quedaron fuera de alcance)
+## 2. Pendiente / fuera de alcance actual
 
-- **`sembrar_datos.py` está roto**: referencia `domain.modelos.Producto` y `repositorio_productos.guardar`, que no existen (la API real es `domain.producto.Producto` y `crear_producto`). No se arregló por estar fuera del pedido de esta sesión.
-- **No hay reactivación** de un producto dado de baja lógica (una vez desactivado, no hay UI para volver a activarlo).
-- **CLI (`interfaces/cli/main.py`) no tiene** los flujos nuevos (editar/eliminar/importar/arqueo): solo se implementó en la interfaz web, como pidió el usuario.
-- **Sin tests de las rutas FastAPI/templates**: los tests nuevos cubren la capa `services/`; las rutas y templates solo se verificaron manualmente con curl en esta sesión.
-- **Importación no actualiza productos existentes**, solo los omite como duplicado (decisión de diseño, podría pedirse "upsert" a futuro).
+- **Pedidos**: solo cascarón visual (`interfaces/web/rutas/pedidos.py` + `templates/pedidos.html`), sin lógica de negocio. Protegido por rol OWNER, marcado "Próximamente" en la interfaz.
+- **Precios**: solo cascarón visual, mismo estado que Pedidos.
+- **Reportes**: solo cascarón visual, mismo estado que Pedidos.
+- **Exportación de datos**: no existe (solo hay importación de productos).
+- **Backup automático/programado**: no existe; el backup depende de que el OWNER lo dispare manualmente desde `/backup`.
+- **CLI (`interfaces/cli/main.py`)**: interfaz secundaria que **no está sincronizada** con los flujos modernos de la web (editar/eliminar/importar productos, arqueo de caja, autenticación, roles, dark mode).
 - **Sin paginación** en el listado de productos (no es problema al tamaño actual de catálogo de un kiosco).
-- Bases de datos `data/kiosco.db` preexistentes en otras máquinas necesitan correr la migración (pasa automático al levantar la app vía `inicializar_base_datos()` en el lifespan de FastAPI).
+- **Importación no actualiza productos existentes**, solo omite duplicados por código de barras (decisión de diseño, no bug).
+- `sembrar_datos.py` no fue revisado en esta actualización (ver estado previo si se necesita).
 
-## 3. Archivos principales modificados/creados
+## 3. Estado de tests
 
-**Dominio / excepciones**
-- `excepciones.py` (+`ArchivoImportacionInvalidoError`)
-- `domain/producto.py` (+campo `activo`)
-
-**Datos**
-- `db/migraciones/002_productos_activo.sql` (nuevo)
-- `db/conexion.py` (runner de migraciones versionadas)
-- `db/repositorios/productos.py` (+`obtener_por_id`, `eliminar_producto`, filtros `activo=1`)
-- `db/repositorios/ventas.py` (+`listar_ventas_del_dia`)
-- `db/repositorios/caja.py` (+`listar_movimientos_del_dia`)
-
-**Servicios**
-- `services/servicio_stock.py` (+`obtener_por_id`, `actualizar_producto`, `eliminar_producto`)
-- `services/servicio_caja.py` (+`ArqueoCaja`, `calcular_arqueo_del_dia`)
-- `services/servicio_importacion.py` (nuevo)
-
-**Web**
-- `interfaces/web/rutas/productos.py` (+editar, eliminar, importar)
-- `interfaces/web/rutas/caja.py` (+arqueo)
-- `interfaces/web/templates/productos/{lista,nuevo}.html` (editados), `{editar,importar}.html` (nuevos)
-- `interfaces/web/templates/caja/panel.html` (editado), `arqueo.html` (nuevo)
-
-**Config / tests**
-- `requirements.txt` (+`openpyxl`)
-- `tests/test_servicio_stock.py`, `tests/test_servicio_caja.py` (casos nuevos)
-- `tests/test_services/test_servicio_importacion.py` (nuevo)
+- Suite completa (`python -m pytest`): **668 tests, 0 fallos** (última corrida: 2026-09-22).
+- Cobertura: `db/`, `domain/`, `services/` y rutas de la interfaz web (incluye autenticación, compras, proveedores, empleados, backup).
+- Suite E2E (`tests_e2e/`, Playwright) no se ejecutó en esta actualización.
