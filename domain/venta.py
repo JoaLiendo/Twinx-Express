@@ -129,3 +129,36 @@ class ProductoMasVendido:
     unidades_con_costo_conocido: int = 0
     costo_total_centavos: int | None = None
     margen_bruto_centavos: int | None = None
+
+
+@dataclass
+class ResumenVenta:
+    """Una venta con su vendedor y cantidad de líneas ya resueltos
+    (Historial de Ventas): proyección de solo lectura armada con un
+    único `JOIN` + `GROUP BY` (ver
+    `db.repositorios.ventas.listar_resumen`/`obtener_resumen_por_id`),
+    mismo criterio que `domain.compra.ResumenCompra`.
+
+    `vendedor_nombre` es `None` -- nunca una cadena vacía ni un nombre
+    inventado -- cuando `ventas.usuario_id` es `NULL` (ventas anteriores
+    a esa migración, o registradas desde el CLI, que no autentica a
+    nadie).
+
+    No incluye costo ni margen: esa información es responsabilidad
+    exclusiva de Reportes (ver `services.servicio_reportes`), nunca del
+    Historial, que es una herramienta operativa, no un segundo módulo
+    de reportes.
+
+    No reemplaza a `Venta` ni a `VentaConDetalle`: el Historial usa
+    `ResumenVenta` para el listado y la cabecera del detalle, y sigue
+    reutilizando `VentaConDetalle` (vía
+    `db.repositorios.ventas.obtener_venta_con_detalle`, sin cambios) para
+    las líneas del detalle.
+    """
+
+    id: int
+    fecha: str
+    total_centavos: int
+    tipo_pago: str
+    vendedor_nombre: str | None
+    cantidad_lineas: int

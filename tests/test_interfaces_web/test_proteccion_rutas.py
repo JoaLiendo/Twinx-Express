@@ -16,7 +16,7 @@ from services import servicio_auth, servicio_categorias, servicio_stock, servici
 
 from ._asgi_cliente import solicitud
 
-_RUTAS_OWNER_Y_CASHIER = ["/", "/ventas", "/caja", "/caja/arqueo", "/productos"]
+_RUTAS_OWNER_Y_CASHIER = ["/", "/ventas", "/caja", "/caja/arqueo", "/productos", "/ventas/historial", "/ventas/1"]
 _RUTAS_SOLO_OWNER = ["/pedidos", "/precios", "/proveedores", "/compras", "/reportes", "/empleados"]
 _RUTAS_PRODUCTOS_SOLO_OWNER = ["/productos/nuevo", "/productos/importar"]
 
@@ -47,8 +47,18 @@ class TestSinSesion:
         assert respuesta.header("location").startswith("/login")
 
 
+def _crear_venta_id_1() -> None:
+    """`/ventas/1` (Historial de Ventas) es una ruta dinámica: necesita
+    que exista realmente una venta con `id=1` para devolver `200` en vez
+    de redirigir por "venta inexistente" -- a diferencia del resto de
+    `_RUTAS_OWNER_Y_CASHIER`, que son todas rutas estáticas sin datos."""
+    producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+    servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+
+
 class TestOwnerAccedeATodo:
     def test_owner_accede_a_rutas_compartidas_y_exclusivas(self, base_datos_temporal):
+        _crear_venta_id_1()
         token = _crear_usuario_y_loguearse("OWNER", "ana")
         cookies = {NOMBRE_COOKIE_SESION: token}
 
@@ -59,6 +69,7 @@ class TestOwnerAccedeATodo:
 
 class TestCashierAccesoRestringido:
     def test_cashier_accede_a_dashboard_ventas_caja_y_stock(self, base_datos_temporal):
+        _crear_venta_id_1()
         token = _crear_usuario_y_loguearse("CASHIER", "carlos")
         cookies = {NOMBRE_COOKIE_SESION: token}
 

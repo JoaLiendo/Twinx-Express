@@ -782,3 +782,142 @@ class TestListarVentasPorUsuarioEnRango:
 
     def test_sin_ventas_devuelve_lista_vacia(self, base_datos_temporal):
         assert repositorio_ventas.listar_ventas_por_usuario_en_rango() == []
+
+
+class TestHistorialDeVentas:
+    """Historial de Ventas: `listar_resumen`/`obtener_resumen_por_id`
+    resuelven vendedor y cantidad de líneas en una sola consulta, sin
+    incluir costo ni margen (eso es responsabilidad de Reportes)."""
+
+    def test_sin_ventas_devuelve_lista_vacia(self, base_datos_temporal):
+        assert repositorio_ventas.listar_resumen() == []
+
+    def test_una_venta(self, base_datos_temporal):
+        producto = _crear_producto()
+        venta = _registrar_venta_con_costo(producto.id, 2, precio_unitario=200, costo_unitario=100)
+
+        resultado = repositorio_ventas.listar_resumen()
+
+        assert len(resultado) == 1
+        item = resultado[0]
+        assert item.id == venta.id
+        assert item.total_centavos == 400
+        assert item.tipo_pago == "EFECTIVO"
+        assert item.cantidad_lineas == 1
+
+    def test_varias_ventas_orden_descendente_por_id(self, base_datos_temporal):
+        producto = _crear_producto()
+        venta_1 = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        venta_2 = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+
+        resultado = repositorio_ventas.listar_resumen()
+
+        assert [item.id for item in resultado] == [venta_2.id, venta_1.id]
+
+    def test_filtro_fecha_desde(self, base_datos_temporal):
+        producto = _crear_producto()
+        venta_vieja = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE ventas SET fecha = ? WHERE id = ?", ("2020-01-01 10:00:00", venta_vieja.id))
+        venta_nueva = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+
+        resultado = repositorio_ventas.listar_resumen(fecha_desde="2020-01-02")
+
+        assert [item.id for item in resultado] == [venta_nueva.id]
+
+    def test_filtro_fecha_hasta(self, base_datos_temporal):
+        producto = _crear_producto()
+        venta_vieja = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE ventas SET fecha = ? WHERE id = ?", ("2020-01-01 10:00:00", venta_vieja.id))
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+
+        resultado = repositorio_ventas.listar_resumen(fecha_hasta="2020-01-02")
+
+        assert [item.id for item in resultado] == [venta_vieja.id]
+
+    def test_filtro_tipo_pago(self, base_datos_temporal):
+        producto = _crear_producto()
+        with obtener_conexion() as conexion:
+            venta_efectivo = repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)]
+            )
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "TARJETA", [(ItemVenta(producto.id, 1), 200)]
+            )
+
+        resultado = repositorio_ventas.listar_resumen(tipo_pago="EFECTIVO")
+
+        assert [item.id for item in resultado] == [venta_efectivo.id]
+
+    def test_vendedor_conocido(self, base_datos_temporal):
+        producto = _crear_producto()
+        usuario = _crear_usuario()
+        venta = _registrar_venta_con_costo(
+            producto.id, 1, precio_unitario=200, costo_unitario=100, usuario_id=usuario.id
+        )
+
+        resultado = repositorio_ventas.listar_resumen()
+
+        assert resultado[0].id == venta.id
+        assert resultado[0].vendedor_nombre == "Test"
+
+    def test_vendedor_null_cuando_usuario_id_es_null(self, base_datos_temporal):
+        """Venta "antigua"/CLI: sin usuario_id -- vendedor_nombre debe
+        quedar en None, nunca inventado ni cadena vacía."""
+        producto = _crear_producto()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)]
+            )
+
+        resultado = repositorio_ventas.listar_resumen()
+
+        assert resultado[0].vendedor_nombre is None
+
+    def test_usuario_desactivado_sigue_apareciendo(self, base_datos_temporal):
+        producto = _crear_producto()
+        usuario = _crear_usuario()
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100, usuario_id=usuario.id)
+
+        repositorio_usuarios.actualizar_activo(usuario.id, False)
+
+        resultado = repositorio_ventas.listar_resumen()
+
+        assert resultado[0].vendedor_nombre == "Test"
+
+    def test_cantidad_lineas_con_multiples_productos(self, base_datos_temporal):
+        p1 = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000001", nombre="Alfajor", precio_costo_centavos=100, precio_venta_centavos=200)
+        )
+        p2 = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000002", nombre="Gaseosa", precio_costo_centavos=100, precio_venta_centavos=300)
+        )
+        with obtener_conexion() as conexion:
+            venta = repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 500, "EFECTIVO", [(ItemVenta(p1.id, 1), 200), (ItemVenta(p2.id, 1), 300)]
+            )
+
+        resultado = repositorio_ventas.listar_resumen()
+
+        assert resultado[0].id == venta.id
+        assert resultado[0].cantidad_lineas == 2
+
+    def test_obtener_resumen_por_id_existente(self, base_datos_temporal):
+        producto = _crear_producto()
+        usuario = _crear_usuario()
+        venta = _registrar_venta_con_costo(
+            producto.id, 2, precio_unitario=200, costo_unitario=100, usuario_id=usuario.id
+        )
+
+        resultado = repositorio_ventas.obtener_resumen_por_id(venta.id)
+
+        assert resultado is not None
+        assert resultado.id == venta.id
+        assert resultado.total_centavos == 400
+        assert resultado.vendedor_nombre == "Test"
+        assert resultado.cantidad_lineas == 1
+
+    def test_obtener_resumen_por_id_inexistente(self, base_datos_temporal):
+        assert repositorio_ventas.obtener_resumen_por_id(9999) is None

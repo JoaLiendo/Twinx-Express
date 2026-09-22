@@ -351,3 +351,108 @@ class TestUsuarioDeLaVenta:
 
         assert _usuario_id_de_la_venta(respuesta_owner.json()["id"]) == owner.id
         assert _usuario_id_de_la_venta(respuesta_cajera.json()["id"]) == cajera.id
+
+
+class TestHistorialDeVentas:
+    def test_owner_puede_ver_el_historial(self, base_datos_temporal):
+        cookies = _cookies("OWNER", "duenio")
+
+        respuesta = solicitud("GET", "/ventas/historial", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Historial" in respuesta.texto
+
+    def test_cashier_puede_ver_el_historial(self, base_datos_temporal):
+        cookies = _cookies("CASHIER", "cajera1")
+
+        respuesta = solicitud("GET", "/ventas/historial", cookies=cookies)
+
+        assert respuesta.status == 200
+
+    def test_sin_sesion_redirige_a_login(self, base_datos_temporal):
+        respuesta = solicitud("GET", "/ventas/historial")
+
+        assert respuesta.status == 303
+        assert respuesta.header("location").startswith("/login")
+
+    def test_filtros_se_reflejan_en_el_formulario(self, base_datos_temporal):
+        cookies = _cookies("OWNER", "duenio")
+
+        respuesta = solicitud(
+            "GET", "/ventas/historial?fecha_desde=2024-01-01&fecha_hasta=2024-01-31&tipo_pago=TARJETA",
+            cookies=cookies,
+        )
+
+        assert respuesta.status == 200
+        assert 'value="2024-01-01"' in respuesta.texto
+        assert 'value="2024-01-31"' in respuesta.texto
+
+    def test_muestra_vendedor_conocido_y_guion_cuando_no_hay(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        owner, token_owner = _crear_usuario_logueado("OWNER", "duenio")
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO", usuario_id=owner.id)
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "TARJETA")  # sin usuario, como el CLI
+
+        respuesta = solicitud(
+            "GET", "/ventas/historial", cookies={NOMBRE_COOKIE_SESION: token_owner}
+        )
+
+        assert respuesta.status == 200
+        assert "Usuario de prueba" in respuesta.texto
+        assert "—" in respuesta.texto
+
+
+class TestDetalleDeVenta:
+    def test_muestra_cabecera_lineas_y_total(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        owner, token_owner = _crear_usuario_logueado("OWNER", "duenio")
+        venta = servicio_ventas.registrar_venta(
+            [ItemVenta(producto.id, 2)], "EFECTIVO", usuario_id=owner.id
+        )
+
+        respuesta = solicitud(
+            "GET", f"/ventas/{venta.id}", cookies={NOMBRE_COOKIE_SESION: token_owner}
+        )
+
+        assert respuesta.status == 200
+        assert "Alfajor" in respuesta.texto
+        assert "Usuario de prueba" in respuesta.texto
+        assert f'href="/ventas/{venta.id}/ticket"' in respuesta.texto
+        assert 'target="_blank"' in respuesta.texto
+        assert 'href="/ventas/historial"' in respuesta.texto
+
+    def test_vendedor_null_muestra_guion(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        cookies = _cookies("OWNER", "duenio")
+
+        respuesta = solicitud("GET", f"/ventas/{venta.id}", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "—" in respuesta.texto
+
+    def test_venta_inexistente_redirige_al_historial_con_mensaje(self, base_datos_temporal):
+        cookies = _cookies("OWNER", "duenio")
+
+        respuesta = solicitud("GET", "/ventas/9999", cookies=cookies)
+
+        assert respuesta.status == 303
+        assert respuesta.header("location").startswith("/ventas/historial")
+
+    def test_cashier_tambien_puede_ver_el_detalle(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        cookies = _cookies("CASHIER", "cajera1")
+
+        respuesta = solicitud("GET", f"/ventas/{venta.id}", cookies=cookies)
+
+        assert respuesta.status == 200
+
+    def test_sin_sesion_redirige_a_login(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+
+        respuesta = solicitud("GET", f"/ventas/{venta.id}")
+
+        assert respuesta.status == 303
+        assert respuesta.header("location").startswith("/login")

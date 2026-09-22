@@ -14,7 +14,7 @@ Los montos se manejan en centavos (`int`): ver `domain.dinero`.
 import sqlite3
 
 from db.conexion import obtener_conexion
-from domain.venta import ItemVenta, LineaVenta, ProductoMasVendido, Venta, VentaConDetalle
+from domain.venta import ItemVenta, LineaVenta, ProductoMasVendido, ResumenVenta, Venta, VentaConDetalle
 
 
 def registrar_venta_con_detalle(
@@ -444,3 +444,82 @@ def listar_ventas_por_usuario_en_rango(
         )
         for fila in filas
     ]
+
+
+_CONSULTA_RESUMEN_VENTA_BASE = """
+    SELECT
+        v.id AS id,
+        v.fecha AS fecha,
+        v.total_centavos AS total_centavos,
+        v.tipo_pago AS tipo_pago,
+        u.nombre_completo AS vendedor_nombre,
+        COUNT(dv.id) AS cantidad_lineas
+    FROM ventas v
+    LEFT JOIN usuarios u ON u.id = v.usuario_id
+    LEFT JOIN detalle_venta dv ON dv.venta_id = v.id
+"""
+
+
+def _fila_a_resumen_venta(fila: sqlite3.Row) -> ResumenVenta:
+    return ResumenVenta(
+        id=fila["id"],
+        fecha=fila["fecha"],
+        total_centavos=fila["total_centavos"],
+        tipo_pago=fila["tipo_pago"],
+        vendedor_nombre=fila["vendedor_nombre"],
+        cantidad_lineas=fila["cantidad_lineas"],
+    )
+
+
+def listar_resumen(
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    tipo_pago: str | None = None,
+) -> list[ResumenVenta]:
+    """Historial de ventas (Historial de Ventas): cabecera + vendedor +
+    cantidad de líneas ya resueltos, en una sola consulta con `JOIN`
+    (sin N+1), más recientes primero.
+
+    `LEFT JOIN usuarios` (no `JOIN`): `ventas.usuario_id` es nullable
+    (ventas anteriores a esa migración, o del CLI, que no autentica a
+    nadie) -- un `JOIN` normal descartaría esas ventas del listado en
+    vez de mostrarlas con `vendedor_nombre = NULL`. No filtra por
+    `usuarios.activo`: un usuario desactivado después de vender sigue
+    apareciendo con su nombre (mismo criterio que
+    `listar_ventas_por_usuario_en_rango`).
+
+    Los tres filtros son opcionales y se combinan con `AND`, mismo
+    criterio que el resto del repositorio: `fecha_desde`/`fecha_hasta`
+    son texto "YYYY-MM-DD" comparado solo por fecha con `date(...)`.
+    """
+    condiciones = []
+    parametros: list[object] = []
+    if fecha_desde is not None:
+        condiciones.append("date(v.fecha) >= date(?)")
+        parametros.append(fecha_desde)
+    if fecha_hasta is not None:
+        condiciones.append("date(v.fecha) <= date(?)")
+        parametros.append(fecha_hasta)
+    if tipo_pago is not None:
+        condiciones.append("v.tipo_pago = ?")
+        parametros.append(tipo_pago)
+
+    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    consulta = f"{_CONSULTA_RESUMEN_VENTA_BASE} {where} GROUP BY v.id ORDER BY v.id DESC"
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta, parametros).fetchall()
+    return [_fila_a_resumen_venta(fila) for fila in filas]
+
+
+def obtener_resumen_por_id(venta_id: int) -> ResumenVenta | None:
+    """Igual que `listar_resumen`, pero para una sola venta (cabecera de
+    la pantalla de detalle del Historial). `None` si no existe.
+
+    No reemplaza a `obtener_venta_con_detalle` (que sigue siendo la
+    fuente de las líneas, sin ningún cambio): esta función solo resuelve
+    la cabecera con vendedor y cantidad de líneas.
+    """
+    consulta = f"{_CONSULTA_RESUMEN_VENTA_BASE} WHERE v.id = ? GROUP BY v.id"
+    with obtener_conexion() as conexion:
+        fila = conexion.execute(consulta, (venta_id,)).fetchone()
+    return _fila_a_resumen_venta(fila) if fila is not None else None

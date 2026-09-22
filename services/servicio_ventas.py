@@ -16,12 +16,20 @@ acá solo se orquesta qué hacer antes y después de ese `UNIQUE`.
 
 import logging
 import sqlite3
+from datetime import date, timedelta
 
 from db.conexion import obtener_conexion
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import ventas as repositorio_ventas
 from domain.producto import Producto
-from domain.venta import TIPOS_PAGO_VALIDOS, ItemVenta, Venta, VentaConDetalle, calcular_hash_contenido
+from domain.venta import (
+    TIPOS_PAGO_VALIDOS,
+    ItemVenta,
+    ResumenVenta,
+    Venta,
+    VentaConDetalle,
+    calcular_hash_contenido,
+)
 from excepciones import (
     ClaveIdempotenciaReutilizadaError,
     DatosInvalidosError,
@@ -31,6 +39,12 @@ from excepciones import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Historial de Ventas: ventana por defecto cuando no se pide un rango
+# explícito. Más amplia que la de Reportes (7 días, pensada para un
+# vistazo analítico rápido) porque acá el caso de uso operativo típico
+# es "buscar una venta de hace un par de semanas", no un resumen del día.
+DIAS_RANGO_POR_DEFECTO_HISTORIAL = 30
 
 
 def _resolver_clave_reutilizada(
@@ -201,3 +215,41 @@ def obtener_venta_con_detalle(venta_id: int) -> VentaConDetalle | None:
     `registrar_venta`), es una lectura de algo ya confirmado.
     """
     return repositorio_ventas.obtener_venta_con_detalle(venta_id)
+
+
+def _rango_por_defecto_historial() -> tuple[str, str]:
+    hoy = date.today()
+    desde = hoy - timedelta(days=DIAS_RANGO_POR_DEFECTO_HISTORIAL - 1)
+    return desde.isoformat(), hoy.isoformat()
+
+
+def listar_historial(
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    tipo_pago: str | None = None,
+) -> tuple[str, str, list[ResumenVenta]]:
+    """Historial de Ventas del período pedido: devuelve
+    `(fecha_desde_efectiva, fecha_hasta_efectiva, ventas)`.
+
+    Si no se pasa alguno de los dos límites, usa el rango por defecto
+    (últimos `DIAS_RANGO_POR_DEFECTO_HISTORIAL` días) para ambos -- un
+    rango a medio especificar (solo desde, o solo hasta) sería ambiguo,
+    así que se trata igual que "no se pidió ningún rango" en vez de
+    adivinar el límite que falta (mismo criterio que
+    `services.servicio_reportes.generar_reporte_ventas`).
+    """
+    if fecha_desde is None or fecha_hasta is None:
+        fecha_desde, fecha_hasta = _rango_por_defecto_historial()
+
+    ventas = repositorio_ventas.listar_resumen(fecha_desde, fecha_hasta, tipo_pago)
+    return fecha_desde, fecha_hasta, ventas
+
+
+def obtener_resumen_por_id(venta_id: int) -> ResumenVenta | None:
+    """Cabecera resuelta (vendedor + cantidad de líneas) de una venta
+    para la pantalla de detalle del Historial. Delega directo al
+    repositorio: no hay ninguna regla de negocio que aplicar acá, es
+    una lectura de algo ya confirmado (mismo criterio que
+    `obtener_venta_con_detalle`).
+    """
+    return repositorio_ventas.obtener_resumen_por_id(venta_id)

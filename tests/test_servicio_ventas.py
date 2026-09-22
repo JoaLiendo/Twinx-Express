@@ -5,6 +5,7 @@ datos temporal)."""
 
 import sqlite3
 import threading
+from datetime import date, timedelta
 
 import pytest
 
@@ -461,3 +462,59 @@ class TestHistoricoDeCostoYUsuario:
 
         usuario_id_guardado, _ = _leer_ventas_y_costos(base_datos_temporal, venta.id)
         assert usuario_id_guardado is None
+
+
+class TestListarHistorial:
+    """Historial de Ventas: rango por defecto de 30 días (calendario,
+    incluyendo hoy) cuando no se especifica ninguno completo."""
+
+    def test_sin_filtros_usa_el_rango_por_defecto_de_30_dias(self, base_datos_temporal):
+        fecha_desde, fecha_hasta, ventas = servicio_ventas.listar_historial()
+
+        assert fecha_hasta == date.today().isoformat()
+        assert fecha_desde == (date.today() - timedelta(days=29)).isoformat()
+        assert ventas == []
+
+    def test_con_filtros_explicitos_los_respeta(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+
+        fecha_desde, fecha_hasta, ventas = servicio_ventas.listar_historial(
+            fecha_desde="2020-01-01", fecha_hasta="2020-01-31"
+        )
+
+        assert fecha_desde == "2020-01-01"
+        assert fecha_hasta == "2020-01-31"
+        assert ventas == []  # la venta de hoy queda fuera del rango pedido
+
+    def test_rango_a_medio_especificar_usa_el_rango_por_defecto_completo(self, base_datos_temporal):
+        """Pasar solo fecha_desde (sin fecha_hasta) es ambiguo: se trata
+        igual que no pasar ningún límite, no se adivina el que falta
+        (mismo criterio que `servicio_reportes.generar_reporte_ventas`)."""
+        fecha_desde, fecha_hasta, _ = servicio_ventas.listar_historial(fecha_desde="2020-01-01")
+
+        assert fecha_desde == (date.today() - timedelta(days=29)).isoformat()
+        assert fecha_hasta == date.today().isoformat()
+
+    def test_delega_al_repositorio_con_los_filtros_resueltos(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "TARJETA")
+
+        _, _, ventas = servicio_ventas.listar_historial(tipo_pago="TARJETA")
+
+        assert len(ventas) == 1
+        assert ventas[0].id == venta.id
+
+
+class TestObtenerResumenPorId:
+    def test_delega_directamente_al_repositorio(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+
+        resultado = servicio_ventas.obtener_resumen_por_id(venta.id)
+
+        assert resultado is not None
+        assert resultado.id == venta.id
+
+    def test_inexistente_devuelve_none(self, base_datos_temporal):
+        assert servicio_ventas.obtener_resumen_por_id(9999) is None
