@@ -24,6 +24,8 @@ def registrar_venta_con_detalle(
     items_con_precio: list[tuple[ItemVenta, int]],
     clave_idempotencia: str | None = None,
     contenido_hash: str | None = None,
+    usuario_id: int | None = None,
+    costos_unitarios_por_producto_id: dict[int, int] | None = None,
 ) -> Venta:
     """Inserta la venta y su detalle dentro de la conexión recibida.
 
@@ -41,6 +43,19 @@ def registrar_venta_con_detalle(
     `ErrorBaseDatos`; `services.servicio_ventas.registrar_venta` es
     quien decide qué hacer con ese conflicto (ver su docstring).
 
+    `usuario_id` (migración 009) es opcional por el mismo motivo que
+    `clave_idempotencia`: el CLI no autentica a nadie, así que sus
+    ventas quedan con `usuario_id = NULL`, nunca con un usuario
+    inventado.
+
+    `costos_unitarios_por_producto_id` (migración 009) es un diccionario
+    opcional `producto_id -> costo_unitario_centavos`, separado de
+    `items_con_precio` a propósito para no cambiar la forma de esa
+    tupla (evita tocar los call sites existentes que la construyen a
+    mano). Un producto ausente del diccionario -- o el diccionario
+    entero ausente -- deja `costo_unitario_centavos = NULL` en esa
+    línea, nunca un valor inventado.
+
     No hace *commit* ni *rollback*: eso lo controla el
     `with obtener_conexion()` de quien invoca esta función, para que
     la venta, su detalle y el descuento de stock queden todos dentro
@@ -48,24 +63,37 @@ def registrar_venta_con_detalle(
     """
     fila_venta = conexion.execute(
         """
-        INSERT INTO ventas (total_centavos, tipo_pago, clave_idempotencia, contenido_hash)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO ventas (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id)
+        VALUES (?, ?, ?, ?, ?)
         RETURNING id, fecha, total_centavos, tipo_pago
         """,
-        (total_centavos, tipo_pago, clave_idempotencia, contenido_hash),
+        (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id),
     ).fetchone()
 
     venta_id = fila_venta["id"]
 
     for item, precio_unitario_centavos in items_con_precio:
         subtotal_centavos = precio_unitario_centavos * item.cantidad
+        costo_unitario_centavos = (
+            None
+            if costos_unitarios_por_producto_id is None
+            else costos_unitarios_por_producto_id.get(item.producto_id)
+        )
         conexion.execute(
             """
             INSERT INTO detalle_venta
-                (venta_id, producto_id, cantidad, precio_unitario_centavos, subtotal_centavos)
-            VALUES (?, ?, ?, ?, ?)
+                (venta_id, producto_id, cantidad, precio_unitario_centavos, subtotal_centavos,
+                 costo_unitario_centavos)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (venta_id, item.producto_id, item.cantidad, precio_unitario_centavos, subtotal_centavos),
+            (
+                venta_id,
+                item.producto_id,
+                item.cantidad,
+                precio_unitario_centavos,
+                subtotal_centavos,
+                costo_unitario_centavos,
+            ),
         )
 
     return Venta(

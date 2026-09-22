@@ -8,7 +8,9 @@ import threading
 
 import pytest
 
+from db.repositorios import usuarios as repositorio_usuarios
 from db.repositorios import ventas as repositorio_ventas
+from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from excepciones import (
     ClaveIdempotenciaReutilizadaError,
@@ -25,6 +27,31 @@ def _contar_filas(ruta_base_datos, tabla: str) -> int:
         return conexion.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0]
     finally:
         conexion.close()
+
+
+def _leer_ventas_y_costos(ruta_base_datos, venta_id: int):
+    """`(usuario_id de la venta, [costo_unitario_centavos de cada línea, en orden de inserción])`."""
+    conexion = sqlite3.connect(str(ruta_base_datos))
+    try:
+        usuario_id = conexion.execute(
+            "SELECT usuario_id FROM ventas WHERE id = ?", (venta_id,)
+        ).fetchone()[0]
+        costos = [
+            fila[0]
+            for fila in conexion.execute(
+                "SELECT costo_unitario_centavos FROM detalle_venta WHERE venta_id = ? ORDER BY id",
+                (venta_id,),
+            ).fetchall()
+        ]
+        return usuario_id, costos
+    finally:
+        conexion.close()
+
+
+def _crear_usuario(nombre_usuario="cajera1", rol="CASHIER"):
+    return repositorio_usuarios.crear_usuario(
+        Usuario(nombre_usuario=nombre_usuario, nombre_completo="Test", password_hash="hash", rol=rol)
+    )
 
 
 def test_venta_exitosa_descuenta_stock_y_calcula_total_exacto(base_datos_temporal):
@@ -349,3 +376,88 @@ class TestIdempotencia:
 
         assert _contar_filas(base_datos_temporal, "ventas") == 1
         assert servicio_stock.buscar_por_codigo_barras("7790000000001").stock_actual == 8  # solo la ganadora
+
+
+class TestHistoricoDeCostoYUsuario:
+    """Migración 009: `registrar_venta` captura `usuario_id` y el costo
+    vigente de cada producto en la misma transacción que ya resuelve
+    `precio_venta_centavos` -- sin ninguna lectura adicional."""
+
+    def test_venta_guarda_el_costo_vigente_del_producto(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto(
+            "7790000000001", "Alfajor", 100, 200, stock_actual=10
+        )
+
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 2)], "EFECTIVO")
+
+        _, costos = _leer_ventas_y_costos(base_datos_temporal, venta.id)
+        assert costos == [100]
+
+    def test_cambiar_el_costo_del_producto_y_vender_de_nuevo_conserva_el_costo_de_cada_venta(
+        self, base_datos_temporal
+    ):
+        producto = servicio_stock.registrar_producto(
+            "7790000000001", "Alfajor", 100, 200, stock_actual=10
+        )
+
+        venta_1 = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+
+        servicio_stock.actualizar_producto(
+            producto.id, producto.codigo_barras, producto.nombre, 150, producto.precio_venta_centavos, 0
+        )
+        venta_2 = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+
+        _, costos_venta_1 = _leer_ventas_y_costos(base_datos_temporal, venta_1.id)
+        _, costos_venta_2 = _leer_ventas_y_costos(base_datos_temporal, venta_2.id)
+        assert costos_venta_1 == [100]  # conserva el costo vigente al momento de ESA venta
+        assert costos_venta_2 == [150]  # la venta posterior usa el costo ya actualizado
+
+    def test_venta_con_multiples_productos_conserva_el_costo_correcto_por_linea(self, base_datos_temporal):
+        p1 = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        p2 = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 150, 300, stock_actual=10)
+
+        venta = servicio_ventas.registrar_venta(
+            [ItemVenta(p1.id, 1), ItemVenta(p2.id, 1)], "EFECTIVO"
+        )
+
+        _, costos = _leer_ventas_y_costos(base_datos_temporal, venta.id)
+        assert sorted(costos) == [100, 150]
+
+    def test_venta_guarda_usuario_id_cuando_se_provee(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        venta = servicio_ventas.registrar_venta(
+            [ItemVenta(producto.id, 1)], "EFECTIVO", usuario_id=usuario.id
+        )
+
+        usuario_id_guardado, _ = _leer_ventas_y_costos(base_datos_temporal, venta.id)
+        assert usuario_id_guardado == usuario.id
+
+    def test_dos_usuarios_distintos_generan_ventas_asociadas_correctamente(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        owner = _crear_usuario(nombre_usuario="duenio", rol="OWNER")
+        cajera = _crear_usuario(nombre_usuario="cajera1", rol="CASHIER")
+
+        venta_owner = servicio_ventas.registrar_venta(
+            [ItemVenta(producto.id, 1)], "EFECTIVO", usuario_id=owner.id
+        )
+        venta_cajera = servicio_ventas.registrar_venta(
+            [ItemVenta(producto.id, 1)], "EFECTIVO", usuario_id=cajera.id
+        )
+
+        usuario_de_venta_owner, _ = _leer_ventas_y_costos(base_datos_temporal, venta_owner.id)
+        usuario_de_venta_cajera, _ = _leer_ventas_y_costos(base_datos_temporal, venta_cajera.id)
+        assert usuario_de_venta_owner == owner.id
+        assert usuario_de_venta_cajera == cajera.id
+
+    def test_venta_sin_usuario_id_como_hace_el_cli_queda_con_usuario_null(self, base_datos_temporal):
+        """Compatibilidad con el CLI: no autentica a nadie, así que sigue
+        llamando a `registrar_venta` sin `usuario_id` -- nunca se inventa
+        un usuario para esa venta."""
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+
+        usuario_id_guardado, _ = _leer_ventas_y_costos(base_datos_temporal, venta.id)
+        assert usuario_id_guardado is None

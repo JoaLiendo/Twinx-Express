@@ -9,8 +9,9 @@ igual que en la CLI).
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from domain.usuario import Usuario
 from domain.venta import TIPOS_PAGO_VALIDOS, ItemVenta
-from interfaces.web.auth import requiere_rol
+from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.esquemas import VentaEntrada, VentaSalida
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base
@@ -32,9 +33,14 @@ def panel_ventas(request: Request, q: str = ""):
 
 
 @router.post("/api/ventas", response_model=VentaSalida)
-def api_registrar_venta(datos: VentaEntrada) -> VentaSalida:
+def api_registrar_venta(
+    datos: VentaEntrada,
+    usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
+) -> VentaSalida:
     items = [ItemVenta(producto_id=item.producto_id, cantidad=item.cantidad) for item in datos.items]
-    venta = servicio_ventas.registrar_venta(items, datos.tipo_pago, clave_idempotencia=datos.clave_idempotencia)
+    venta = servicio_ventas.registrar_venta(
+        items, datos.tipo_pago, clave_idempotencia=datos.clave_idempotencia, usuario_id=usuario_actual.id
+    )
     return VentaSalida(
         id=venta.id, fecha=venta.fecha, total_centavos=venta.total_centavos, tipo_pago=venta.tipo_pago
     )

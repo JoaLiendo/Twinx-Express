@@ -8,10 +8,13 @@ from contextlib import contextmanager
 
 import pytest
 
+import db.conexion as modulo_conexion
 from db.conexion import obtener_conexion
 from db.repositorios import productos as repositorio_productos
+from db.repositorios import usuarios as repositorio_usuarios
 from db.repositorios import ventas as repositorio_ventas
 from domain.producto import Producto
+from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from excepciones import ErrorBaseDatos
 
@@ -19,6 +22,12 @@ from excepciones import ErrorBaseDatos
 def _crear_producto(codigo="7790000000001"):
     return repositorio_productos.crear_producto(
         Producto(codigo_barras=codigo, nombre="Alfajor", precio_costo_centavos=100, precio_venta_centavos=200)
+    )
+
+
+def _crear_usuario(nombre_usuario="cajera1", rol="CASHIER"):
+    return repositorio_usuarios.crear_usuario(
+        Usuario(nombre_usuario=nombre_usuario, nombre_completo="Test", password_hash="hash", rol=rol)
     )
 
 
@@ -112,6 +121,152 @@ def test_obtener_por_clave_idempotencia_en_conexion(base_datos_temporal):
 def test_obtener_por_clave_idempotencia_en_conexion_inexistente_devuelve_none(base_datos_temporal):
     with obtener_conexion() as conexion:
         assert repositorio_ventas.obtener_por_clave_idempotencia_en_conexion(conexion, "no-existe") is None
+
+
+class TestHistoricoDeCostoYUsuario:
+    """Migración 009: `ventas.usuario_id` y
+    `detalle_venta.costo_unitario_centavos`, ambos aditivos y opcionales
+    en `registrar_venta_con_detalle` -- ver `services.servicio_ventas`
+    para el flujo real que siempre los provee."""
+
+    def test_persiste_usuario_id(self, base_datos_temporal):
+        producto = _crear_producto()
+        usuario = _crear_usuario()
+        items_con_precio = [(ItemVenta(producto.id, 1), 200)]
+
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", items_con_precio, usuario_id=usuario.id
+            )
+
+        with obtener_conexion() as conexion:
+            fila = conexion.execute("SELECT usuario_id FROM ventas").fetchone()
+        assert fila["usuario_id"] == usuario.id
+
+    def test_sin_usuario_id_queda_null(self, base_datos_temporal):
+        """Compatibilidad con el CLI: `usuario_id` es opcional, por
+        defecto `None` -- no se inventa ningún usuario."""
+        producto = _crear_producto()
+        items_con_precio = [(ItemVenta(producto.id, 1), 200)]
+
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(conexion, 200, "EFECTIVO", items_con_precio)
+
+        with obtener_conexion() as conexion:
+            fila = conexion.execute("SELECT usuario_id FROM ventas").fetchone()
+        assert fila["usuario_id"] is None
+
+    def test_persiste_costo_unitario_por_producto(self, base_datos_temporal):
+        producto = _crear_producto()
+        items_con_precio = [(ItemVenta(producto.id, 2), 200)]
+
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion,
+                400,
+                "EFECTIVO",
+                items_con_precio,
+                costos_unitarios_por_producto_id={producto.id: 100},
+            )
+
+        with obtener_conexion() as conexion:
+            fila = conexion.execute("SELECT costo_unitario_centavos FROM detalle_venta").fetchone()
+        assert fila["costo_unitario_centavos"] == 100
+
+    def test_producto_sin_entrada_en_el_diccionario_de_costos_queda_null(self, base_datos_temporal):
+        p1 = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000001", nombre="Alfajor", precio_costo_centavos=100, precio_venta_centavos=200)
+        )
+        p2 = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000002", nombre="Gaseosa", precio_costo_centavos=150, precio_venta_centavos=300)
+        )
+        items_con_precio = [(ItemVenta(p1.id, 1), 200), (ItemVenta(p2.id, 1), 300)]
+
+        with obtener_conexion() as conexion:
+            # Solo p1 tiene costo conocido -- no se inventa uno para p2.
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 500, "EFECTIVO", items_con_precio, costos_unitarios_por_producto_id={p1.id: 100}
+            )
+
+        with obtener_conexion() as conexion:
+            filas = conexion.execute(
+                "SELECT producto_id, costo_unitario_centavos FROM detalle_venta ORDER BY id"
+            ).fetchall()
+        costos_por_producto = {fila["producto_id"]: fila["costo_unitario_centavos"] for fila in filas}
+        assert costos_por_producto[p1.id] == 100
+        assert costos_por_producto[p2.id] is None
+
+    def test_sin_diccionario_de_costos_todo_queda_null(self, base_datos_temporal):
+        """Compatibilidad con los tests/llamados existentes que no pasan
+        `costos_unitarios_por_producto_id`."""
+        producto = _crear_producto()
+        items_con_precio = [(ItemVenta(producto.id, 1), 200)]
+
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(conexion, 200, "EFECTIVO", items_con_precio)
+
+        with obtener_conexion() as conexion:
+            fila = conexion.execute("SELECT costo_unitario_centavos FROM detalle_venta").fetchone()
+        assert fila["costo_unitario_centavos"] is None
+
+    def test_migracion_009_agrega_las_columnas_nuevas(self, base_datos_temporal):
+        with obtener_conexion() as conexion:
+            columnas_ventas = {fila["name"] for fila in conexion.execute("PRAGMA table_info(ventas)").fetchall()}
+            columnas_detalle = {
+                fila["name"] for fila in conexion.execute("PRAGMA table_info(detalle_venta)").fetchall()
+            }
+        assert "usuario_id" in columnas_ventas
+        assert "costo_unitario_centavos" in columnas_detalle
+
+    def test_migracion_009_no_inventa_datos_para_ventas_anteriores(self, tmp_path, monkeypatch):
+        """Simula una DB que ya tenía ventas registradas antes de que
+        existiera esta migración: aplica solo 001-008 a mano, inserta una
+        venta+detalle con el esquema viejo, y recién después corre
+        `inicializar_base_datos()` completo (aplica 009 en adelante).
+        La fila vieja debe quedar con ambas columnas nuevas en NULL --
+        nunca con un valor inventado retroactivamente.
+        """
+        ruta_bd = tmp_path / "test_kiosco_pre_009.db"
+        monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", ruta_bd)
+
+        rutas_previas = [
+            ruta
+            for ruta in sorted(modulo_conexion.DIRECTORIO_MIGRACIONES.glob("*.sql"))
+            if ruta.name < "009_costo_y_usuario_ventas.sql"
+        ]
+        assert rutas_previas, "no se encontraron migraciones anteriores a la 009"
+
+        with modulo_conexion.obtener_conexion() as conexion:
+            conexion.execute(modulo_conexion._TABLA_MIGRACIONES)
+            for ruta in rutas_previas:
+                conexion.executescript(ruta.read_text(encoding="utf-8"))
+                conexion.execute("INSERT INTO schema_migraciones (nombre_archivo) VALUES (?)", (ruta.name,))
+            conexion.execute(
+                """
+                INSERT INTO productos (codigo_barras, nombre, precio_costo_centavos, precio_venta_centavos)
+                VALUES ('7790000000099', 'Producto viejo', 100, 200)
+                """
+            )
+            conexion.execute("INSERT INTO ventas (total_centavos, tipo_pago) VALUES (200, 'EFECTIVO')")
+            conexion.execute(
+                """
+                INSERT INTO detalle_venta
+                    (venta_id, producto_id, cantidad, precio_unitario_centavos, subtotal_centavos)
+                VALUES (1, 1, 1, 200, 200)
+                """
+            )
+
+        # Recién ahora se aplica la migración 009 (y cualquier otra pendiente).
+        modulo_conexion.inicializar_base_datos()
+
+        with modulo_conexion.obtener_conexion() as conexion:
+            fila_venta = conexion.execute("SELECT usuario_id FROM ventas WHERE id = 1").fetchone()
+            fila_detalle = conexion.execute(
+                "SELECT costo_unitario_centavos FROM detalle_venta WHERE venta_id = 1"
+            ).fetchone()
+
+        assert fila_venta["usuario_id"] is None
+        assert fila_detalle["costo_unitario_centavos"] is None
 
 
 class TestObtenerVentaConDetalle:

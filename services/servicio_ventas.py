@@ -47,7 +47,12 @@ def _resolver_clave_reutilizada(
     )
 
 
-def registrar_venta(items: list[ItemVenta], tipo_pago: str, clave_idempotencia: str | None = None) -> Venta:
+def registrar_venta(
+    items: list[ItemVenta],
+    tipo_pago: str,
+    clave_idempotencia: str | None = None,
+    usuario_id: int | None = None,
+) -> Venta:
     """Registra una venta con sus líneas de detalle y descuenta stock.
 
     Todo ocurre en una única transacción: primero se valida que haya
@@ -85,6 +90,9 @@ def registrar_venta(items: list[ItemVenta], tipo_pago: str, clave_idempotencia: 
             reintento de ese mismo intento. `None` (el default)
             desactiva la protección -- pensado para el CLI y para
             llamados internos que no la necesitan.
+        usuario_id: id del usuario autenticado que registra la venta
+            (migración 009). `None` (el default) para el CLI, que no
+            autentica a nadie -- nunca se inventa un usuario.
 
     Raises:
         DatosInvalidosError: si `items` está vacío o `tipo_pago` no es válido.
@@ -149,6 +157,15 @@ def registrar_venta(items: list[ItemVenta], tipo_pago: str, clave_idempotencia: 
             # Aritmética entera exacta: sin redondeos ni errores de precisión binaria.
             total_centavos = sum(precio_centavos * item.cantidad for item, precio_centavos in items_con_precio)
 
+            # Costo histórico (migración 009): mismo `Producto` ya leído
+            # arriba dentro de esta misma transacción -- sin ninguna
+            # consulta adicional, así el costo guardado corresponde
+            # exactamente al producto vendido en este momento, no al
+            # costo que pueda tener más adelante.
+            costos_unitarios_por_producto_id = {
+                producto_id: producto.precio_costo_centavos for producto_id, producto in productos_por_id.items()
+            }
+
             venta = repositorio_ventas.registrar_venta_con_detalle(
                 conexion,
                 total_centavos,
@@ -156,6 +173,8 @@ def registrar_venta(items: list[ItemVenta], tipo_pago: str, clave_idempotencia: 
                 items_con_precio,
                 clave_idempotencia=clave_idempotencia,
                 contenido_hash=contenido_hash,
+                usuario_id=usuario_id,
+                costos_unitarios_por_producto_id=costos_unitarios_por_producto_id,
             )
     except ErrorBaseDatos as error:
         if clave_idempotencia is None or not isinstance(error.__cause__, sqlite3.IntegrityError):

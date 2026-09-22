@@ -41,6 +41,27 @@ def _contar_ventas() -> int:
         return conexion.execute("SELECT COUNT(*) AS n FROM ventas").fetchone()["n"]
 
 
+def _crear_usuario_logueado(rol: str, nombre_usuario: str) -> tuple[Usuario, str]:
+    """Igual que `_crear_usuario_y_loguearse`, pero devuelve también el
+    `Usuario` creado (con su `id`), para verificar que la venta quede
+    asociada al usuario correcto (migración 009)."""
+    usuario_creado = repositorio_usuarios.crear_usuario(
+        Usuario(
+            nombre_usuario=nombre_usuario,
+            nombre_completo="Usuario de prueba",
+            password_hash=servicio_auth.hashear_password("clave-correcta-123", iteraciones=1000),
+            rol=rol,
+        )
+    )
+    token = servicio_auth.iniciar_sesion(nombre_usuario, "clave-correcta-123").token
+    return usuario_creado, token
+
+
+def _usuario_id_de_la_venta(venta_id: int) -> int | None:
+    with obtener_conexion() as conexion:
+        return conexion.execute("SELECT usuario_id FROM ventas WHERE id = ?", (venta_id,)).fetchone()["usuario_id"]
+
+
 class TestVentaValida:
     def test_venta_valida_con_clave_devuelve_200_y_persiste(self, base_datos_temporal):
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -291,3 +312,42 @@ class TestPermisos:
         assert respuesta.status == 401
         assert "error" in respuesta.json()
         assert _contar_ventas() == 0
+
+
+class TestUsuarioDeLaVenta:
+    """Migración 009: la venta queda asociada al usuario autenticado que
+    la registró -- nunca al que manda el cliente en el body (`VentaEntrada`
+    no tiene ese campo, ver `interfaces/web/esquemas.py`)."""
+
+    def test_venta_queda_asociada_al_usuario_autenticado(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario, token = _crear_usuario_logueado("OWNER", "ana")
+
+        respuesta = solicitud(
+            "POST", "/api/ventas",
+            cookies={NOMBRE_COOKIE_SESION: token},
+            json_body=_cuerpo(producto.id, 1, clave="clave-usuario-1"),
+        )
+
+        assert respuesta.status == 200
+        venta_id = respuesta.json()["id"]
+        assert _usuario_id_de_la_venta(venta_id) == usuario.id
+
+    def test_dos_usuarios_distintos_quedan_asociados_a_sus_propias_ventas(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        owner, token_owner = _crear_usuario_logueado("OWNER", "duenio")
+        cajera, token_cajera = _crear_usuario_logueado("CASHIER", "cajera1")
+
+        respuesta_owner = solicitud(
+            "POST", "/api/ventas",
+            cookies={NOMBRE_COOKIE_SESION: token_owner},
+            json_body=_cuerpo(producto.id, 1, clave="clave-owner"),
+        )
+        respuesta_cajera = solicitud(
+            "POST", "/api/ventas",
+            cookies={NOMBRE_COOKIE_SESION: token_cajera},
+            json_body=_cuerpo(producto.id, 1, clave="clave-cajera"),
+        )
+
+        assert _usuario_id_de_la_venta(respuesta_owner.json()["id"]) == owner.id
+        assert _usuario_id_de_la_venta(respuesta_cajera.json()["id"]) == cajera.id
