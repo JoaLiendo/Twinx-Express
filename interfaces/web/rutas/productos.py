@@ -6,8 +6,10 @@ Cliente delgado: solo llama a `services/servicio_stock` y renderiza
 plantillas o JSON. Cero SQL y cero reglas de negocio acá.
 """
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
@@ -15,7 +17,7 @@ from excepciones import ArchivoImagenInvalidoError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
-from services import servicio_categorias, servicio_importacion, servicio_stock
+from services import servicio_categorias, servicio_exportacion, servicio_importacion, servicio_stock
 
 router = APIRouter()
 
@@ -206,6 +208,26 @@ async def importar_productos(archivo: UploadFile = File(...)):
     else:
         tipo = "success"
     return redireccionar_con_mensaje("/productos", tipo, mensaje)
+
+
+@router.get("/productos/exportar/csv", dependencies=[_SOLO_OWNER])
+def exportar_productos_csv():
+    contenido = servicio_exportacion.generar_csv_productos()
+    return Response(
+        content=contenido,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="productos_{date.today().isoformat()}.csv"'},
+    )
+
+
+@router.get("/productos/exportar/xlsx", dependencies=[_SOLO_OWNER])
+def exportar_productos_xlsx():
+    contenido = servicio_exportacion.generar_xlsx_productos()
+    return Response(
+        content=contenido,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="productos_{date.today().isoformat()}.xlsx"'},
+    )
 
 
 @router.get("/productos/{producto_id}/editar", dependencies=[_SOLO_OWNER])

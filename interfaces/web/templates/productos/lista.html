@@ -48,7 +48,7 @@
       {% endif %}
     </form>
 
-    <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2 gap-y-2">
       {% if usuario_actual and usuario_actual.rol == 'OWNER' %}
         <a href="/productos/categorias" class="inline-flex items-center gap-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 transition text-slate-700 text-sm font-semibold px-4 py-2
                   dark:bg-slate-900 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
@@ -62,6 +62,21 @@
         </svg>
         Importar
       </a>
+      <div class="inline-flex items-center rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden">
+        <a href="/productos/exportar/csv" title="Exportar catálogo activo a CSV"
+           class="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-semibold px-4 py-2
+                  dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-200">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+            <path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" transform="rotate(180 12 12)"/>
+          </svg>
+          Exportar CSV
+        </a>
+        <a href="/productos/exportar/xlsx" title="Exportar catálogo activo a Excel"
+           class="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-semibold px-4 py-2 border-l border-slate-300
+                  dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-200 dark:border-slate-700">
+          Excel
+        </a>
+      </div>
       <a href="/productos/nuevo" class="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14M5 12h14"/></svg>
         Nuevo producto
