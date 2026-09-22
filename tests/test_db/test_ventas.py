@@ -2,6 +2,7 @@
 de Fase 5A. El resto del repositorio (alta de venta+detalle, listado
 del día) ya está cubierto end-to-end por tests/test_servicio_ventas.py."""
 
+import secrets
 import sqlite3
 from contextlib import contextmanager
 
@@ -258,3 +259,121 @@ class TestObtenerVentaConDetalle:
         assert len(resultado_5.lineas) == 5
         assert conteo_1 == 1
         assert conteo_5 == 1
+
+
+class TestListarEnRango:
+    """Módulo de Reportes: filtro de ventas por rango de fechas. Mismo
+    criterio que `db.repositorios.compras.listar_resumen` (ver sus
+    tests): fecha_desde/fecha_hasta son inclusivas, y un rango que no
+    matchea ninguna fila da lista vacía, nunca error."""
+
+    def _venta_de_hoy(self):
+        # Código de barras único por llamada (varios productos por test):
+        # evita chocar con el UNIQUE de `codigo_barras`.
+        producto = _crear_producto(codigo=f"779{secrets.token_hex(5)}")
+        items_con_precio = [(ItemVenta(producto.id, 1), 200)]
+        with obtener_conexion() as conexion:
+            return repositorio_ventas.registrar_venta_con_detalle(conexion, 200, "EFECTIVO", items_con_precio)
+
+    def test_sin_filtros_devuelve_todas(self, base_datos_temporal):
+        self._venta_de_hoy()
+        self._venta_de_hoy()
+
+        assert len(repositorio_ventas.listar_en_rango()) == 2
+
+    def test_rango_que_incluye_hoy_encuentra_la_venta(self, base_datos_temporal):
+        self._venta_de_hoy()
+        hoy = repositorio_ventas.listar_en_rango()[0].fecha[:10]
+
+        resultado = repositorio_ventas.listar_en_rango(fecha_desde=hoy, fecha_hasta=hoy)
+
+        assert len(resultado) == 1
+
+    def test_rango_futuro_no_encuentra_nada(self, base_datos_temporal):
+        self._venta_de_hoy()
+
+        assert repositorio_ventas.listar_en_rango(fecha_desde="2099-01-01") == []
+
+    def test_rango_pasado_no_encuentra_nada(self, base_datos_temporal):
+        self._venta_de_hoy()
+
+        assert repositorio_ventas.listar_en_rango(fecha_hasta="1999-01-01") == []
+
+    def test_venta_fuera_de_rango_por_fecha_manipulada_queda_excluida(self, base_datos_temporal):
+        """A diferencia de los tests de arriba (que solo prueban límites
+        muy lejanos), esta manipula `fecha` directamente para confirmar
+        que el límite es exacto, no solo "aproximadamente hoy"."""
+        venta_vieja = self._venta_de_hoy()
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE ventas SET fecha = ? WHERE id = ?", ("2020-01-01 10:00:00", venta_vieja.id))
+        self._venta_de_hoy()
+
+        resultado = repositorio_ventas.listar_en_rango(fecha_desde="2020-01-02")
+
+        assert len(resultado) == 1
+        assert resultado[0].id != venta_vieja.id
+
+
+class TestListarProductosMasVendidosEnRango:
+    """Módulo de Reportes: ranking de productos por unidades vendidas."""
+
+    def test_ordena_por_unidades_vendidas_descendente(self, base_datos_temporal):
+        mas_vendido = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000010", nombre="Top", precio_costo_centavos=100, precio_venta_centavos=200)
+        )
+        menos_vendido = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000011", nombre="Menos", precio_costo_centavos=100, precio_venta_centavos=200)
+        )
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 1000, "EFECTIVO", [(ItemVenta(mas_vendido.id, 5), 200)]
+            )
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(menos_vendido.id, 1), 200)]
+            )
+
+        resultado = repositorio_ventas.listar_productos_mas_vendidos_en_rango()
+
+        assert [p.producto_nombre for p in resultado] == ["Top", "Menos"]
+        assert resultado[0].unidades_vendidas == 5
+        assert resultado[0].total_vendido_centavos == 1000
+
+    def test_suma_unidades_de_varias_ventas_del_mismo_producto(self, base_datos_temporal):
+        producto = _crear_producto()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)])
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(conexion, 400, "EFECTIVO", [(ItemVenta(producto.id, 2), 200)])
+
+        resultado = repositorio_ventas.listar_productos_mas_vendidos_en_rango()
+
+        assert len(resultado) == 1
+        assert resultado[0].unidades_vendidas == 3
+        assert resultado[0].total_vendido_centavos == 600
+
+    def test_respeta_el_limite(self, base_datos_temporal):
+        for i in range(3):
+            producto = repositorio_productos.crear_producto(
+                Producto(codigo_barras=f"77900000002{i}", nombre=f"Producto {i}", precio_costo_centavos=100, precio_venta_centavos=200)
+            )
+            with obtener_conexion() as conexion:
+                repositorio_ventas.registrar_venta_con_detalle(
+                    conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)]
+                )
+
+        assert len(repositorio_ventas.listar_productos_mas_vendidos_en_rango(limite=2)) == 2
+
+    def test_filtra_por_rango_de_fechas(self, base_datos_temporal):
+        producto = _crear_producto()
+        with obtener_conexion() as conexion:
+            venta_vieja = repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)]
+            )
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE ventas SET fecha = ? WHERE id = ?", ("2020-01-01 10:00:00", venta_vieja.id))
+
+        assert repositorio_ventas.listar_productos_mas_vendidos_en_rango(fecha_desde="2020-01-02") == []
+
+    def test_sin_ventas_devuelve_lista_vacia(self, base_datos_temporal):
+        assert repositorio_ventas.listar_productos_mas_vendidos_en_rango() == []

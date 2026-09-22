@@ -99,3 +99,23 @@ class VentaConDetalle:
 
     venta: Venta
     lineas: list[LineaVenta]
+
+
+@dataclass
+class ProductoMasVendido:
+    """Un producto y su desempeño de ventas dentro de un período (módulo
+    de Reportes): unidades vendidas y facturación que generó.
+
+    No es una entidad con reglas de negocio propias -- es una
+    composición de solo lectura armada con un único `JOIN` + `GROUP BY`
+    (ver `db.repositorios.ventas.listar_productos_mas_vendidos_en_rango`),
+    mismo criterio que `domain.compra.ResumenCompra`. Deliberadamente no
+    incluye costo ni margen: `detalle_venta` no guarda el costo del
+    producto al momento de la venta, solo su precio de venta congelado
+    (ver `services.servicio_reportes` para el detalle de esta limitación).
+    """
+
+    producto_id: int
+    producto_nombre: str
+    unidades_vendidas: int
+    total_vendido_centavos: int

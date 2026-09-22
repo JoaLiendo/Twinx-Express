@@ -26,10 +26,11 @@ def contexto_base(request: Request) -> dict:
 
     Resuelve el usuario una sola vez por request (`obtener_usuario_actual`
     solo lee la cookie de sesión y no lanza: ver `interfaces.web.auth`).
-    Fase 2D: todavía no hay ningún login que fije esa cookie, así que en
-    la aplicación real `usuario_actual` da `None` y la navegación se ve
-    completa (ver `navegacion_visible_para`) — no cambia nada de lo que
-    ya se ve hoy.
+    `interfaces.web.rutas.autenticacion` expone `/login` y
+    `/configuracion-inicial` y es quien fija esa cookie: en la
+    aplicación real `usuario_actual` es `None` solo mientras no haya
+    una sesión iniciada, y la navegación queda filtrada por su rol
+    (ver `navegacion_visible_para`).
     """
     from services import servicio_caja
 

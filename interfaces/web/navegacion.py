@@ -22,7 +22,7 @@ NAV_ITEMS: list[dict[str, object]] = [
     {"href": "/productos", "etiqueta": "Stock", "icono": "productos", "roles": None},
     {"href": "/proveedores", "etiqueta": "Proveedores", "icono": "proveedores", "roles": _SOLO_OWNER},
     {"href": "/compras", "etiqueta": "Compras", "icono": "compras", "roles": _SOLO_OWNER},
-    {"href": "/reportes", "etiqueta": "Reportes", "icono": "reportes", "roles": _SOLO_OWNER, "proximamente": True},
+    {"href": "/reportes", "etiqueta": "Reportes", "icono": "reportes", "roles": _SOLO_OWNER},
     {"href": "/empleados", "etiqueta": "Empleados", "icono": "empleados", "roles": _SOLO_OWNER},
 ]
 

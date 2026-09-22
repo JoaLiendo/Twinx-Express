@@ -14,7 +14,7 @@ Los montos se manejan en centavos (`int`): ver `domain.dinero`.
 import sqlite3
 
 from db.conexion import obtener_conexion
-from domain.venta import ItemVenta, LineaVenta, Venta, VentaConDetalle
+from domain.venta import ItemVenta, LineaVenta, ProductoMasVendido, Venta, VentaConDetalle
 
 
 def registrar_venta_con_detalle(
@@ -198,3 +198,88 @@ def listar_ventas_del_dia() -> list[Venta]:
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta).fetchall()
     return [_fila_a_venta(fila) for fila in filas]
+
+
+def listar_en_rango(fecha_desde: str | None = None, fecha_hasta: str | None = None) -> list[Venta]:
+    """Ventas dentro de un rango de fechas (módulo de Reportes), más
+    recientes primero. Ambos límites son opcionales e inclusivos.
+
+    Mismo criterio que `db.repositorios.compras.listar_resumen`:
+    `fecha_desde`/`fecha_hasta` son texto "YYYY-MM-DD" (lo que manda un
+    `<input type="date">`) y se comparan solo por fecha, ignorando la
+    hora, con la función `date(...)` de SQLite -- un valor no parseable
+    hace que esa condición no matchee ninguna fila (lista vacía, nunca
+    un error).
+    """
+    condiciones = []
+    parametros: list[object] = []
+    if fecha_desde is not None:
+        condiciones.append("date(fecha) >= date(?)")
+        parametros.append(fecha_desde)
+    if fecha_hasta is not None:
+        condiciones.append("date(fecha) <= date(?)")
+        parametros.append(fecha_hasta)
+
+    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    consulta = f"SELECT id, fecha, total_centavos, tipo_pago FROM ventas {where} ORDER BY id DESC"
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta, parametros).fetchall()
+    return [_fila_a_venta(fila) for fila in filas]
+
+
+def listar_productos_mas_vendidos_en_rango(
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    limite: int = 10,
+) -> list[ProductoMasVendido]:
+    """Ranking de productos por unidades vendidas dentro de un rango de
+    fechas (módulo de Reportes), mayor a menor. Mismos filtros
+    opcionales/inclusivos que `listar_en_rango`.
+
+    Une `detalle_venta` con `ventas` (para filtrar por fecha de la
+    cabecera, `detalle_venta` no tiene su propia fecha) y con
+    `productos` (para el nombre actual). El `JOIN` con `productos` es
+    seguro (no `LEFT JOIN`): `detalle_venta.producto_id` es
+    `ON DELETE RESTRICT`, un producto con ventas nunca se borra
+    físicamente, como mucho se desactiva -- pero sigue apareciendo acá
+    con su nombre actual, ranking histórico incluido.
+
+    No incluye costo ni margen a propósito: ver
+    `services.servicio_reportes` para el porqué.
+    """
+    condiciones = []
+    parametros: list[object] = []
+    if fecha_desde is not None:
+        condiciones.append("date(v.fecha) >= date(?)")
+        parametros.append(fecha_desde)
+    if fecha_hasta is not None:
+        condiciones.append("date(v.fecha) <= date(?)")
+        parametros.append(fecha_hasta)
+
+    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    consulta = f"""
+        SELECT
+            p.id AS producto_id,
+            p.nombre AS producto_nombre,
+            SUM(dv.cantidad) AS unidades_vendidas,
+            SUM(dv.subtotal_centavos) AS total_vendido_centavos
+        FROM detalle_venta dv
+        JOIN ventas v ON v.id = dv.venta_id
+        JOIN productos p ON p.id = dv.producto_id
+        {where}
+        GROUP BY p.id
+        ORDER BY unidades_vendidas DESC, total_vendido_centavos DESC
+        LIMIT ?
+    """
+    parametros.append(limite)
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta, parametros).fetchall()
+    return [
+        ProductoMasVendido(
+            producto_id=fila["producto_id"],
+            producto_nombre=fila["producto_nombre"],
+            unidades_vendidas=fila["unidades_vendidas"],
+            total_vendido_centavos=fila["total_vendido_centavos"],
+        )
+        for fila in filas
+    ]
