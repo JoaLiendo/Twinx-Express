@@ -2,21 +2,14 @@
 `ventas`/`detalle_venta` sobre un rango de fechas, sin recalcular ni
 inferir nada que la base no almacene.
 
-Deliberadamente NO calcula márgenes, ganancias ni costo histórico:
-`detalle_venta` congela el precio de venta al momento de cada venta,
-pero no el costo del producto en ese momento.
-`productos.precio_costo_centavos` es el costo *actual*, no el vigente
-en la fecha de cada venta -- usarlo para un período pasado daría un
-margen incorrecto si el costo cambió desde entonces (algo frecuente:
-`services.servicio_compras` actualiza ese costo en cada compra nueva).
-Mostrar esa cifra igual, aunque fuera técnicamente posible, sería un
-dato incorrecto disfrazado de reporte. Requeriría guardar
-`costo_unitario_centavos` en `detalle_venta` (como ya hace
-`detalle_compra`) -- un cambio de esquema fuera de alcance de esta fase.
-
-Tampoco reporta por vendedor/cajero: a diferencia de `compras` (que sí
-tiene `usuario_id`), `ventas` no registra quién la cobró -- no hay
-forma de saber eso con el modelo actual.
+Reportes V2 agrega rentabilidad (margen bruto/porcentual, costo y margen
+por producto) y ventas por vendedor, apoyándose en
+`detalle_venta.costo_unitario_centavos` y `ventas.usuario_id`. Ninguno de
+los dos campos existe para ventas anteriores a esa migración: quedan
+`NULL`, y este módulo nunca los trata como `0` -- se excluyen de los
+cálculos de costo/margen/vendedor, pero siguen contando en las métricas
+generales del reporte (`cantidad_ventas`/`total_facturado_centavos`),
+que no dependen de ninguno de los dos campos.
 """
 
 from dataclasses import dataclass, field
@@ -52,6 +45,56 @@ class VentasPorMedioPago:
 
 
 @dataclass
+class ResumenRentabilidad:
+    """Margen bruto del período (Reportes V2), calculado solo sobre las
+    líneas de venta con `costo_unitario_centavos` conocido.
+
+    `margen_porcentual` es el margen bruto **sobre el precio de venta**
+    (`margen_bruto_centavos / venta_total_con_costo_conocido_centavos * 100`,
+    "de cada $100 vendidos, cuántos son ganancia") -- deliberadamente
+    NO es el markup sobre costo (`margen_bruto / costo_total`, "cuánto
+    más caro vendo que lo que me costó"), que es una pregunta distinta.
+    Es el único `float` de este módulo, y a propósito: es un cociente de
+    exposición que se calcula una única vez a partir de enteros ya
+    exactos, nunca se acumula ni se vuelve a usar en otro cálculo -- no
+    es la clase de operación que la regla "nunca floats para dinero"
+    busca evitar (esa regla protege valores monetarios acumulados/
+    persistidos, no un cociente de display).
+
+    `None` (no `0.0`) cuando no hay ninguna facturación con costo
+    conocido en el período: "sin datos" y "margen de 0%" son cosas
+    distintas, y confundirlas sería mostrar una cifra falsa.
+
+    `cantidad_ventas_sin_costo_historico` cuenta ventas completas
+    excluidas de este cálculo (ventas anteriores a que este campo
+    existiera, o registradas sin costo conocido) -- se expone para que
+    el reporte pueda avisar de forma transparente que el margen no
+    cubre el 100% de `ReporteVentas.cantidad_ventas`.
+    """
+
+    costo_total_centavos: int
+    margen_bruto_centavos: int
+    margen_porcentual: float | None
+    cantidad_ventas_sin_costo_historico: int
+
+
+@dataclass
+class VentasPorUsuario:
+    """Ventas de un vendedor puntual dentro del período (Reportes V2).
+
+    Incluye usuarios desactivados (`usuario_activo=False`): un usuario
+    nunca se borra físicamente, y su historial de ventas ya ocurrido no
+    depende de si sigue activo hoy (ver `db.repositorios.usuarios`).
+    """
+
+    usuario_id: int
+    nombre_completo: str
+    usuario_activo: bool
+    cantidad_ventas: int
+    total_vendido_centavos: int
+
+
+@dataclass
 class ReporteVentas:
     """Resumen de ventas para un período `[fecha_desde, fecha_hasta]`
     (ambos límites inclusive, texto "YYYY-MM-DD").
@@ -59,6 +102,11 @@ class ReporteVentas:
     `ticket_promedio_centavos` es `total_facturado_centavos // cantidad_ventas`
     (0 si no hubo ventas): aritmética entera, igual criterio que el
     resto del proyecto para montos en centavos (ver `domain.dinero`).
+
+    `rentabilidad`/`ventas_por_usuario` (Reportes V2) pueden cubrir menos
+    ventas que `cantidad_ventas`: una venta sin costo histórico o sin
+    usuario asociado sigue contando acá, pero queda fuera de esos dos
+    cálculos (ver `ResumenRentabilidad`/`VentasPorUsuario`).
     """
 
     fecha_desde: str
@@ -66,9 +114,11 @@ class ReporteVentas:
     cantidad_ventas: int
     total_facturado_centavos: int
     ticket_promedio_centavos: int
+    rentabilidad: ResumenRentabilidad
     ventas_por_medio_pago: list[VentasPorMedioPago] = field(default_factory=list)
     evolucion_por_dia: list[VentasPorDia] = field(default_factory=list)
     productos_mas_vendidos: list[ProductoMasVendido] = field(default_factory=list)
+    ventas_por_usuario: list[VentasPorUsuario] = field(default_factory=list)
 
 
 def _rango_por_defecto() -> tuple[str, str]:
@@ -138,7 +188,41 @@ def generar_reporte_ventas(fecha_desde: str | None = None, fecha_hasta: str | No
         cantidad_ventas=cantidad_ventas,
         total_facturado_centavos=total_facturado_centavos,
         ticket_promedio_centavos=ticket_promedio_centavos,
+        rentabilidad=_calcular_rentabilidad(fecha_desde, fecha_hasta),
         ventas_por_medio_pago=_agrupar_por_medio_pago(ventas_del_periodo),
         evolucion_por_dia=_agrupar_por_dia(ventas_del_periodo),
         productos_mas_vendidos=productos_mas_vendidos,
+        ventas_por_usuario=_listar_ventas_por_usuario(fecha_desde, fecha_hasta),
     )
+
+
+def _calcular_rentabilidad(fecha_desde: str, fecha_hasta: str) -> ResumenRentabilidad:
+    costo_total_centavos, venta_total_con_costo_centavos, cantidad_ventas_sin_costo_historico = (
+        repositorio_ventas.calcular_rentabilidad_en_rango(fecha_desde, fecha_hasta)
+    )
+    margen_bruto_centavos = venta_total_con_costo_centavos - costo_total_centavos
+    margen_porcentual = (
+        margen_bruto_centavos / venta_total_con_costo_centavos * 100
+        if venta_total_con_costo_centavos > 0
+        else None
+    )
+    return ResumenRentabilidad(
+        costo_total_centavos=costo_total_centavos,
+        margen_bruto_centavos=margen_bruto_centavos,
+        margen_porcentual=margen_porcentual,
+        cantidad_ventas_sin_costo_historico=cantidad_ventas_sin_costo_historico,
+    )
+
+
+def _listar_ventas_por_usuario(fecha_desde: str, fecha_hasta: str) -> list[VentasPorUsuario]:
+    filas = repositorio_ventas.listar_ventas_por_usuario_en_rango(fecha_desde, fecha_hasta)
+    return [
+        VentasPorUsuario(
+            usuario_id=usuario_id,
+            nombre_completo=nombre_completo,
+            usuario_activo=activo,
+            cantidad_ventas=cantidad_ventas,
+            total_vendido_centavos=total_vendido_centavos,
+        )
+        for usuario_id, nombre_completo, activo, cantidad_ventas, total_vendido_centavos in filas
+    ]

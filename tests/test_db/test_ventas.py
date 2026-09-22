@@ -532,3 +532,253 @@ class TestListarProductosMasVendidosEnRango:
 
     def test_sin_ventas_devuelve_lista_vacia(self, base_datos_temporal):
         assert repositorio_ventas.listar_productos_mas_vendidos_en_rango() == []
+
+
+def _registrar_venta_con_costo(producto_id, cantidad, precio_unitario, costo_unitario, usuario_id=None):
+    """Venta "nueva" (Reportes V2): con costo histórico conocido y,
+    opcionalmente, usuario. Mismo nivel de abstracción que el resto de
+    este archivo (llama directo al repositorio, no a `servicio_ventas`)."""
+    with obtener_conexion() as conexion:
+        return repositorio_ventas.registrar_venta_con_detalle(
+            conexion,
+            precio_unitario * cantidad,
+            "EFECTIVO",
+            [(ItemVenta(producto_id, cantidad), precio_unitario)],
+            usuario_id=usuario_id,
+            costos_unitarios_por_producto_id={producto_id: costo_unitario},
+        )
+
+
+class TestCalcularRentabilidadEnRango:
+    """Reportes V2: costo total, facturación con costo conocido y cantidad
+    de ventas excluidas por falta de costo histórico, agregados en SQL.
+    `services.servicio_reportes` es quien calcula margen bruto/porcentual
+    a partir de estos tres valores -- acá solo se prueba la agregación."""
+
+    def test_una_linea(self, base_datos_temporal):
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto.id, 2, precio_unitario=200, costo_unitario=100)
+
+        costo_total, venta_total_con_costo, sin_costo = repositorio_ventas.calcular_rentabilidad_en_rango()
+
+        assert costo_total == 200  # 2 * 100
+        assert venta_total_con_costo == 400  # 2 * 200
+        assert sin_costo == 0
+
+    def test_multiples_lineas_de_distintos_productos(self, base_datos_temporal):
+        p1 = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000001", nombre="Alfajor", precio_costo_centavos=100, precio_venta_centavos=200)
+        )
+        p2 = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000002", nombre="Gaseosa", precio_costo_centavos=150, precio_venta_centavos=300)
+        )
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion,
+                500,
+                "EFECTIVO",
+                [(ItemVenta(p1.id, 1), 200), (ItemVenta(p2.id, 1), 300)],
+                costos_unitarios_por_producto_id={p1.id: 100, p2.id: 150},
+            )
+
+        costo_total, venta_total_con_costo, sin_costo = repositorio_ventas.calcular_rentabilidad_en_rango()
+
+        assert costo_total == 250
+        assert venta_total_con_costo == 500
+        assert sin_costo == 0
+
+    def test_costo_cero_cuenta_como_conocido(self, base_datos_temporal):
+        """Costo 0 (ej. producto promocional) es un valor legítimo y
+        distinto de NULL -- debe contarse, no excluirse."""
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=0)
+
+        costo_total, venta_total_con_costo, sin_costo = repositorio_ventas.calcular_rentabilidad_en_rango()
+
+        assert costo_total == 0
+        assert venta_total_con_costo == 200
+        assert sin_costo == 0
+
+    def test_costo_igual_al_precio(self, base_datos_temporal):
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=200)
+
+        costo_total, venta_total_con_costo, sin_costo = repositorio_ventas.calcular_rentabilidad_en_rango()
+
+        assert costo_total == venta_total_con_costo == 200
+
+    def test_costo_mayor_al_precio_no_se_trunca(self, base_datos_temporal):
+        """Venta a pérdida: el costo total puede superar la facturación --
+        no se recorta ni se oculta, es información real de negocio."""
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=350)
+
+        costo_total, venta_total_con_costo, sin_costo = repositorio_ventas.calcular_rentabilidad_en_rango()
+
+        assert costo_total == 350
+        assert venta_total_con_costo == 200
+
+    def test_multiples_ventas_se_suman(self, base_datos_temporal):
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        _registrar_venta_con_costo(producto.id, 2, precio_unitario=200, costo_unitario=100)
+
+        costo_total, venta_total_con_costo, sin_costo = repositorio_ventas.calcular_rentabilidad_en_rango()
+
+        assert costo_total == 300  # (1*100) + (2*100)
+        assert venta_total_con_costo == 600  # (1*200) + (2*200)
+
+    def test_venta_sin_costo_historico_se_excluye_y_se_cuenta(self, base_datos_temporal):
+        """Venta "antigua" (o de antes de esta migración): costo NULL --
+        nunca se trata como 0, se excluye de ambos totales."""
+        producto = _crear_producto()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)]
+            )
+
+        costo_total, venta_total_con_costo, sin_costo = repositorio_ventas.calcular_rentabilidad_en_rango()
+
+        assert costo_total == 0
+        assert venta_total_con_costo == 0
+        assert sin_costo == 1
+
+    def test_mezcla_de_ventas_con_y_sin_costo_historico(self, base_datos_temporal):
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 300, "EFECTIVO", [(ItemVenta(producto.id, 1), 300)]
+            )
+
+        costo_total, venta_total_con_costo, sin_costo = repositorio_ventas.calcular_rentabilidad_en_rango()
+
+        assert costo_total == 100
+        assert venta_total_con_costo == 200  # solo la venta con costo conocido
+        assert sin_costo == 1
+
+    def test_respeta_el_rango_de_fechas(self, base_datos_temporal):
+        producto = _crear_producto()
+        venta_vieja = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE ventas SET fecha = ? WHERE id = ?", ("2020-01-01 10:00:00", venta_vieja.id))
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=50)
+
+        costo_total, venta_total_con_costo, sin_costo = repositorio_ventas.calcular_rentabilidad_en_rango(
+            fecha_desde="2020-01-02"
+        )
+
+        assert costo_total == 50
+        assert venta_total_con_costo == 200
+
+    def test_sin_ventas_devuelve_ceros(self, base_datos_temporal):
+        assert repositorio_ventas.calcular_rentabilidad_en_rango() == (0, 0, 0)
+
+
+class TestListarProductosMasVendidosConCostoYMargen:
+    """Reportes V2: extiende el ranking existente (sin crear una tabla
+    redundante) con costo y margen bruto por producto."""
+
+    def test_producto_con_costo_conocido_incluye_costo_y_margen(self, base_datos_temporal):
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto.id, 2, precio_unitario=200, costo_unitario=100)
+
+        resultado = repositorio_ventas.listar_productos_mas_vendidos_en_rango()
+
+        assert len(resultado) == 1
+        item = resultado[0]
+        assert item.unidades_con_costo_conocido == 2
+        assert item.costo_total_centavos == 200
+        assert item.margen_bruto_centavos == 200  # 400 facturado - 200 costo
+
+    def test_producto_sin_costo_conocido_deja_costo_y_margen_en_none(self, base_datos_temporal):
+        producto = _crear_producto()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)]
+            )
+
+        resultado = repositorio_ventas.listar_productos_mas_vendidos_en_rango()
+
+        assert resultado[0].unidades_con_costo_conocido == 0
+        assert resultado[0].costo_total_centavos is None
+        assert resultado[0].margen_bruto_centavos is None
+        assert resultado[0].unidades_vendidas == 1  # sigue contando en el ranking por unidades
+
+    def test_producto_con_ventas_mezcladas_calcula_margen_solo_sobre_lo_conocido(self, base_datos_temporal):
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)]
+            )
+
+        resultado = repositorio_ventas.listar_productos_mas_vendidos_en_rango()
+
+        assert resultado[0].unidades_vendidas == 2  # las dos cuentan para "más vendido"
+        assert resultado[0].unidades_con_costo_conocido == 1
+        assert resultado[0].costo_total_centavos == 100
+        assert resultado[0].margen_bruto_centavos == 100  # solo sobre la línea con costo conocido
+
+
+class TestListarVentasPorUsuarioEnRango:
+    """Reportes V2: ventas agrupadas por vendedor (OWNER o CASHIER),
+    excluyendo `usuario_id IS NULL` de este ranking puntual -- esas
+    ventas siguen contando en las métricas generales del reporte."""
+
+    def test_owner_y_cashier_aparecen_con_sus_propias_ventas(self, base_datos_temporal):
+        producto = _crear_producto()
+        owner = _crear_usuario(nombre_usuario="duenio", rol="OWNER")
+        cajera = _crear_usuario(nombre_usuario="cajera1", rol="CASHIER")
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100, usuario_id=owner.id)
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=300, costo_unitario=100, usuario_id=cajera.id)
+
+        resultado = repositorio_ventas.listar_ventas_por_usuario_en_rango()
+
+        por_usuario = {fila[0]: fila for fila in resultado}
+        assert por_usuario[owner.id][3] == 1  # cantidad_ventas
+        assert por_usuario[owner.id][4] == 200  # total_vendido_centavos
+        assert por_usuario[cajera.id][4] == 300
+
+    def test_usuario_desactivado_sigue_apareciendo(self, base_datos_temporal):
+        producto = _crear_producto()
+        usuario = _crear_usuario()
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100, usuario_id=usuario.id)
+        repositorio_usuarios.actualizar_activo(usuario.id, False)
+
+        resultado = repositorio_ventas.listar_ventas_por_usuario_en_rango()
+
+        assert len(resultado) == 1
+        assert resultado[0][0] == usuario.id
+        assert resultado[0][2] is False  # activo
+
+    def test_usuario_id_null_queda_excluido(self, base_datos_temporal):
+        producto = _crear_producto()
+        usuario = _crear_usuario()
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100, usuario_id=usuario.id)
+        with obtener_conexion() as conexion:
+            # venta "antigua"/CLI: sin usuario_id.
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 500, "EFECTIVO", [(ItemVenta(producto.id, 1), 500)]
+            )
+
+        resultado = repositorio_ventas.listar_ventas_por_usuario_en_rango()
+
+        assert len(resultado) == 1
+        assert resultado[0][0] == usuario.id
+
+    def test_respeta_el_rango_de_fechas(self, base_datos_temporal):
+        producto = _crear_producto()
+        usuario = _crear_usuario()
+        venta_vieja = _registrar_venta_con_costo(
+            producto.id, 1, precio_unitario=200, costo_unitario=100, usuario_id=usuario.id
+        )
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE ventas SET fecha = ? WHERE id = ?", ("2020-01-01 10:00:00", venta_vieja.id))
+
+        resultado = repositorio_ventas.listar_ventas_por_usuario_en_rango(fecha_desde="2020-01-02")
+
+        assert resultado == []
+
+    def test_sin_ventas_devuelve_lista_vacia(self, base_datos_temporal):
+        assert repositorio_ventas.listar_ventas_por_usuario_en_rango() == []

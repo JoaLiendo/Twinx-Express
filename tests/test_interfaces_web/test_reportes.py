@@ -6,6 +6,9 @@ datos reales calculados por `services.servicio_reportes`, no el
 cascarón visual anterior.
 """
 
+from db.conexion import obtener_conexion
+from db.repositorios import usuarios as repositorio_usuarios
+from db.repositorios import ventas as repositorio_ventas
 from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from interfaces.web.auth import NOMBRE_COOKIE_SESION
@@ -15,8 +18,6 @@ from ._asgi_cliente import solicitud
 
 
 def _cookies_owner(nombre_usuario: str = "ana") -> dict[str, str]:
-    from db.repositorios import usuarios as repositorio_usuarios
-
     repositorio_usuarios.crear_usuario(
         Usuario(
             nombre_usuario=nombre_usuario,
@@ -83,3 +84,89 @@ class TestVerReportes:
         assert 'title="Reportes (próximamente)"' not in respuesta.texto
         # Pedidos/Precios no se tocaron en esta fase: siguen marcados.
         assert 'title="Pedidos (próximamente)"' in respuesta.texto
+
+
+class TestRentabilidadEnLaPagina:
+    """Reportes V2: sección de rentabilidad y aviso de ventas excluidas."""
+
+    def test_muestra_margen_de_una_venta_con_costo_conocido(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto(
+            codigo_barras="7790000000001",
+            nombre="Alfajor",
+            precio_costo_centavos=100,
+            precio_venta_centavos=200,
+            stock_actual=10,
+        )
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Rentabilidad" in respuesta.texto
+        assert "50" in respuesta.texto  # margen % (100/200*100)
+
+    def test_avisa_cuando_hay_ventas_sin_costo_historico(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto(
+            codigo_barras="7790000000001",
+            nombre="Alfajor",
+            precio_costo_centavos=100,
+            precio_venta_centavos=200,
+            stock_actual=10,
+        )
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)]
+            )
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "costo histórico registrado" in respuesta.texto
+        assert "1" in respuesta.texto  # cantidad_ventas_sin_costo_historico
+
+    def test_texto_obsoleto_ya_no_aparece(self, base_datos_temporal):
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert "todavía no incluye márgenes" not in respuesta.texto
+
+
+class TestVentasPorVendedorEnLaPagina:
+    def test_muestra_la_venta_del_usuario_autenticado(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto(
+            codigo_barras="7790000000001",
+            nombre="Alfajor",
+            precio_costo_centavos=100,
+            precio_venta_centavos=200,
+            stock_actual=10,
+        )
+        usuario_owner = repositorio_usuarios.crear_usuario(
+            Usuario(
+                nombre_usuario="duenio",
+                nombre_completo="Usuario de prueba",
+                password_hash=servicio_auth.hashear_password("clave-correcta-123", iteraciones=1000),
+                rol="OWNER",
+            )
+        )
+        token = servicio_auth.iniciar_sesion("duenio", "clave-correcta-123").token
+        cookies = {NOMBRE_COOKIE_SESION: token}
+        # La venta la registra el mismo OWNER logueado, vía el servicio real
+        # (igual que haría el POS), para quedar asociada a su usuario_id.
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO", usuario_id=usuario_owner.id)
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Ventas por vendedor" in respuesta.texto
+        assert "Usuario de prueba" in respuesta.texto
+
+    def test_sin_ventas_muestra_estado_vacio(self, base_datos_temporal):
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Ventas por vendedor" in respuesta.texto

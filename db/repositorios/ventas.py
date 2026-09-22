@@ -272,8 +272,13 @@ def listar_productos_mas_vendidos_en_rango(
     físicamente, como mucho se desactiva -- pero sigue apareciendo acá
     con su nombre actual, ranking histórico incluido.
 
-    No incluye costo ni margen a propósito: ver
-    `services.servicio_reportes` para el porqué.
+    Costo y margen (Reportes V2) se calculan solo sobre las líneas con
+    `costo_unitario_centavos` conocido -- `unidades_con_costo_conocido`
+    puede ser menor a `unidades_vendidas` si el producto tiene ventas de
+    antes de que existiera ese dato. Nunca se trata `NULL` como `0`: una
+    línea sin costo conocido no aporta nada a `costo_total_centavos` ni
+    a la facturación usada para calcular el margen de ese producto (ver
+    `domain.venta.ProductoMasVendido`).
     """
     condiciones = []
     parametros: list[object] = []
@@ -290,7 +295,13 @@ def listar_productos_mas_vendidos_en_rango(
             p.id AS producto_id,
             p.nombre AS producto_nombre,
             SUM(dv.cantidad) AS unidades_vendidas,
-            SUM(dv.subtotal_centavos) AS total_vendido_centavos
+            SUM(dv.subtotal_centavos) AS total_vendido_centavos,
+            SUM(CASE WHEN dv.costo_unitario_centavos IS NOT NULL THEN dv.cantidad ELSE 0 END)
+                AS unidades_con_costo_conocido,
+            SUM(CASE WHEN dv.costo_unitario_centavos IS NOT NULL
+                     THEN dv.costo_unitario_centavos * dv.cantidad ELSE 0 END) AS costo_total_centavos,
+            SUM(CASE WHEN dv.costo_unitario_centavos IS NOT NULL THEN dv.subtotal_centavos ELSE 0 END)
+                AS venta_total_con_costo_centavos
         FROM detalle_venta dv
         JOIN ventas v ON v.id = dv.venta_id
         JOIN productos p ON p.id = dv.producto_id
@@ -302,12 +313,134 @@ def listar_productos_mas_vendidos_en_rango(
     parametros.append(limite)
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta, parametros).fetchall()
+
+    resultado = []
+    for fila in filas:
+        unidades_con_costo_conocido = fila["unidades_con_costo_conocido"]
+        if unidades_con_costo_conocido > 0:
+            costo_total_centavos = fila["costo_total_centavos"]
+            margen_bruto_centavos = fila["venta_total_con_costo_centavos"] - costo_total_centavos
+        else:
+            costo_total_centavos = None
+            margen_bruto_centavos = None
+        resultado.append(
+            ProductoMasVendido(
+                producto_id=fila["producto_id"],
+                producto_nombre=fila["producto_nombre"],
+                unidades_vendidas=fila["unidades_vendidas"],
+                total_vendido_centavos=fila["total_vendido_centavos"],
+                unidades_con_costo_conocido=unidades_con_costo_conocido,
+                costo_total_centavos=costo_total_centavos,
+                margen_bruto_centavos=margen_bruto_centavos,
+            )
+        )
+    return resultado
+
+
+def calcular_rentabilidad_en_rango(
+    fecha_desde: str | None = None, fecha_hasta: str | None = None
+) -> tuple[int, int, int]:
+    """Rentabilidad agregada del período (Reportes V2), en una sola
+    consulta SQL. Devuelve la tupla
+    `(costo_total_centavos, venta_total_con_costo_centavos, cantidad_ventas_sin_costo_historico)`.
+
+    `venta_total_con_costo_centavos` es la facturación **solo** de las
+    líneas con `costo_unitario_centavos` conocido -- no la facturación
+    total del período: `services.servicio_reportes` calcula el margen
+    bruto porcentual como `margen_bruto / venta_total_con_costo_centavos`,
+    y usar ahí la facturación total abarataría artificialmente el margen
+    con ventas que no aportaron nada al costo. `cantidad_ventas_sin_costo_historico`
+    cuenta ventas (`DISTINCT venta_id`), no líneas: la unidad que le
+    importa a quien lee el reporte es "cuántas ventas quedaron afuera",
+    no cuántas líneas sueltas.
+
+    Nunca trata una línea con costo `NULL` como costo `0`: esa línea no
+    suma ni al costo ni a la facturación de este cálculo, en vez de
+    inflar la facturación "gratis" o inventar un costo.
+    """
+    condiciones = []
+    parametros: list[object] = []
+    if fecha_desde is not None:
+        condiciones.append("date(v.fecha) >= date(?)")
+        parametros.append(fecha_desde)
+    if fecha_hasta is not None:
+        condiciones.append("date(v.fecha) <= date(?)")
+        parametros.append(fecha_hasta)
+
+    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    consulta = f"""
+        SELECT
+            SUM(CASE WHEN dv.costo_unitario_centavos IS NOT NULL
+                     THEN dv.costo_unitario_centavos * dv.cantidad ELSE 0 END) AS costo_total_centavos,
+            SUM(CASE WHEN dv.costo_unitario_centavos IS NOT NULL THEN dv.subtotal_centavos ELSE 0 END)
+                AS venta_total_con_costo_centavos,
+            COUNT(DISTINCT CASE WHEN dv.costo_unitario_centavos IS NULL THEN dv.venta_id END)
+                AS ventas_sin_costo_historico
+        FROM detalle_venta dv
+        JOIN ventas v ON v.id = dv.venta_id
+        {where}
+    """
+    with obtener_conexion() as conexion:
+        fila = conexion.execute(consulta, parametros).fetchone()
+
+    return (
+        fila["costo_total_centavos"] or 0,
+        fila["venta_total_con_costo_centavos"] or 0,
+        fila["ventas_sin_costo_historico"] or 0,
+    )
+
+
+def listar_ventas_por_usuario_en_rango(
+    fecha_desde: str | None = None, fecha_hasta: str | None = None
+) -> list[tuple[int, str, bool, int, int]]:
+    """Ventas agrupadas por vendedor (Reportes V2), de mayor a menor
+    facturación. Cada tupla es
+    `(usuario_id, nombre_completo, activo, cantidad_ventas, total_vendido_centavos)`.
+
+    `JOIN usuarios` (no `LEFT JOIN`) excluye de forma natural las ventas
+    con `usuario_id IS NULL` (CLI, o anteriores a que este campo
+    existiera) de este ranking puntual -- sin que haga falta un `WHERE`
+    aparte. Esas ventas siguen contando en las métricas generales del
+    reporte (`ReporteVentas.cantidad_ventas`/`total_facturado_centavos`),
+    que no pasan por esta función.
+
+    No filtra por `usuarios.activo`: un usuario desactivado después de
+    haber vendido sigue apareciendo con su historial completo -- nunca
+    se borra un usuario físicamente (ver `db.repositorios.usuarios`), y
+    las ventas ya ocurrieron con independencia de su estado actual.
+    """
+    condiciones = []
+    parametros: list[object] = []
+    if fecha_desde is not None:
+        condiciones.append("date(v.fecha) >= date(?)")
+        parametros.append(fecha_desde)
+    if fecha_hasta is not None:
+        condiciones.append("date(v.fecha) <= date(?)")
+        parametros.append(fecha_hasta)
+
+    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    consulta = f"""
+        SELECT
+            u.id AS usuario_id,
+            u.nombre_completo AS nombre_completo,
+            u.activo AS activo,
+            COUNT(v.id) AS cantidad_ventas,
+            SUM(v.total_centavos) AS total_vendido_centavos
+        FROM ventas v
+        JOIN usuarios u ON u.id = v.usuario_id
+        {where}
+        GROUP BY u.id
+        ORDER BY total_vendido_centavos DESC
+    """
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta, parametros).fetchall()
     return [
-        ProductoMasVendido(
-            producto_id=fila["producto_id"],
-            producto_nombre=fila["producto_nombre"],
-            unidades_vendidas=fila["unidades_vendidas"],
-            total_vendido_centavos=fila["total_vendido_centavos"],
+        (
+            fila["usuario_id"],
+            fila["nombre_completo"],
+            bool(fila["activo"]),
+            fila["cantidad_ventas"],
+            fila["total_vendido_centavos"],
         )
         for fila in filas
     ]
