@@ -8,6 +8,7 @@ deberían usar para operar sobre productos: no deben llamar a
 """
 
 import logging
+from dataclasses import dataclass, field
 
 from db.conexion import obtener_conexion
 from db.repositorios import ajustes_stock as repositorio_ajustes_stock
@@ -96,6 +97,76 @@ def listar_todos() -> list[Producto]:
 def listar_stock_critico() -> list[Producto]:
     """Devuelve los productos cuyo stock llegó al mínimo o está por debajo, para alertas."""
     return repositorio_productos.listar_stock_critico()
+
+
+@dataclass
+class LineaValorizacion:
+    """Un producto y su aporte al valor total del inventario (Valorización
+    de Inventario). `valor_centavos` es `stock_actual * costo_unitario_centavos`,
+    aritmética entera exacta -- nunca redondeo ni `float`."""
+
+    producto_id: int
+    codigo_barras: str
+    nombre: str
+    stock_actual: int
+    costo_unitario_centavos: int
+    valor_centavos: int
+
+
+@dataclass
+class ValorizacionInventario:
+    """Estado del inventario a HOY (Valorización de Inventario): nunca
+    depende de ningún rango de fechas -- `calcular_valorizacion_inventario`
+    no toma parámetros, así que ningún filtro de período de Reportes
+    puede llegar a afectar este cálculo.
+
+    `cantidad_productos_costo_cero` es informativo: esos productos ya
+    están incluidos en `valor_total_centavos`, aportando $0 -- nunca
+    excluidos.
+    """
+
+    unidades_totales: int
+    valor_total_centavos: int
+    cantidad_productos_valorizados: int
+    cantidad_productos_costo_cero: int
+    detalle: list[LineaValorizacion] = field(default_factory=list)
+
+
+def calcular_valorizacion_inventario() -> ValorizacionInventario:
+    """Valorización del inventario a costo actual (`stock_actual *
+    precio_costo_centavos`), a HOY.
+
+    Incluye productos activos e inactivos por igual, mientras tengan
+    `stock_actual > 0` (ver `db.repositorios.productos.listar_valorizables`).
+    No es una metodología FIFO ni de costo promedio ponderado -- usa el
+    costo vigente de cada producto, la única información de costo que
+    el sistema mantiene actualizada (ver auditoría de diseño).
+    """
+    productos = repositorio_productos.listar_valorizables()
+
+    detalle = sorted(
+        (
+            LineaValorizacion(
+                producto_id=producto.id,
+                codigo_barras=producto.codigo_barras,
+                nombre=producto.nombre,
+                stock_actual=producto.stock_actual,
+                costo_unitario_centavos=producto.precio_costo_centavos,
+                valor_centavos=producto.stock_actual * producto.precio_costo_centavos,
+            )
+            for producto in productos
+        ),
+        key=lambda linea: linea.valor_centavos,
+        reverse=True,
+    )
+
+    return ValorizacionInventario(
+        unidades_totales=sum(producto.stock_actual for producto in productos),
+        valor_total_centavos=sum(linea.valor_centavos for linea in detalle),
+        cantidad_productos_valorizados=len(productos),
+        cantidad_productos_costo_cero=sum(1 for producto in productos if producto.precio_costo_centavos == 0),
+        detalle=detalle,
+    )
 
 
 def actualizar_producto(

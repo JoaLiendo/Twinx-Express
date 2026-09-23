@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from interfaces.web.auth import requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base
-from services import servicio_reportes
+from services import servicio_reportes, servicio_stock
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
@@ -20,9 +20,14 @@ router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 @router.get("/reportes")
 def ver_reportes(request: Request, fecha_desde: str | None = None, fecha_hasta: str | None = None):
     reporte = servicio_reportes.generar_reporte_ventas(fecha_desde, fecha_hasta)
+    # Valorización de Inventario: a HOY, deliberadamente sin recibir
+    # fecha_desde/fecha_hasta -- no hay ningún parámetro por el que el
+    # filtro de período de `reporte` pueda llegar a afectar este cálculo.
+    valorizacion = servicio_stock.calcular_valorizacion_inventario()
     contexto = {
         **contexto_base(request),
         "reporte": reporte,
+        "valorizacion": valorizacion,
         # Los inputs del filtro reflejan el rango efectivo (incluso
         # cuando no se pidió ninguno explícito y se usó el de
         # por defecto), para que el usuario vea qué período está viendo.

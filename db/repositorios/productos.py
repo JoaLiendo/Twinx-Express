@@ -291,6 +291,20 @@ def listar_stock_critico() -> list[Producto]:
     return [_fila_a_producto(fila) for fila in filas]
 
 
+def listar_valorizables() -> list[Producto]:
+    """Productos con stock físico a valorizar (Valorización de Inventario):
+    activos e inactivos por igual, mientras `stock_actual > 0` -- un
+    producto discontinuado con mercadería remanente sigue siendo
+    capital real inmovilizado (decisión cerrada, ver auditoría de
+    diseño). No filtra por `activo` a propósito, a diferencia de
+    `listar_todos()`.
+    """
+    consulta = f"SELECT {_COLUMNAS} FROM productos WHERE stock_actual > 0 ORDER BY nombre"
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta).fetchall()
+    return [_fila_a_producto(fila) for fila in filas]
+
+
 def eliminar_producto(producto_id: int) -> bool:
     """Elimina un producto activo. Devuelve `True` si la baja fue lógica.
 

@@ -72,3 +72,50 @@ class TestObtenerPorIdEnConexionIncluyendoInactivos:
 
         with obtener_conexion() as conexion:
             assert repositorio_productos.obtener_por_id_en_conexion(conexion, producto.id) is None
+
+
+class TestListarValorizables:
+    """Valorización de Inventario: activos e inactivos por igual,
+    mientras `stock_actual > 0` -- un producto discontinuado con
+    mercadería remanente sigue siendo capital real inmovilizado."""
+
+    def test_excluye_producto_con_stock_cero(self, base_datos_temporal):
+        repositorio_productos.crear_producto(
+            Producto(
+                codigo_barras="7790000000001", nombre="Sin stock",
+                precio_costo_centavos=100, precio_venta_centavos=200, stock_actual=0,
+            )
+        )
+
+        assert repositorio_productos.listar_valorizables() == []
+
+    def test_incluye_producto_activo_con_stock(self, base_datos_temporal):
+        producto = repositorio_productos.crear_producto(
+            Producto(
+                codigo_barras="7790000000001", nombre="Alfajor",
+                precio_costo_centavos=100, precio_venta_centavos=200, stock_actual=5,
+            )
+        )
+
+        resultado = repositorio_productos.listar_valorizables()
+
+        assert [p.id for p in resultado] == [producto.id]
+
+    def test_incluye_producto_inactivo_con_stock(self, base_datos_temporal):
+        producto = repositorio_productos.crear_producto(
+            Producto(
+                codigo_barras="7790000000001", nombre="Discontinuado",
+                precio_costo_centavos=100, precio_venta_centavos=200, stock_actual=3,
+            )
+        )
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE productos SET activo = 0 WHERE id = ?", (producto.id,))
+
+        resultado = repositorio_productos.listar_valorizables()
+
+        assert len(resultado) == 1
+        assert resultado[0].id == producto.id
+        assert resultado[0].activo is False
+
+    def test_sin_productos_con_stock_devuelve_lista_vacia(self, base_datos_temporal):
+        assert repositorio_productos.listar_valorizables() == []

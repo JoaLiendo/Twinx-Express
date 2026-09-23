@@ -641,3 +641,88 @@ class TestAjustarStock:
         with obtener_conexion() as conexion:
             total = conexion.execute("SELECT COUNT(*) AS n FROM ajustes_stock").fetchone()["n"]
         assert total == 2
+
+
+class TestCalcularValorizacionInventario:
+    """Valorización de Inventario: `stock_actual * precio_costo_centavos`
+    a HOY, sin depender de ningún período (la función no toma
+    fecha_desde/fecha_hasta)."""
+
+    def test_sin_productos_devuelve_ceros(self, base_datos_temporal):
+        valorizacion = servicio_stock.calcular_valorizacion_inventario()
+
+        assert valorizacion.unidades_totales == 0
+        assert valorizacion.valor_total_centavos == 0
+        assert valorizacion.cantidad_productos_valorizados == 0
+        assert valorizacion.cantidad_productos_costo_cero == 0
+        assert valorizacion.detalle == []
+
+    def test_un_producto_activo(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto(
+            "7790000000001", "Alfajor", 100, 200, stock_actual=5
+        )
+
+        valorizacion = servicio_stock.calcular_valorizacion_inventario()
+
+        assert valorizacion.unidades_totales == 5
+        assert valorizacion.valor_total_centavos == 500  # 5 * 100
+        assert valorizacion.cantidad_productos_valorizados == 1
+        assert len(valorizacion.detalle) == 1
+        linea = valorizacion.detalle[0]
+        assert linea.producto_id == producto.id
+        assert linea.codigo_barras == "7790000000001"
+        assert linea.stock_actual == 5
+        assert linea.costo_unitario_centavos == 100
+        assert linea.valor_centavos == 500
+
+    def test_incluye_producto_inactivo_con_stock(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto(
+            "7790000000001", "Discontinuado", 100, 200, stock_actual=3
+        )
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE productos SET activo = 0 WHERE id = ?", (producto.id,))
+
+        valorizacion = servicio_stock.calcular_valorizacion_inventario()
+
+        assert valorizacion.cantidad_productos_valorizados == 1
+        assert valorizacion.valor_total_centavos == 300  # 3 * 100
+
+    def test_excluye_producto_con_stock_cero(self, base_datos_temporal):
+        servicio_stock.registrar_producto("7790000000001", "Sin stock", 100, 200, stock_actual=0)
+
+        valorizacion = servicio_stock.calcular_valorizacion_inventario()
+
+        assert valorizacion.cantidad_productos_valorizados == 0
+        assert valorizacion.valor_total_centavos == 0
+        assert valorizacion.detalle == []
+
+    def test_costo_cero_se_incluye_en_el_total_y_se_cuenta_aparte(self, base_datos_temporal):
+        servicio_stock.registrar_producto("7790000000001", "Promocional", 0, 200, stock_actual=10)
+        servicio_stock.registrar_producto("7790000000002", "Con costo", 100, 200, stock_actual=2)
+
+        valorizacion = servicio_stock.calcular_valorizacion_inventario()
+
+        assert valorizacion.cantidad_productos_valorizados == 2
+        assert valorizacion.cantidad_productos_costo_cero == 1
+        assert valorizacion.valor_total_centavos == 200  # 10*0 + 2*100
+        assert valorizacion.unidades_totales == 12  # 10 + 2, el de costo 0 sigue contando
+
+    def test_unidades_totales_suma_todo_el_stock_considerado(self, base_datos_temporal):
+        servicio_stock.registrar_producto("7790000000001", "A", 100, 200, stock_actual=4)
+        servicio_stock.registrar_producto("7790000000002", "B", 50, 100, stock_actual=6)
+
+        valorizacion = servicio_stock.calcular_valorizacion_inventario()
+
+        assert valorizacion.unidades_totales == 10
+
+    def test_detalle_ordenado_por_valor_descendente(self, base_datos_temporal):
+        servicio_stock.registrar_producto("7790000000001", "Bajo valor", 10, 20, stock_actual=1)
+        servicio_stock.registrar_producto("7790000000002", "Alto valor", 500, 900, stock_actual=2)
+        servicio_stock.registrar_producto("7790000000003", "Valor medio", 100, 200, stock_actual=1)
+
+        valorizacion = servicio_stock.calcular_valorizacion_inventario()
+
+        valores = [linea.valor_centavos for linea in valorizacion.detalle]
+        assert valores == sorted(valores, reverse=True)
+        assert valorizacion.detalle[0].nombre == "Alto valor"  # 2 * 500 = 1000
+        assert valorizacion.detalle[-1].nombre == "Bajo valor"  # 1 * 10 = 10

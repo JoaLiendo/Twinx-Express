@@ -231,3 +231,98 @@ class TestResumenAnulacionesEnLaPagina:
 
         assert respuesta.status == 200
         assert "Sin anulaciones en el período" in respuesta.texto
+
+
+class TestValorizacionEnLaPagina:
+    """Valorización de Inventario: sección "Valorización de inventario"
+    de /reportes, a HOY -- probada de punta a punta contra la ruta y el
+    template reales, incluyendo la garantía de que no depende del
+    filtro de fecha del resto de la página."""
+
+    def test_muestra_unidades_valor_y_cantidad_de_productos(self, base_datos_temporal):
+        servicio_stock.registrar_producto(
+            codigo_barras="7790000000001",
+            nombre="Alfajor Valorizado",
+            precio_costo_centavos=100,
+            precio_venta_centavos=200,
+            stock_actual=5,
+        )
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Valorización de inventario" in respuesta.texto
+        assert "A hoy" in respuesta.texto
+        assert "Alfajor Valorizado" in respuesta.texto
+        assert "5,00" in respuesta.texto  # valor: 5 * 100 centavos = 500 -> "5,00"
+
+    def test_incluye_producto_inactivo_con_stock(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto(
+            codigo_barras="7790000000001",
+            nombre="Descontinuado Con Stock",
+            precio_costo_centavos=100,
+            precio_venta_centavos=200,
+            stock_actual=3,
+        )
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE productos SET activo = 0 WHERE id = ?", (producto.id,))
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Descontinuado Con Stock" in respuesta.texto
+
+    def test_no_cambia_con_distintos_periodos_de_reporte(self, base_datos_temporal):
+        """Garantía central del diseño: la valorización es idéntica sin
+        importar qué fecha_desde/fecha_hasta se pida -- no hay ningún
+        parámetro por el que el filtro de período pueda llegar a
+        afectarla."""
+        servicio_stock.registrar_producto(
+            codigo_barras="7790000000001",
+            nombre="Alfajor",
+            precio_costo_centavos=150,
+            precio_venta_centavos=300,
+            stock_actual=4,
+        )
+        cookies = _cookies_owner()
+
+        respuesta_rango_1 = solicitud(
+            "GET", "/reportes?fecha_desde=2020-01-01&fecha_hasta=2020-01-31", cookies=cookies
+        )
+        respuesta_rango_2 = solicitud(
+            "GET", "/reportes?fecha_desde=2099-01-01&fecha_hasta=2099-12-31", cookies=cookies
+        )
+
+        assert respuesta_rango_1.status == 200
+        assert respuesta_rango_2.status == 200
+        valor_esperado = "6,00"  # 4 * 150 centavos = 600
+        assert valor_esperado in respuesta_rango_1.texto
+        assert valor_esperado in respuesta_rango_2.texto
+
+    def test_sin_stock_para_valorizar_muestra_estado_vacio(self, base_datos_temporal):
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Sin stock para valorizar" in respuesta.texto
+
+    def test_no_altera_los_kpis_de_ventas_existentes(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto(
+            codigo_barras="7790000000001",
+            nombre="Alfajor",
+            precio_costo_centavos=100,
+            precio_venta_centavos=200,
+            stock_actual=10,
+        )
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Ventas por método de pago" in respuesta.texto
+        assert "Rentabilidad" in respuesta.texto
+        assert "Ventas por vendedor" in respuesta.texto
