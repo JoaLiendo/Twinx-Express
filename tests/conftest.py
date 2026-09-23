@@ -7,9 +7,41 @@ Tampoco se escriben imágenes reales bajo `data/imagenes_productos/`
 """
 
 import db.conexion as modulo_conexion
+import services.servicio_auth as modulo_auth
 import services.servicio_imagenes as modulo_imagenes
+from services.limitador_login import LimitadorIntentosLogin
 
 import pytest
+
+
+class RelojFalso:
+    """Reloj controlable para probar bloqueos por tiempo sin `sleep`."""
+
+    def __init__(self, ahora: float = 1000.0) -> None:
+        self.ahora = ahora
+
+    def __call__(self) -> float:
+        return self.ahora
+
+    def avanzar(self, segundos: float) -> None:
+        self.ahora += segundos
+
+
+@pytest.fixture
+def reloj_falso():
+    return RelojFalso()
+
+
+@pytest.fixture(autouse=True)
+def limitador_login_aislado(monkeypatch, reloj_falso):
+    """Reemplaza el limitador de login por uno nuevo (con reloj falso)
+    en cada test. Cada test usa una base temporal nueva donde los ids de
+    usuario se repiten, así que un limitador compartido filtraría
+    contadores de un test a otro.
+    """
+    limitador = LimitadorIntentosLogin(reloj=reloj_falso)
+    monkeypatch.setattr(modulo_auth, "_limitador", limitador)
+    return limitador
 
 
 @pytest.fixture

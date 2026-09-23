@@ -198,3 +198,76 @@ class TestLogout:
         respuesta = solicitud("POST", "/logout", cookies={NOMBRE_COOKIE_SESION: "token-que-no-existe"})
 
         assert respuesta.status == 303
+
+
+class TestBloqueoTemporalPorIntentos:
+    """El bloqueo por fuerza bruta no debe ser visible desde HTTP: mismo
+    estado, mismo texto y sin cookie, exista o no la cuenta."""
+
+    @staticmethod
+    def _post(nombre_usuario: str, password: str):
+        return solicitud("POST", "/login", formulario={"nombre_usuario": nombre_usuario, "password": password})
+
+    @staticmethod
+    def _mensaje(html: str) -> str:
+        inicio = html.index("mensaje-error")
+        return html[inicio : inicio + 200]
+
+    def test_tras_cinco_fallos_la_password_correcta_recibe_el_mismo_error_generico(self, base_datos_temporal):
+        _crear_usuario("OWNER")
+        respuesta_normal = self._post("ana", "clave-mala")
+        for _ in range(4):
+            self._post("ana", "clave-mala")
+
+        respuesta_bloqueada = self._post("ana", "clave-correcta-123")
+
+        assert respuesta_bloqueada.status == 200
+        assert respuesta_bloqueada.header("set-cookie") is None
+        assert self._mensaje(respuesta_bloqueada.texto) == self._mensaje(respuesta_normal.texto)
+
+    def test_la_respuesta_bloqueada_es_indistinguible_de_un_usuario_inexistente(self, base_datos_temporal):
+        _crear_usuario("OWNER")
+        for _ in range(5):
+            self._post("ana", "clave-mala")
+
+        respuesta_bloqueada = self._post("ana", "clave-correcta-123")
+        respuesta_inexistente = self._post("no-existe", "clave-correcta-123")
+
+        assert respuesta_bloqueada.status == respuesta_inexistente.status == 200
+        assert respuesta_bloqueada.header("set-cookie") is None
+        assert respuesta_inexistente.header("set-cookie") is None
+        assert self._mensaje(respuesta_bloqueada.texto) == self._mensaje(respuesta_inexistente.texto)
+
+    def test_la_respuesta_no_menciona_el_bloqueo(self, base_datos_temporal):
+        _crear_usuario("OWNER")
+        for _ in range(5):
+            self._post("ana", "clave-mala")
+
+        texto = self._post("ana", "clave-correcta-123").texto.lower()
+
+        for palabra in ("bloque", "demasiados", "intentos", "esper"):
+            assert palabra not in texto
+
+    def test_no_se_crea_sesion_mientras_esta_bloqueado(self, base_datos_temporal):
+        _crear_usuario("OWNER")
+        for _ in range(5):
+            self._post("ana", "clave-mala")
+
+        self._post("ana", "clave-correcta-123")
+
+        with obtener_conexion() as conexion:
+            cantidad = conexion.execute("SELECT COUNT(*) FROM sesiones").fetchone()[0]
+        assert cantidad == 0
+
+    def test_al_expirar_el_bloqueo_el_login_correcto_redirige_y_fija_cookie(
+        self, base_datos_temporal, reloj_falso
+    ):
+        _crear_usuario("OWNER")
+        for _ in range(5):
+            self._post("ana", "clave-mala")
+        reloj_falso.avanzar(300)
+
+        respuesta = self._post("ana", "clave-correcta-123")
+
+        assert respuesta.status == 303
+        _cookie_de(respuesta, NOMBRE_COOKIE_SESION)

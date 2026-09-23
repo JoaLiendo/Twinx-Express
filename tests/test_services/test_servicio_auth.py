@@ -283,3 +283,257 @@ class TestSesionesMultiples:
 
         assert servicio_auth.obtener_usuario_de_token(sesion_1.token) is None
         assert servicio_auth.obtener_usuario_de_token(sesion_2.token) is not None
+
+
+# ---------------------------------------------------------------------------
+# Protección contra fuerza bruta (límite de intentos por usuario)
+# ---------------------------------------------------------------------------
+
+_CLAVE_OK = "clave-correcta-123"
+_CLAVE_MAL = "clave-incorrecta"
+
+
+def _crear_usuario_rapido(base_datos_temporal, **overrides):
+    """Como `_crear_usuario`, pero con pocas iteraciones en el hash real
+    del usuario para que los tests con muchos intentos no tarden."""
+    overrides.setdefault("password_hash", servicio_auth.hashear_password(_CLAVE_OK, iteraciones=1000))
+    return _crear_usuario(base_datos_temporal, **overrides)
+
+
+def _fallar(nombre_usuario: str, veces: int) -> None:
+    for _ in range(veces):
+        with pytest.raises(CredencialesInvalidasError):
+            servicio_auth.iniciar_sesion(nombre_usuario, _CLAVE_MAL)
+
+
+class TestLimiteDeIntentos:
+    def test_bajo_el_umbral_la_password_correcta_sigue_funcionando(self, base_datos_temporal):
+        _crear_usuario_rapido(base_datos_temporal)
+        _fallar("ana", 4)
+
+        assert servicio_auth.iniciar_sesion("ana", _CLAVE_OK).token
+
+    def test_tras_cinco_fallos_la_password_correcta_es_rechazada_con_el_mismo_error(
+        self, base_datos_temporal
+    ):
+        _crear_usuario_rapido(base_datos_temporal)
+        with pytest.raises(CredencialesInvalidasError) as error_normal:
+            servicio_auth.iniciar_sesion("ana", _CLAVE_MAL)
+        _fallar("ana", 4)
+
+        with pytest.raises(CredencialesInvalidasError) as error_bloqueado:
+            servicio_auth.iniciar_sesion("ana", _CLAVE_OK)
+
+        assert str(error_bloqueado.value) == str(error_normal.value)
+
+    def test_al_expirar_el_bloqueo_la_password_correcta_funciona(self, base_datos_temporal, reloj_falso):
+        _crear_usuario_rapido(base_datos_temporal)
+        _fallar("ana", 5)
+
+        reloj_falso.avanzar(300)
+
+        assert servicio_auth.iniciar_sesion("ana", _CLAVE_OK).token
+
+    def test_intentos_durante_el_bloqueo_no_lo_extienden(self, base_datos_temporal, reloj_falso):
+        _crear_usuario_rapido(base_datos_temporal)
+        _fallar("ana", 5)
+        reloj_falso.avanzar(299)
+        _fallar("ana", 3)  # rechazados por el bloqueo vigente
+
+        reloj_falso.avanzar(1)
+
+        assert servicio_auth.iniciar_sesion("ana", _CLAVE_OK).token
+
+    def test_un_login_exitoso_reinicia_el_contador(self, base_datos_temporal):
+        _crear_usuario_rapido(base_datos_temporal)
+        _fallar("ana", 4)
+        servicio_auth.iniciar_sesion("ana", _CLAVE_OK)
+
+        _fallar("ana", 4)  # si no se hubiera reiniciado, ya estaría bloqueada
+
+        assert servicio_auth.iniciar_sesion("ana", _CLAVE_OK).token
+
+    def test_el_bloqueo_de_un_usuario_no_afecta_a_otro(self, base_datos_temporal):
+        _crear_usuario_rapido(base_datos_temporal)
+        _crear_usuario_rapido(base_datos_temporal, nombre_usuario="beto", rol="CASHIER")
+        _fallar("ana", 5)
+
+        assert servicio_auth.iniciar_sesion("beto", _CLAVE_OK).token
+
+    def test_fallos_espaciados_mas_alla_de_la_ventana_no_bloquean(self, base_datos_temporal, reloj_falso):
+        _crear_usuario_rapido(base_datos_temporal)
+        _fallar("ana", 4)
+        reloj_falso.avanzar(900)
+        _fallar("ana", 4)
+
+        assert servicio_auth.iniciar_sesion("ana", _CLAVE_OK).token
+
+
+class TestNombresInexistentes:
+    def test_no_crean_estado_en_el_limitador(self, base_datos_temporal, limitador_login_aislado, monkeypatch):
+        _crear_usuario_rapido(base_datos_temporal)
+        # Sin PBKDF2 real: acá solo importa que no se cree estado.
+        monkeypatch.setattr(servicio_auth, "verificar_password", lambda *_: False)
+
+        for i in range(300):
+            with pytest.raises(CredencialesInvalidasError):
+                servicio_auth.iniciar_sesion(f"inventado-{i}", _CLAVE_MAL)
+
+        assert limitador_login_aislado._estados == {}
+
+    def test_nunca_se_bloquean(self, base_datos_temporal, monkeypatch):
+        monkeypatch.setattr(servicio_auth, "verificar_password", lambda *_: False)
+
+        for _ in range(20):
+            with pytest.raises(CredencialesInvalidasError):
+                servicio_auth.iniciar_sesion("no-existe", _CLAVE_MAL)
+
+    def test_solo_los_usuarios_existentes_ocupan_estado(self, base_datos_temporal, limitador_login_aislado):
+        usuario = _crear_usuario_rapido(base_datos_temporal)
+        _fallar("ana", 2)
+
+        assert list(limitador_login_aislado._estados) == [usuario.id]
+
+
+class TestUsuarioInactivoYLimite:
+    def test_inactivo_sigue_lanzando_usuario_inactivo_bajo_el_umbral(self, base_datos_temporal):
+        _crear_usuario_rapido(base_datos_temporal, activo=False)
+
+        with pytest.raises(UsuarioInactivoError):
+            servicio_auth.iniciar_sesion("ana", _CLAVE_OK)
+
+    def test_inactivo_tambien_se_bloquea_y_pasa_a_error_generico(self, base_datos_temporal):
+        _crear_usuario_rapido(base_datos_temporal, activo=False)
+        for _ in range(5):
+            with pytest.raises(UsuarioInactivoError):
+                servicio_auth.iniciar_sesion("ana", _CLAVE_OK)
+
+        with pytest.raises(CredencialesInvalidasError):
+            servicio_auth.iniciar_sesion("ana", _CLAVE_OK)
+
+
+class TestParidadDeCostoPbkdf2:
+    """Todo camino de rechazo hace exactamente una verificación PBKDF2,
+    para que el tiempo de respuesta no distinga los casos."""
+
+    @pytest.fixture
+    def llamadas(self, monkeypatch):
+        registradas = []
+        original = servicio_auth.verificar_password
+
+        def espia(password, password_hash):
+            registradas.append(password_hash)
+            return original(password, password_hash)
+
+        monkeypatch.setattr(servicio_auth, "verificar_password", espia)
+        return registradas
+
+    def test_usuario_inexistente_verifica_contra_el_senuelo(self, base_datos_temporal, llamadas):
+        with pytest.raises(CredencialesInvalidasError):
+            servicio_auth.iniciar_sesion("no-existe", _CLAVE_MAL)
+
+        assert llamadas == [servicio_auth._HASH_SENUELO]
+
+    def test_password_incorrecta_verifica_una_vez_contra_el_hash_real(self, base_datos_temporal, llamadas):
+        usuario = _crear_usuario_rapido(base_datos_temporal)
+
+        with pytest.raises(CredencialesInvalidasError):
+            servicio_auth.iniciar_sesion("ana", _CLAVE_MAL)
+
+        assert llamadas == [usuario.password_hash]
+
+    def test_usuario_inactivo_verifica_una_vez_contra_el_senuelo(self, base_datos_temporal, llamadas):
+        _crear_usuario_rapido(base_datos_temporal, activo=False)
+
+        with pytest.raises(UsuarioInactivoError):
+            servicio_auth.iniciar_sesion("ana", _CLAVE_OK)
+
+        assert llamadas == [servicio_auth._HASH_SENUELO]
+
+    def test_usuario_bloqueado_verifica_una_vez_contra_el_senuelo_y_no_contra_el_real(
+        self, base_datos_temporal, llamadas
+    ):
+        _crear_usuario_rapido(base_datos_temporal)
+        _fallar("ana", 5)
+        llamadas.clear()
+
+        with pytest.raises(CredencialesInvalidasError):
+            servicio_auth.iniciar_sesion("ana", _CLAVE_OK)
+
+        assert llamadas == [servicio_auth._HASH_SENUELO]
+
+
+class TestLoggingDeLogin:
+    def test_fallo_de_usuario_existente_registra_solo_el_id(self, base_datos_temporal, caplog):
+        usuario = _crear_usuario_rapido(base_datos_temporal)
+
+        with caplog.at_level("INFO"):
+            _fallar("ana", 1)
+
+        registro = next(r for r in caplog.records if "Login fallido" in r.getMessage())
+        assert registro.levelname == "WARNING"
+        assert f"usuario_id={usuario.id}" in registro.getMessage()
+        assert "1/5" in registro.getMessage()
+        assert "ana" not in registro.getMessage()
+
+    def test_el_quinto_fallo_registra_el_bloqueo(self, base_datos_temporal, caplog):
+        usuario = _crear_usuario_rapido(base_datos_temporal)
+
+        with caplog.at_level("INFO"):
+            _fallar("ana", 5)
+
+        bloqueos = [r for r in caplog.records if "bloqueado temporalmente" in r.getMessage()]
+        assert len(bloqueos) == 1
+        assert bloqueos[0].levelname == "WARNING"
+        assert f"usuario_id={usuario.id}" in bloqueos[0].getMessage()
+
+    def test_intento_durante_bloqueo_se_registra(self, base_datos_temporal, caplog):
+        usuario = _crear_usuario_rapido(base_datos_temporal)
+        _fallar("ana", 5)
+        caplog.clear()
+
+        with caplog.at_level("INFO"):
+            _fallar("ana", 1)
+
+        registro = next(r for r in caplog.records if "durante bloqueo" in r.getMessage())
+        assert registro.levelname == "WARNING"
+        assert f"usuario_id={usuario.id}" in registro.getMessage()
+
+    def test_exito_que_limpia_contador_se_registra_como_info(self, base_datos_temporal, caplog):
+        usuario = _crear_usuario_rapido(base_datos_temporal)
+        _fallar("ana", 2)
+
+        with caplog.at_level("INFO"):
+            servicio_auth.iniciar_sesion("ana", _CLAVE_OK)
+
+        registro = next(r for r in caplog.records if "contador de fallos reiniciado" in r.getMessage())
+        assert registro.levelname == "INFO"
+        assert f"usuario_id={usuario.id}" in registro.getMessage()
+        assert "2 fallos previos" in registro.getMessage()
+
+    def test_login_exitoso_sin_fallos_previos_no_registra_nada(self, base_datos_temporal, caplog):
+        _crear_usuario_rapido(base_datos_temporal)
+
+        with caplog.at_level("INFO", logger=servicio_auth.logger.name):
+            servicio_auth.iniciar_sesion("ana", _CLAVE_OK)
+
+        assert caplog.records == []
+
+    def test_usuario_inexistente_no_registra_el_nombre(self, base_datos_temporal, caplog):
+        with caplog.at_level("INFO"):
+            with pytest.raises(CredencialesInvalidasError):
+                servicio_auth.iniciar_sesion("nombre-secreto-xyz", _CLAVE_MAL)
+
+        assert any(r.levelname == "WARNING" for r in caplog.records)
+        assert "nombre-secreto-xyz" not in caplog.text
+
+    def test_ningun_log_contiene_contrasenas_hashes_ni_nombres_de_usuario(self, base_datos_temporal, caplog):
+        usuario = _crear_usuario_rapido(base_datos_temporal)
+
+        with caplog.at_level("DEBUG"):
+            _fallar("ana", 6)
+
+        assert _CLAVE_MAL not in caplog.text
+        assert _CLAVE_OK not in caplog.text
+        assert usuario.password_hash not in caplog.text
+        assert "ana" not in caplog.text

@@ -31,10 +31,20 @@ Decisiones de esta fase (documentadas también junto a cada constante):
   genérico que usaría para `CredencialesInvalidasError`, nunca con
   `str(excepcion)` tal cual, para no revelar que el usuario existe
   pero está desactivado.
+- **Fuerza bruta**: tras `UMBRAL_FALLOS` intentos fallidos consecutivos
+  sobre un usuario existente, ese usuario queda bloqueado un rato (ver
+  `services.limitador_login`). El bloqueo no es visible desde afuera:
+  se responde con el mismo error genérico y se hace igual una
+  verificación PBKDF2 (contra `_HASH_SENUELO`), de modo que ni el
+  mensaje ni el tiempo de respuesta distinguen "bloqueado" de
+  "contraseña incorrecta" o "usuario inexistente". Los nombres
+  inexistentes no crean estado. Los logs identifican al usuario solo
+  por `usuario_id`, nunca por nombre, contraseña ni hash.
 """
 
 import hashlib
 import hmac
+import logging
 import secrets
 from datetime import datetime, timedelta
 
@@ -43,6 +53,9 @@ from db.repositorios import usuarios as repositorio_usuarios
 from domain.sesion import Sesion
 from domain.usuario import Usuario
 from excepciones import CredencialesInvalidasError, DatosInvalidosError, UsuarioInactivoError
+from services.limitador_login import UMBRAL_FALLOS, LimitadorIntentosLogin
+
+logger = logging.getLogger(__name__)
 
 _ALGORITMO_HASH = "pbkdf2_sha256"
 _DIGESTO_HASHLIB = "sha256"
@@ -133,6 +146,8 @@ def verificar_password(password: str, password_hash: str) -> bool:
 # conoce: no es un secreto reutilizable en ningún sentido sensible.
 _HASH_SENUELO = hashear_password(secrets.token_urlsafe(32))
 
+_limitador = LimitadorIntentosLogin()
+
 
 def _generar_token() -> str:
     """Genera un token de sesión con entropía criptográfica suficiente.
@@ -153,10 +168,13 @@ def iniciar_sesion(
     """Autentica a un usuario y crea una nueva sesión para él.
 
     Pasos (en este orden): busca el usuario; si no existe, rechaza con
-    un error genérico; si existe pero está inactivo, rechaza con un
-    error distinto *solo para uso interno*; verifica la contraseña; si
-    es incorrecta, rechaza con el mismo error genérico que "no existe".
-    Genera un token nuevo y persiste la sesión.
+    un error genérico; consulta el limitador y, si el usuario está
+    bloqueado, rechaza con el mismo error genérico sin mirar su
+    contraseña; si está inactivo, rechaza con un error distinto *solo
+    para uso interno*; verifica la contraseña; si es incorrecta,
+    rechaza con el mismo error genérico que "no existe". Todo camino de
+    rechazo ejecuta exactamente una verificación PBKDF2. Genera un
+    token nuevo y persiste la sesión.
 
     No invalida sesiones anteriores del mismo usuario: se permiten
     varias sesiones simultáneas (ver docstring del módulo).
@@ -168,8 +186,9 @@ def iniciar_sesion(
             expiración sin depender de `time.sleep` en los tests.
 
     Raises:
-        CredencialesInvalidasError: usuario inexistente o contraseña
-            incorrecta (mismo mensaje en ambos casos).
+        CredencialesInvalidasError: usuario inexistente, usuario
+            bloqueado temporalmente o contraseña incorrecta (mismo
+            mensaje en todos los casos).
         UsuarioInactivoError: el usuario existe y la contraseña sería
             válida, pero está desactivado.
     """
@@ -177,13 +196,43 @@ def iniciar_sesion(
 
     if usuario is None:
         verificar_password(password, _HASH_SENUELO)  # mismo costo que una verificación real
+        # No se registra el nombre: podría ser una contraseña tipeada por error.
+        logger.warning("Login fallido: usuario inexistente.")
+        raise CredencialesInvalidasError(_MENSAJE_CREDENCIALES_INVALIDAS)
+
+    decision = _limitador.intentar(usuario.id)
+    if not decision.permitido:
+        verificar_password(password, _HASH_SENUELO)  # mismo costo; el resultado se ignora
+        logger.warning(
+            "Intento de login durante bloqueo temporal: usuario_id=%s, restan %s s.",
+            usuario.id,
+            decision.segundos_restantes,
+        )
         raise CredencialesInvalidasError(_MENSAJE_CREDENCIALES_INVALIDAS)
 
     if not usuario.activo:
+        verificar_password(password, _HASH_SENUELO)  # mismo costo que una verificación real
         raise UsuarioInactivoError(f"El usuario '{nombre_usuario}' está inactivo.")
 
     if not verificar_password(password, usuario.password_hash):
+        logger.warning(
+            "Login fallido: usuario_id=%s, intento %s/%s.", usuario.id, decision.intentos, UMBRAL_FALLOS
+        )
+        if decision.se_bloquea:
+            logger.warning(
+                "Usuario bloqueado temporalmente: usuario_id=%s, tras %s fallos consecutivos.",
+                usuario.id,
+                decision.intentos,
+            )
         raise CredencialesInvalidasError(_MENSAJE_CREDENCIALES_INVALIDAS)
+
+    fallos_previos = _limitador.registrar_exito(usuario.id)
+    if fallos_previos:
+        logger.info(
+            "Login exitoso: contador de fallos reiniciado, usuario_id=%s (%s fallos previos).",
+            usuario.id,
+            fallos_previos,
+        )
 
     fecha_expiracion = (datetime.now() + timedelta(seconds=duracion_segundos)).strftime(_FORMATO_FECHA)
     sesion = Sesion(token=_generar_token(), usuario_id=usuario.id, fecha_expiracion=fecha_expiracion)
