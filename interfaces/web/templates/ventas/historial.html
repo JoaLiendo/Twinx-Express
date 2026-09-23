@@ -52,6 +52,7 @@
               <th class="px-5 py-3 text-right">Total</th>
               <th class="px-5 py-3">Medio de pago</th>
               <th class="px-5 py-3">Vendedor</th>
+              <th class="px-5 py-3">Estado</th>
               <th class="px-5 py-3"><span class="sr-only">Acción</span></th>
             </tr>
           </thead>
@@ -64,6 +65,11 @@
                 <td class="px-5 py-3.5 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">${{ venta.total_centavos | dinero_ar }}</td>
                 <td class="px-5 py-3.5">{{ ui.badge(venta.tipo_pago, variantes_medio_pago.get(venta.tipo_pago, 'neutral')) }}</td>
                 <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ venta.vendedor_nombre or "—" }}</td>
+                <td class="px-5 py-3.5">
+                  {% if venta.estado == 'ANULADA' %}
+                    {{ ui.badge('ANULADA', 'alerta') }}
+                  {% endif %}
+                </td>
                 <td class="px-5 py-3.5 text-right">
                   <a href="/ventas/{{ venta.id }}" class="text-sm font-medium text-primary hover:text-primary-hover" onclick="event.stopPropagation()">Ver</a>
                 </td>

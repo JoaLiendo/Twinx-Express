@@ -15,6 +15,7 @@ import sqlite3
 
 from db.conexion import obtener_conexion
 from domain.venta import ItemVenta, LineaVenta, ProductoMasVendido, ResumenVenta, Venta, VentaConDetalle
+from excepciones import VentaYaAnuladaError
 
 
 def registrar_venta_con_detalle(
@@ -65,7 +66,7 @@ def registrar_venta_con_detalle(
         """
         INSERT INTO ventas (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id)
         VALUES (?, ?, ?, ?, ?)
-        RETURNING id, fecha, total_centavos, tipo_pago
+        RETURNING id, fecha, total_centavos, tipo_pago, estado
         """,
         (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id),
     ).fetchone()
@@ -101,6 +102,7 @@ def registrar_venta_con_detalle(
         fecha=fila_venta["fecha"],
         total_centavos=fila_venta["total_centavos"],
         tipo_pago=fila_venta["tipo_pago"],
+        estado=fila_venta["estado"],
     )
 
 
@@ -110,7 +112,25 @@ def _fila_a_venta(fila: sqlite3.Row) -> Venta:
         fecha=fila["fecha"],
         total_centavos=fila["total_centavos"],
         tipo_pago=fila["tipo_pago"],
+        estado=fila["estado"],
     )
+
+
+def obtener_por_id_en_conexion(conexion: sqlite3.Connection, venta_id: int) -> Venta | None:
+    """Busca una venta por id usando una conexión ya abierta, sin filtrar
+    por `estado` (migración 013: incluye `ANULADA`).
+
+    Pensada para componerse dentro de la transacción de
+    `services.servicio_ventas.anular_venta`, que necesita leer el
+    `estado` vigente de la venta -- incluido si ya está `ANULADA`, para
+    poder distinguir "no existe" de "ya fue anulada" -- antes de decidir
+    si continúa.
+    """
+    fila = conexion.execute(
+        "SELECT id, fecha, total_centavos, tipo_pago, estado FROM ventas WHERE id = ?",
+        (venta_id,),
+    ).fetchone()
+    return _fila_a_venta(fila) if fila is not None else None
 
 
 def obtener_por_clave_idempotencia_en_conexion(
@@ -123,9 +143,17 @@ def obtener_por_clave_idempotencia_en_conexion(
     `services.servicio_ventas.registrar_venta`: tanto el chequeo previo
     (¿ya existe?) como la lectura de recuperación tras perder una
     carrera de escritura (ver su docstring) pasan por acá.
+
+    No filtra por `estado` (migración 013): la clave de idempotencia
+    identifica un intento de cobro, no un estado de negocio -- un
+    reintento de red sobre una venta que mientras tanto fue anulada
+    tiene que seguir reconociéndose como "ya procesada", nunca chocar
+    contra el `UNIQUE` intentando insertarla de nuevo (ver auditoría de
+    diseño de anulación de ventas).
     """
     fila = conexion.execute(
-        "SELECT id, fecha, total_centavos, tipo_pago, contenido_hash FROM ventas WHERE clave_idempotencia = ?",
+        "SELECT id, fecha, total_centavos, tipo_pago, estado, contenido_hash "
+        "FROM ventas WHERE clave_idempotencia = ?",
         (clave_idempotencia,),
     ).fetchone()
     if fila is None:
@@ -177,6 +205,7 @@ def obtener_venta_con_detalle(venta_id: int) -> VentaConDetalle | None:
                    ventas.fecha AS venta_fecha,
                    ventas.total_centavos AS venta_total_centavos,
                    ventas.tipo_pago AS venta_tipo_pago,
+                   ventas.estado AS venta_estado,
                    productos.nombre AS producto_nombre,
                    detalle_venta.cantidad AS cantidad,
                    detalle_venta.precio_unitario_centavos AS precio_unitario_centavos,
@@ -199,6 +228,7 @@ def obtener_venta_con_detalle(venta_id: int) -> VentaConDetalle | None:
         fecha=primera["venta_fecha"],
         total_centavos=primera["venta_total_centavos"],
         tipo_pago=primera["venta_tipo_pago"],
+        estado=primera["venta_estado"],
     )
     lineas = [
         LineaVenta(
@@ -217,10 +247,16 @@ def listar_ventas_del_dia() -> list[Venta]:
 
     Usada por el arqueo de caja para calcular el total vendido y el
     efectivo estimado del día (ver `services.servicio_caja.calcular_arqueo_del_dia`).
+
+    Excluye `estado = 'ANULADA'` (migración 013): una venta anulada no
+    cobró nada real, así que no puede seguir sumando al efectivo
+    estimado ni al total vendido del día -- es justamente el mecanismo
+    que corrige el arqueo sin generar ningún movimiento de caja nuevo
+    (ver `services.servicio_ventas.anular_venta`).
     """
     consulta = """
-        SELECT id, fecha, total_centavos, tipo_pago FROM ventas
-        WHERE date(fecha) = date('now', 'localtime')
+        SELECT id, fecha, total_centavos, tipo_pago, estado FROM ventas
+        WHERE date(fecha) = date('now', 'localtime') AND estado = 'ACTIVA'
         ORDER BY id DESC
     """
     with obtener_conexion() as conexion:
@@ -238,8 +274,13 @@ def listar_en_rango(fecha_desde: str | None = None, fecha_hasta: str | None = No
     hora, con la función `date(...)` de SQLite -- un valor no parseable
     hace que esa condición no matchee ninguna fila (lista vacía, nunca
     un error).
+
+    Excluye `estado = 'ANULADA'` (migración 013), incondicionalmente:
+    es la fuente de los totales de `servicio_reportes.generar_reporte_ventas`
+    (facturación, ticket promedio, evolución por día/medio de pago), y
+    una venta anulada no facturó nada real.
     """
-    condiciones = []
+    condiciones = ["estado = 'ACTIVA'"]
     parametros: list[object] = []
     if fecha_desde is not None:
         condiciones.append("date(fecha) >= date(?)")
@@ -248,8 +289,8 @@ def listar_en_rango(fecha_desde: str | None = None, fecha_hasta: str | None = No
         condiciones.append("date(fecha) <= date(?)")
         parametros.append(fecha_hasta)
 
-    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
-    consulta = f"SELECT id, fecha, total_centavos, tipo_pago FROM ventas {where} ORDER BY id DESC"
+    where = f"WHERE {' AND '.join(condiciones)}"
+    consulta = f"SELECT id, fecha, total_centavos, tipo_pago, estado FROM ventas {where} ORDER BY id DESC"
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta, parametros).fetchall()
     return [_fila_a_venta(fila) for fila in filas]
@@ -279,8 +320,12 @@ def listar_productos_mas_vendidos_en_rango(
     línea sin costo conocido no aporta nada a `costo_total_centavos` ni
     a la facturación usada para calcular el margen de ese producto (ver
     `domain.venta.ProductoMasVendido`).
+
+    Excluye `v.estado = 'ANULADA'` (migración 013), incondicionalmente:
+    las unidades de una venta anulada volvieron al stock, contarlas acá
+    inflaría el ranking con algo que ya no pasó.
     """
-    condiciones = []
+    condiciones = ["v.estado = 'ACTIVA'"]
     parametros: list[object] = []
     if fecha_desde is not None:
         condiciones.append("date(v.fecha) >= date(?)")
@@ -289,7 +334,7 @@ def listar_productos_mas_vendidos_en_rango(
         condiciones.append("date(v.fecha) <= date(?)")
         parametros.append(fecha_hasta)
 
-    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    where = f"WHERE {' AND '.join(condiciones)}"
     consulta = f"""
         SELECT
             p.id AS producto_id,
@@ -357,8 +402,11 @@ def calcular_rentabilidad_en_rango(
     Nunca trata una línea con costo `NULL` como costo `0`: esa línea no
     suma ni al costo ni a la facturación de este cálculo, en vez de
     inflar la facturación "gratis" o inventar un costo.
+
+    Excluye `v.estado = 'ANULADA'` (migración 013), incondicionalmente:
+    no hubo margen real sobre una venta que se deshizo.
     """
-    condiciones = []
+    condiciones = ["v.estado = 'ACTIVA'"]
     parametros: list[object] = []
     if fecha_desde is not None:
         condiciones.append("date(v.fecha) >= date(?)")
@@ -367,7 +415,7 @@ def calcular_rentabilidad_en_rango(
         condiciones.append("date(v.fecha) <= date(?)")
         parametros.append(fecha_hasta)
 
-    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    where = f"WHERE {' AND '.join(condiciones)}"
     consulta = f"""
         SELECT
             SUM(CASE WHEN dv.costo_unitario_centavos IS NOT NULL
@@ -408,8 +456,11 @@ def listar_ventas_por_usuario_en_rango(
     haber vendido sigue apareciendo con su historial completo -- nunca
     se borra un usuario físicamente (ver `db.repositorios.usuarios`), y
     las ventas ya ocurrieron con independencia de su estado actual.
+
+    Excluye `v.estado = 'ANULADA'` (migración 013), incondicionalmente:
+    no se le puede atribuir a un vendedor una venta que no se concretó.
     """
-    condiciones = []
+    condiciones = ["v.estado = 'ACTIVA'"]
     parametros: list[object] = []
     if fecha_desde is not None:
         condiciones.append("date(v.fecha) >= date(?)")
@@ -418,7 +469,7 @@ def listar_ventas_por_usuario_en_rango(
         condiciones.append("date(v.fecha) <= date(?)")
         parametros.append(fecha_hasta)
 
-    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    where = f"WHERE {' AND '.join(condiciones)}"
     consulta = f"""
         SELECT
             u.id AS usuario_id,
@@ -446,6 +497,11 @@ def listar_ventas_por_usuario_en_rango(
     ]
 
 
+# `u` resuelve el vendedor (`ventas.usuario_id`); `u2` resuelve quién
+# anuló (`ventas.anulada_por_usuario_id`, migración 013) -- dos alias
+# distintas del mismo `LEFT JOIN usuarios`, cada una nullable por un
+# motivo propio: `u` porque el CLI no autentica a nadie, `u2` porque la
+# mayoría de las ventas nunca se anula.
 _CONSULTA_RESUMEN_VENTA_BASE = """
     SELECT
         v.id AS id,
@@ -453,9 +509,15 @@ _CONSULTA_RESUMEN_VENTA_BASE = """
         v.total_centavos AS total_centavos,
         v.tipo_pago AS tipo_pago,
         u.nombre_completo AS vendedor_nombre,
-        COUNT(dv.id) AS cantidad_lineas
+        COUNT(dv.id) AS cantidad_lineas,
+        v.estado AS estado,
+        v.motivo_anulacion AS motivo_anulacion,
+        v.observaciones_anulacion AS observaciones_anulacion,
+        u2.nombre_completo AS anulado_por_nombre,
+        v.fecha_anulacion AS fecha_anulacion
     FROM ventas v
     LEFT JOIN usuarios u ON u.id = v.usuario_id
+    LEFT JOIN usuarios u2 ON u2.id = v.anulada_por_usuario_id
     LEFT JOIN detalle_venta dv ON dv.venta_id = v.id
 """
 
@@ -468,6 +530,11 @@ def _fila_a_resumen_venta(fila: sqlite3.Row) -> ResumenVenta:
         tipo_pago=fila["tipo_pago"],
         vendedor_nombre=fila["vendedor_nombre"],
         cantidad_lineas=fila["cantidad_lineas"],
+        estado=fila["estado"],
+        motivo_anulacion=fila["motivo_anulacion"],
+        observaciones_anulacion=fila["observaciones_anulacion"],
+        anulado_por_nombre=fila["anulado_por_nombre"],
+        fecha_anulacion=fila["fecha_anulacion"],
     )
 
 
@@ -491,6 +558,11 @@ def listar_resumen(
     Los tres filtros son opcionales y se combinan con `AND`, mismo
     criterio que el resto del repositorio: `fecha_desde`/`fecha_hasta`
     son texto "YYYY-MM-DD" comparado solo por fecha con `date(...)`.
+
+    No filtra por `estado` (migración 013): a diferencia de las
+    consultas analíticas de Reportes, el Historial es una herramienta
+    de auditoría -- debe poder seguir encontrando una venta `ANULADA`,
+    nunca ocultarla.
     """
     condiciones = []
     parametros: list[object] = []
@@ -518,8 +590,74 @@ def obtener_resumen_por_id(venta_id: int) -> ResumenVenta | None:
     No reemplaza a `obtener_venta_con_detalle` (que sigue siendo la
     fuente de las líneas, sin ningún cambio): esta función solo resuelve
     la cabecera con vendedor y cantidad de líneas.
+
+    No filtra por `estado` (migración 013), mismo motivo que
+    `listar_resumen`: si el Historial la lista, el Detalle tiene que
+    poder abrirla, anulada o no.
     """
     consulta = f"{_CONSULTA_RESUMEN_VENTA_BASE} WHERE v.id = ? GROUP BY v.id"
     with obtener_conexion() as conexion:
         fila = conexion.execute(consulta, (venta_id,)).fetchone()
     return _fila_a_resumen_venta(fila) if fila is not None else None
+
+
+def listar_items_en_conexion(conexion: sqlite3.Connection, venta_id: int) -> list[ItemVenta]:
+    """Líneas de `detalle_venta` de una venta como `ItemVenta` (producto_id
+    + cantidad), usando una conexión ya abierta.
+
+    Pensada para `services.servicio_ventas.anular_venta`: es lo mínimo
+    que hace falta para restaurar stock línea por línea, sin la carga
+    extra de resolver nombre/precio/costo que sí trae
+    `obtener_venta_con_detalle` (pensada para mostrar, no para operar
+    sobre stock). No filtra por `estado` de la venta -- quien llama ya
+    validó que la venta existe antes de pedir su detalle.
+    """
+    filas = conexion.execute(
+        "SELECT producto_id, cantidad FROM detalle_venta WHERE venta_id = ? ORDER BY id",
+        (venta_id,),
+    ).fetchall()
+    return [ItemVenta(producto_id=fila["producto_id"], cantidad=fila["cantidad"]) for fila in filas]
+
+
+def anular_venta_en_conexion(
+    conexion: sqlite3.Connection,
+    venta_id: int,
+    motivo: str,
+    observaciones: str | None,
+    usuario_id: int,
+) -> Venta:
+    """Transiciona una venta `ACTIVA` a `ANULADA` dentro de la conexión
+    recibida, con su auditoría (motivo, observaciones, quién y cuándo).
+
+    `WHERE id = ? AND estado = 'ACTIVA'` es la garantía real contra dos
+    anulaciones concurrentes de la misma venta -- mismo rol que cumple
+    el `UNIQUE` de `ventas.clave_idempotencia` en `registrar_venta`: si
+    dos transacciones llegaran a interlacear (no debería pasar dentro de
+    un mismo `BEGIN IMMEDIATE`, pero esta condición no depende de eso
+    para ser correcta), la segunda en comprometer no afecta ninguna
+    fila. `services.servicio_ventas.anular_venta` es quien decide qué
+    hacer si `rowcount` da `0` (levanta `VentaYaAnuladaError`) -- acá
+    solo se protege la escritura.
+
+    No hace *commit* ni *rollback*: eso lo controla el
+    `with obtener_conexion(inmediata=True)` de quien invoca esta
+    función, para que la restauración de stock y esta transición de
+    estado queden en la misma transacción atómica (ver
+    `services.servicio_ventas.anular_venta`).
+    """
+    fila = conexion.execute(
+        """
+        UPDATE ventas
+        SET estado = 'ANULADA',
+            motivo_anulacion = ?,
+            observaciones_anulacion = ?,
+            anulada_por_usuario_id = ?,
+            fecha_anulacion = datetime('now', 'localtime')
+        WHERE id = ? AND estado = 'ACTIVA'
+        RETURNING id, fecha, total_centavos, tipo_pago, estado
+        """,
+        (motivo, observaciones, usuario_id, venta_id),
+    ).fetchone()
+    if fila is None:
+        raise VentaYaAnuladaError(f"La venta {venta_id} ya fue anulada anteriormente.")
+    return _fila_a_venta(fila)

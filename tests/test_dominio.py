@@ -9,7 +9,7 @@ import pytest
 from domain.ajuste_stock import MOTIVOS_AJUSTE_VALIDOS, AjusteStock
 from domain.caja import MovimientoCaja, clasificar_diferencia
 from domain.producto import Producto
-from domain.venta import ItemVenta, calcular_hash_contenido
+from domain.venta import MOTIVOS_ANULACION_VALIDOS, ItemVenta, calcular_hash_contenido, validar_motivo_anulacion
 from excepciones import DatosInvalidosError
 
 
@@ -263,7 +263,32 @@ class TestAjusteStock:
         with pytest.raises(DatosInvalidosError):
             self._ajuste(motivo="OTRO", observaciones="   ")
 
-    @pytest.mark.parametrize("motivo", ["MERMA", "ROTURA", "VENCIMIENTO", "PERDIDA", "ROBO", "RECUENTO"])
-    def test_otros_motivos_no_requieren_observaciones(self, motivo):
-        ajuste = self._ajuste(motivo=motivo, observaciones=None)
-        assert ajuste.observaciones is None
+
+class TestValidarMotivoAnulacion:
+    """Anulación de ventas: mismo criterio que `TestAjusteStock` de
+    arriba (motivo cerrado, `OTRO` exige observación) -- acá como
+    función libre, no como `__post_init__` de un dataclass, porque
+    anular no crea una entidad nueva (ver `domain.venta.Venta.estado`)."""
+
+    @pytest.mark.parametrize("motivo", sorted(MOTIVOS_ANULACION_VALIDOS))
+    def test_acepta_todos_los_motivos_validos(self, motivo):
+        observaciones = "justificación" if motivo == "OTRO" else None
+        validar_motivo_anulacion(motivo, observaciones)  # no debe lanzar
+
+    def test_rechaza_motivo_invalido(self):
+        with pytest.raises(DatosInvalidosError):
+            validar_motivo_anulacion("PORQUE_SI", None)
+
+    def test_otro_sin_observaciones_es_rechazado(self):
+        with pytest.raises(DatosInvalidosError):
+            validar_motivo_anulacion("OTRO", None)
+
+    def test_otro_con_observaciones_solo_espacios_es_rechazado(self):
+        with pytest.raises(DatosInvalidosError):
+            validar_motivo_anulacion("OTRO", "   ")
+
+    def test_otro_con_observaciones_es_aceptado(self):
+        validar_motivo_anulacion("OTRO", "se equivocó de producto")  # no debe lanzar
+
+    def test_motivo_distinto_de_otro_no_exige_observaciones(self):
+        validar_motivo_anulacion("ERROR_CARGA", None)  # no debe lanzar

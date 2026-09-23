@@ -144,3 +144,23 @@ class ErrorRestore(ErrorAplicacion):
     mostrarse tal cual al usuario final: nunca se ejecuta ninguna
     modificación sobre la instalación real antes de que todas las
     validaciones representadas por esta excepción hayan pasado."""
+
+
+class VentaNoEncontradaError(ErrorAplicacion):
+    """No existe una venta con el id solicitado (ver
+    `services.servicio_ventas.anular_venta`)."""
+
+
+class VentaYaAnuladaError(ErrorAplicacion):
+    """La venta ya fue anulada anteriormente: no se puede anular dos veces."""
+
+
+class VentaDeCajaCerradaError(ErrorAplicacion):
+    """La venta no pertenece a la sesión de caja actualmente abierta (o
+    no hay ninguna caja abierta ahora mismo).
+
+    Anularla implicaría modificar un cierre de caja ya congelado
+    (`caja_movimientos` de tipo CIERRE) o inventar una reversión sobre
+    una caja que ni siquiera está abierta -- ninguna de las dos está
+    en el alcance de este MVP (ver auditoría de diseño de anulación de
+    ventas)."""

@@ -65,6 +65,16 @@
       margin-top: 4px;
       font-size: 12px;
     }
+    .anulada {
+      margin: 0 0 8px;
+      padding: 6px;
+      text-align: center;
+      font-weight: bold;
+      font-size: 13px;
+      letter-spacing: 0.05em;
+      color: #b91c1c;
+      border: 2px dashed #b91c1c;
+    }
     .acciones {
       max-width: 80mm;
       margin: 12px auto 0;
@@ -92,6 +102,9 @@
 </head>
 <body>
   <div class="ticket">
+    {% if venta.estado == 'ANULADA' %}
+      <p class="anulada">VENTA ANULADA</p>
+    {% endif %}
     <div class="encabezado">
       <p><strong>Kiosco</strong></p>
       <p>Ticket #{{ venta.id }}</p>

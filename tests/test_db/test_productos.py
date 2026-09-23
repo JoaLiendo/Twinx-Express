@@ -28,3 +28,47 @@ def test_actualizar_costo_en_conexion_de_producto_inexistente_falla(base_datos_t
     with obtener_conexion() as conexion:
         with pytest.raises(ProductoNoEncontradoError):
             repositorio_productos.actualizar_costo_en_conexion(conexion, 9999, 150)
+
+
+class TestObtenerPorIdEnConexionIncluyendoInactivos:
+    """Migración 013 (anulación de ventas): restaurar stock no puede
+    depender de que el producto siga activo en el catálogo."""
+
+    def test_encuentra_un_producto_activo(self, base_datos_temporal):
+        producto = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000001", nombre="Alfajor", precio_costo_centavos=100, precio_venta_centavos=200)
+        )
+        with obtener_conexion() as conexion:
+            encontrado = repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos(conexion, producto.id)
+        assert encontrado is not None
+        assert encontrado.id == producto.id
+
+    def test_encuentra_un_producto_inactivo(self, base_datos_temporal):
+        producto = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000001", nombre="Alfajor", precio_costo_centavos=100, precio_venta_centavos=200)
+        )
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE productos SET activo = 0 WHERE id = ?", (producto.id,))
+
+        with obtener_conexion() as conexion:
+            encontrado = repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos(conexion, producto.id)
+
+        assert encontrado is not None
+        assert encontrado.activo is False
+
+    def test_inexistente_devuelve_none(self, base_datos_temporal):
+        with obtener_conexion() as conexion:
+            assert repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos(conexion, 9999) is None
+
+    def test_obtener_por_id_en_conexion_normal_no_cambio_de_comportamiento(self, base_datos_temporal):
+        """`obtener_por_id_en_conexion` (sin `_incluyendo_inactivos`)
+        sigue exigiendo `activo = 1`, sin ningún cambio -- ver auditoría
+        de diseño de anulación de ventas."""
+        producto = repositorio_productos.crear_producto(
+            Producto(codigo_barras="7790000000001", nombre="Alfajor", precio_costo_centavos=100, precio_venta_centavos=200)
+        )
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE productos SET activo = 0 WHERE id = ?", (producto.id,))
+
+        with obtener_conexion() as conexion:
+            assert repositorio_productos.obtener_por_id_en_conexion(conexion, producto.id) is None

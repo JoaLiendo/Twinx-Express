@@ -16,7 +16,7 @@ from db.repositorios import ventas as repositorio_ventas
 from domain.producto import Producto
 from domain.usuario import Usuario
 from domain.venta import ItemVenta
-from excepciones import ErrorBaseDatos
+from excepciones import ErrorBaseDatos, VentaYaAnuladaError
 
 
 def _crear_producto(codigo="7790000000001"):
@@ -921,3 +921,236 @@ class TestHistorialDeVentas:
 
     def test_obtener_resumen_por_id_inexistente(self, base_datos_temporal):
         assert repositorio_ventas.obtener_resumen_por_id(9999) is None
+
+
+def _crear_venta_activa(producto_id=None, cantidad=1, precio_unitario=200):
+    """Venta ACTIVA (estado por defecto de la migración 013), a nivel
+    repositorio -- misma abstracción que el resto de este archivo."""
+    if producto_id is None:
+        producto_id = _crear_producto(codigo=f"779{secrets.token_hex(5)}").id
+    with obtener_conexion() as conexion:
+        return repositorio_ventas.registrar_venta_con_detalle(
+            conexion, precio_unitario * cantidad, "EFECTIVO", [(ItemVenta(producto_id, cantidad), precio_unitario)]
+        )
+
+
+class TestAnulacionDeVentas:
+    """Migración 013: `estado`/auditoría de anulación en `ventas`, y las
+    funciones de repositorio que sostienen `services.servicio_ventas.anular_venta`."""
+
+    def test_migracion_013_agrega_las_columnas_nuevas(self, base_datos_temporal):
+        with obtener_conexion() as conexion:
+            columnas = {fila["name"] for fila in conexion.execute("PRAGMA table_info(ventas)").fetchall()}
+        assert {
+            "estado", "motivo_anulacion", "observaciones_anulacion", "anulada_por_usuario_id", "fecha_anulacion"
+        }.issubset(columnas)
+
+    def test_venta_nueva_queda_activa_por_defecto(self, base_datos_temporal):
+        venta = _crear_venta_activa()
+        assert venta.estado == "ACTIVA"
+
+    def test_obtener_por_id_en_conexion_existente(self, base_datos_temporal):
+        venta = _crear_venta_activa()
+        with obtener_conexion() as conexion:
+            encontrada = repositorio_ventas.obtener_por_id_en_conexion(conexion, venta.id)
+        assert encontrada is not None
+        assert encontrada.id == venta.id
+        assert encontrada.estado == "ACTIVA"
+
+    def test_obtener_por_id_en_conexion_inexistente(self, base_datos_temporal):
+        with obtener_conexion() as conexion:
+            assert repositorio_ventas.obtener_por_id_en_conexion(conexion, 9999) is None
+
+    def test_listar_items_en_conexion_agrega_producto_repetido(self, base_datos_temporal):
+        producto = _crear_producto()
+        with obtener_conexion() as conexion:
+            venta = repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 600, "EFECTIVO", [(ItemVenta(producto.id, 2), 200), (ItemVenta(producto.id, 1), 200)]
+            )
+        with obtener_conexion() as conexion:
+            items = repositorio_ventas.listar_items_en_conexion(conexion, venta.id)
+        # Dos líneas separadas en detalle_venta (mismo criterio que
+        # `registrar_venta`), no una sola fusionada -- quien restaura
+        # stock es responsable de agregarlas.
+        assert len(items) == 2
+        assert sum(item.cantidad for item in items if item.producto_id == producto.id) == 3
+
+    def test_anular_venta_en_conexion_transiciona_el_estado_y_persiste_auditoria(self, base_datos_temporal):
+        venta = _crear_venta_activa()
+        usuario = _crear_usuario()
+
+        with obtener_conexion() as conexion:
+            anulada = repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="ERROR_CARGA", observaciones="doble escaneo", usuario_id=usuario.id
+            )
+        assert anulada.estado == "ANULADA"
+
+        with obtener_conexion() as conexion:
+            fila = conexion.execute(
+                "SELECT estado, motivo_anulacion, observaciones_anulacion, anulada_por_usuario_id, fecha_anulacion "
+                "FROM ventas WHERE id = ?",
+                (venta.id,),
+            ).fetchone()
+        assert fila["estado"] == "ANULADA"
+        assert fila["motivo_anulacion"] == "ERROR_CARGA"
+        assert fila["observaciones_anulacion"] == "doble escaneo"
+        assert fila["anulada_por_usuario_id"] == usuario.id
+        assert fila["fecha_anulacion"] is not None
+
+    def test_anular_venta_en_conexion_sobre_venta_ya_anulada_falla(self, base_datos_temporal):
+        venta = _crear_venta_activa()
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        with pytest.raises(VentaYaAnuladaError):
+            with obtener_conexion() as conexion:
+                repositorio_ventas.anular_venta_en_conexion(
+                    conexion, venta.id, motivo="OTRO", observaciones="segundo intento", usuario_id=usuario.id
+                )
+
+        # La segunda anulación no pisó la auditoría de la primera.
+        with obtener_conexion() as conexion:
+            fila = conexion.execute("SELECT motivo_anulacion FROM ventas WHERE id = ?", (venta.id,)).fetchone()
+        assert fila["motivo_anulacion"] == "ERROR_CARGA"
+
+    def test_anular_venta_en_conexion_sobre_venta_inexistente_falla(self, base_datos_temporal):
+        usuario = _crear_usuario()
+        with pytest.raises(VentaYaAnuladaError):
+            with obtener_conexion() as conexion:
+                repositorio_ventas.anular_venta_en_conexion(
+                    conexion, 9999, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+                )
+
+    def test_listar_ventas_del_dia_excluye_anulada(self, base_datos_temporal):
+        venta = _crear_venta_activa()
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        assert repositorio_ventas.listar_ventas_del_dia() == []
+
+    def test_listar_en_rango_excluye_anulada(self, base_datos_temporal):
+        venta = _crear_venta_activa()
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        assert repositorio_ventas.listar_en_rango() == []
+
+    def test_listar_productos_mas_vendidos_en_rango_excluye_anulada(self, base_datos_temporal):
+        producto = _crear_producto()
+        venta = _crear_venta_activa(producto.id)
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        assert repositorio_ventas.listar_productos_mas_vendidos_en_rango() == []
+
+    def test_calcular_rentabilidad_en_rango_excluye_anulada(self, base_datos_temporal):
+        producto = _crear_producto()
+        venta = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        assert repositorio_ventas.calcular_rentabilidad_en_rango() == (0, 0, 0)
+
+    def test_listar_ventas_por_usuario_en_rango_excluye_anulada(self, base_datos_temporal):
+        producto = _crear_producto()
+        vendedor = _crear_usuario(nombre_usuario="cajera1")
+        venta = _registrar_venta_con_costo(
+            producto.id, 1, precio_unitario=200, costo_unitario=100, usuario_id=vendedor.id
+        )
+        anulador = _crear_usuario(nombre_usuario="duenio", rol="OWNER")
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=anulador.id
+            )
+
+        assert repositorio_ventas.listar_ventas_por_usuario_en_rango() == []
+
+    def test_listar_resumen_incluye_anulada(self, base_datos_temporal):
+        venta = _crear_venta_activa()
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="ARREPENTIMIENTO_CLIENTE", observaciones=None, usuario_id=usuario.id
+            )
+
+        resultado = repositorio_ventas.listar_resumen()
+
+        assert len(resultado) == 1
+        assert resultado[0].estado == "ANULADA"
+        assert resultado[0].motivo_anulacion == "ARREPENTIMIENTO_CLIENTE"
+        assert resultado[0].anulado_por_nombre == "Test"
+        assert resultado[0].fecha_anulacion is not None
+
+    def test_obtener_resumen_por_id_incluye_anulada(self, base_datos_temporal):
+        venta = _crear_venta_activa()
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="PRODUCTO_INCORRECTO", observaciones=None, usuario_id=usuario.id
+            )
+
+        resultado = repositorio_ventas.obtener_resumen_por_id(venta.id)
+
+        assert resultado is not None
+        assert resultado.estado == "ANULADA"
+        assert resultado.motivo_anulacion == "PRODUCTO_INCORRECTO"
+
+    def test_venta_activa_no_tiene_datos_de_anulacion(self, base_datos_temporal):
+        _crear_venta_activa()
+
+        resultado = repositorio_ventas.listar_resumen()[0]
+
+        assert resultado.estado == "ACTIVA"
+        assert resultado.motivo_anulacion is None
+        assert resultado.observaciones_anulacion is None
+        assert resultado.anulado_por_nombre is None
+        assert resultado.fecha_anulacion is None
+
+    def test_obtener_por_clave_idempotencia_incluye_anulada(self, base_datos_temporal):
+        producto = _crear_producto()
+        with obtener_conexion() as conexion:
+            venta = repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)],
+                clave_idempotencia="clave-anulable", contenido_hash="hash-anulable",
+            )
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        resultado = repositorio_ventas.obtener_por_clave_idempotencia("clave-anulable")
+
+        assert resultado is not None
+        venta_encontrada, _ = resultado
+        assert venta_encontrada.id == venta.id
+        assert venta_encontrada.estado == "ANULADA"
+
+    def test_obtener_venta_con_detalle_incluye_anulada(self, base_datos_temporal):
+        venta = _crear_venta_activa()
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        resultado = repositorio_ventas.obtener_venta_con_detalle(venta.id)
+
+        assert resultado is not None
+        assert resultado.venta.estado == "ANULADA"
+        assert len(resultado.lineas) == 1

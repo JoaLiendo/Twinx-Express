@@ -211,3 +211,53 @@ class TestDiferenciaDeCierre:
 
         assert len(movimientos) == 1
         assert movimientos[0].diferencia_centavos == -300
+
+
+class TestObtenerFechaUltimaAperturaEnConexion:
+    """Migración 013 (anulación de ventas): reconstruye la sesión de caja
+    vigente sin ninguna relación `caja_id` en `ventas` -- solo con
+    `caja_movimientos.tipo`/`fecha`/`id`, tal como ya existen."""
+
+    def test_sin_ningun_movimiento_devuelve_none(self, base_datos_temporal):
+        with obtener_conexion() as conexion:
+            assert repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion) is None
+
+    def test_con_caja_abierta_devuelve_la_fecha_de_la_apertura(self, base_datos_temporal):
+        apertura = repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=100000))
+
+        with obtener_conexion() as conexion:
+            fecha = repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion)
+
+        assert fecha == apertura.fecha
+
+    def test_con_caja_cerrada_devuelve_none(self, base_datos_temporal):
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=100000))
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=0))
+
+        with obtener_conexion() as conexion:
+            assert repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion) is None
+
+    def test_ingresos_y_egresos_no_ocultan_la_apertura_vigente(self, base_datos_temporal):
+        """La APERTURA sigue siendo el inicio de la sesión aunque haya
+        movimientos manuales después -- solo un CIERRE la cierra."""
+        apertura = repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=100000))
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="INGRESO", monto_centavos=5000, descripcion="x"))
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="EGRESO", monto_centavos=2000, descripcion="y"))
+
+        with obtener_conexion() as conexion:
+            fecha = repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion)
+
+        assert fecha == apertura.fecha
+
+    def test_reapertura_despues_de_un_cierre_devuelve_la_nueva_apertura(self, base_datos_temporal):
+        """Caso obligatorio de la auditoría de diseño: 10:00 venta / 18:00
+        cierre / 20:00 apertura -- la sesión vigente es la de las 20:00,
+        no la de las 10:00."""
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=100000))
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=0))
+        segunda_apertura = repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=50000))
+
+        with obtener_conexion() as conexion:
+            fecha = repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion)
+
+        assert fecha == segunda_apertura.fecha

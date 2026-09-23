@@ -19,6 +19,7 @@ import sqlite3
 from datetime import date, timedelta
 
 from db.conexion import obtener_conexion
+from db.repositorios import caja as repositorio_caja
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import ventas as repositorio_ventas
 from domain.producto import Producto
@@ -29,6 +30,7 @@ from domain.venta import (
     Venta,
     VentaConDetalle,
     calcular_hash_contenido,
+    validar_motivo_anulacion,
 )
 from excepciones import (
     ClaveIdempotenciaReutilizadaError,
@@ -36,6 +38,9 @@ from excepciones import (
     ErrorBaseDatos,
     ProductoNoEncontradoError,
     StockInsuficienteError,
+    VentaDeCajaCerradaError,
+    VentaNoEncontradaError,
+    VentaYaAnuladaError,
 )
 
 logger = logging.getLogger(__name__)
@@ -253,3 +258,87 @@ def obtener_resumen_por_id(venta_id: int) -> ResumenVenta | None:
     `obtener_venta_con_detalle`).
     """
     return repositorio_ventas.obtener_resumen_por_id(venta_id)
+
+
+def anular_venta(
+    venta_id: int,
+    motivo: str,
+    observaciones: str | None,
+    usuario_id: int,
+) -> Venta:
+    """Anula una venta `ACTIVA`: restaura el stock de cada línea y marca
+    la venta como `ANULADA` con su auditoría, todo en una única
+    transacción (ver auditoría de diseño de anulación de ventas).
+
+    Es exclusivamente una corrección de registro + stock -- **no** hay
+    reembolso financiero modelado ni se genera ningún movimiento de
+    caja: `EFECTIVO` del día se corrige solo porque
+    `db.repositorios.ventas.listar_ventas_del_dia` excluye `ANULADA`
+    (ver `services.servicio_caja.calcular_arqueo_del_dia`);
+    `TARJETA`/`TRANSFERENCIA`/`OTRO` nunca movieron caja, así que
+    anularlas tampoco la toca.
+
+    Solo se puede anular una venta `ACTIVA` que pertenezca a la sesión
+    de caja actualmente abierta -- `venta.fecha >= fecha_apertura_vigente`,
+    con `fecha_apertura_vigente` resuelta dentro de esta misma
+    transacción (`repositorio_caja.obtener_fecha_ultima_apertura_en_conexion`).
+    El modelo no tiene `caja_id` en `ventas`; esta es la regla mínima
+    verificable con los datos existentes. Una venta de una sesión ya
+    cerrada, o sin ninguna caja abierta ahora mismo, se rechaza: el MVP
+    no modifica cierres históricos.
+
+    Raises:
+        DatosInvalidosError: si `motivo`/`observaciones` son inválidos
+            (ver `domain.venta.validar_motivo_anulacion`).
+        VentaNoEncontradaError: si no existe una venta con ese id.
+        VentaYaAnuladaError: si la venta ya estaba `ANULADA`.
+        VentaDeCajaCerradaError: si no hay caja abierta, o la venta
+            pertenece a una sesión ya cerrada.
+        ProductoNoEncontradoError: si algún `producto_id` de la venta no
+            existe (no debería poder pasar: `detalle_venta.producto_id`
+            es `ON DELETE RESTRICT`).
+    """
+    validar_motivo_anulacion(motivo, observaciones)
+
+    with obtener_conexion(inmediata=True) as conexion:
+        venta = repositorio_ventas.obtener_por_id_en_conexion(conexion, venta_id)
+        if venta is None:
+            raise VentaNoEncontradaError(f"No existe una venta con id {venta_id}.")
+        if venta.estado != "ACTIVA":
+            raise VentaYaAnuladaError(f"La venta {venta_id} ya fue anulada anteriormente.")
+
+        fecha_apertura_vigente = repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion)
+        if fecha_apertura_vigente is None:
+            raise VentaDeCajaCerradaError(
+                "No hay ninguna caja abierta en este momento: no se puede anular la venta."
+            )
+        if venta.fecha < fecha_apertura_vigente:
+            raise VentaDeCajaCerradaError(
+                f"La venta {venta_id} pertenece a una sesión de caja ya cerrada: "
+                "anularla implicaría modificar un cierre histórico, fuera de alcance."
+            )
+
+        items = repositorio_ventas.listar_items_en_conexion(conexion, venta_id)
+        cantidad_por_producto: dict[int, int] = {}
+        for item in items:
+            cantidad_por_producto[item.producto_id] = (
+                cantidad_por_producto.get(item.producto_id, 0) + item.cantidad
+            )
+
+        for producto_id, cantidad in cantidad_por_producto.items():
+            producto = repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos(
+                conexion, producto_id
+            )
+            if producto is None:
+                raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
+            producto.actualizar_stock(producto.stock_actual + cantidad)
+            repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
+
+        venta_anulada = repositorio_ventas.anular_venta_en_conexion(
+            conexion, venta_id, motivo=motivo, observaciones=observaciones, usuario_id=usuario_id
+        )
+
+    logger.info(
+        "Venta anulada: id=%s motivo=%s usuario_id=%s", venta_id, motivo, usuario_id
+    )
+    return venta_anulada

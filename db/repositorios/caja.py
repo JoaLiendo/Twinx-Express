@@ -96,3 +96,35 @@ def obtener_ultimo_movimiento() -> MovimientoCaja | None:
     with obtener_conexion() as conexion:
         fila = conexion.execute(consulta).fetchone()
     return _fila_a_movimiento(fila) if fila is not None else None
+
+
+def obtener_fecha_ultima_apertura_en_conexion(conexion: sqlite3.Connection) -> str | None:
+    """Fecha de la APERTURA que inicia la sesión de caja actualmente
+    vigente, o `None` si no hay ninguna caja abierta en este momento.
+
+    El modelo no tiene (ni necesita) una relación `caja_id` en `ventas`:
+    esta consulta reconstruye la sesión vigente solo con lo que ya
+    existe en `caja_movimientos`. `services.servicio_caja.abrir_caja`
+    nunca permite dos APERTURA consecutivas sin un CIERRE entre medio
+    (rechaza abrir una caja ya abierta), así que mientras el último
+    movimiento no sea un CIERRE, la APERTURA más reciente es, sin
+    ambigüedad, el inicio de esa sesión.
+
+    Pensada para componerse dentro de la transacción de
+    `services.servicio_ventas.anular_venta` (ver `db.repositorios.ventas`),
+    con la misma conexión que ya restaura stock y marca la venta como
+    ANULADA -- nunca abre una conexión propia, para no romper la
+    atomicidad de esa operación.
+    """
+    ultimo = conexion.execute(f"SELECT {_COLUMNAS} FROM caja_movimientos ORDER BY id DESC LIMIT 1").fetchone()
+    if ultimo is None or ultimo["tipo"] == "CIERRE":
+        return None
+    if ultimo["tipo"] == "APERTURA":
+        return ultimo["fecha"]
+    # INGRESO/EGRESO: la caja sigue abierta, pero la APERTURA vigente es
+    # una fila anterior -- no puede haber más de una entre el último
+    # CIERRE (si existe) y ahora.
+    apertura = conexion.execute(
+        "SELECT fecha FROM caja_movimientos WHERE tipo = 'APERTURA' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return apertura["fecha"] if apertura is not None else None

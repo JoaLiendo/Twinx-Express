@@ -93,6 +93,26 @@ def obtener_por_id_en_conexion(conexion: sqlite3.Connection, producto_id: int) -
     return _fila_a_producto(fila) if fila is not None else None
 
 
+def obtener_por_id_en_conexion_incluyendo_inactivos(
+    conexion: sqlite3.Connection, producto_id: int
+) -> Producto | None:
+    """Igual que `obtener_por_id_en_conexion`, pero sin el filtro
+    `activo = 1`.
+
+    Existe únicamente para restaurar stock al anular una venta (ver
+    `services.servicio_ventas.anular_venta`): un producto vendido puede
+    haberse desactivado después de esa venta, y el estado del catálogo
+    no debe condicionar la integridad del stock -- un producto
+    discontinuado sigue teniendo un `stock_actual` real que hay que
+    poder corregir. No usar para ningún otro caso: el resto de la
+    aplicación (ventas nuevas, ajustes de stock) sigue exigiendo
+    `activo = 1` a propósito, y `obtener_por_id_en_conexion` no cambia.
+    """
+    consulta = f"SELECT {_COLUMNAS} FROM productos WHERE id = ?"
+    fila = conexion.execute(consulta, (producto_id,)).fetchone()
+    return _fila_a_producto(fila) if fila is not None else None
+
+
 def obtener_por_id(producto_id: int) -> Producto | None:
     """Busca un producto activo por id (usado por las pantallas de edición/baja)."""
     with obtener_conexion() as conexion:

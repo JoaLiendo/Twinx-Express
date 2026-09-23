@@ -7,10 +7,10 @@ negocio (la validación de stock/tipo de pago ocurre en domain/services,
 igual que en la CLI).
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 
 from domain.usuario import Usuario
-from domain.venta import TIPOS_PAGO_VALIDOS, ItemVenta
+from domain.venta import MOTIVOS_ANULACION_VALIDOS, TIPOS_PAGO_VALIDOS, ItemVenta
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.esquemas import VentaEntrada, VentaSalida
 from interfaces.web.plantillas import templates
@@ -18,6 +18,13 @@ from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
 from services import servicio_stock, servicio_ventas
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
+
+# Anular una venta es una corrección retroactiva, no una operación del
+# día a día como vender o abrir/cerrar caja -- mismo criterio que
+# `_SOLO_OWNER` en `productos.py` para `ajustar_stock`. Se declara acá
+# en vez de a nivel de router porque el resto de `ventas.py` sigue
+# siendo OWNER+CASHIER (mismo patrón que documenta `productos.py`).
+_SOLO_OWNER = Depends(requiere_rol("OWNER"))
 
 
 @router.get("/ventas")
@@ -101,3 +108,34 @@ def ticket_venta(request: Request, venta_id: int):
         raise HTTPException(status_code=404, detail="La venta no existe.")
     contexto = {"venta": venta_con_detalle.venta, "lineas": venta_con_detalle.lineas}
     return templates.TemplateResponse(request, "ventas/ticket.html", contexto)
+
+
+@router.get("/ventas/{venta_id}/anular", dependencies=[_SOLO_OWNER])
+def formulario_anular_venta(request: Request, venta_id: int):
+    resumen = servicio_ventas.obtener_resumen_por_id(venta_id)
+    if resumen is None:
+        return redireccionar_con_mensaje("/ventas/historial", "error", "La venta no existe.")
+    if resumen.estado != "ACTIVA":
+        return redireccionar_con_mensaje(f"/ventas/{venta_id}", "error", "La venta ya fue anulada.")
+
+    contexto = {**contexto_base(request), "resumen": resumen, "motivos": sorted(MOTIVOS_ANULACION_VALIDOS)}
+    return templates.TemplateResponse(request, "ventas/anular.html", contexto)
+
+
+@router.post("/ventas/{venta_id}/anular", dependencies=[_SOLO_OWNER])
+def accion_anular_venta(
+    venta_id: int,
+    motivo: str = Form(...),
+    observaciones: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    """Quién anula es siempre el usuario autenticado de la sesión, nunca
+    un dato del formulario: evita que alguien falsifique a nombre de
+    quién queda la auditoría de la anulación."""
+    servicio_ventas.anular_venta(
+        venta_id,
+        motivo=motivo,
+        observaciones=observaciones.strip() or None,
+        usuario_id=usuario_actual.id,
+    )
+    return redireccionar_con_mensaje(f"/ventas/{venta_id}", "success", "Venta anulada correctamente.")

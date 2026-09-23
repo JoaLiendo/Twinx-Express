@@ -9,6 +9,8 @@ from datetime import date, timedelta
 
 import pytest
 
+from db.conexion import obtener_conexion
+from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
 from db.repositorios import ventas as repositorio_ventas
 from domain.usuario import Usuario
@@ -18,8 +20,11 @@ from excepciones import (
     DatosInvalidosError,
     ProductoNoEncontradoError,
     StockInsuficienteError,
+    VentaDeCajaCerradaError,
+    VentaNoEncontradaError,
+    VentaYaAnuladaError,
 )
-from services import servicio_stock, servicio_ventas
+from services import servicio_caja, servicio_stock, servicio_ventas
 
 
 def _contar_filas(ruta_base_datos, tabla: str) -> int:
@@ -518,3 +523,391 @@ class TestObtenerResumenPorId:
 
     def test_inexistente_devuelve_none(self, base_datos_temporal):
         assert servicio_ventas.obtener_resumen_por_id(9999) is None
+
+
+def _owner():
+    return _crear_usuario(nombre_usuario="duenio", rol="OWNER")
+
+
+class TestAnularVenta:
+    """Anulación de ventas (ver auditoría de diseño): restaura stock y
+    marca `ANULADA` en una única transacción, solo para ventas de la
+    sesión de caja actualmente abierta -- nunca genera movimientos de
+    caja nuevos."""
+
+    def test_caso_feliz_restaura_stock_y_marca_anulada(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 3)], "EFECTIVO")
+        owner = _owner()
+
+        anulada = servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        assert anulada.estado == "ANULADA"
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    def test_multiples_lineas_restaura_cada_producto(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        p1 = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        p2 = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 100, 300, stock_actual=5)
+        venta = servicio_ventas.registrar_venta([ItemVenta(p1.id, 2), ItemVenta(p2.id, 1)], "EFECTIVO")
+        owner = _owner()
+
+        servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        assert servicio_stock.obtener_por_id(p1.id).stock_actual == 10
+        assert servicio_stock.obtener_por_id(p2.id).stock_actual == 5
+
+    def test_producto_repetido_en_la_venta_restaura_la_cantidad_total(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta(
+            [ItemVenta(producto.id, 2), ItemVenta(producto.id, 1)], "EFECTIVO"
+        )
+        owner = _owner()
+
+        servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    def test_producto_inactivo_despues_de_la_venta_restaura_stock_igual(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 3)], "EFECTIVO")
+        servicio_stock.eliminar_producto(producto.id)  # baja lógica: tiene una venta asociada
+        owner = _owner()
+
+        servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        with obtener_conexion() as conexion:
+            fila = conexion.execute(
+                "SELECT stock_actual, activo FROM productos WHERE id = ?", (producto.id,)
+            ).fetchone()
+        assert fila["stock_actual"] == 10
+        assert fila["activo"] == 0  # sigue inactivo: anular no reactiva el catálogo
+
+    def test_no_persiste_ninguna_venta_ni_ajuste_si_producto_no_existe(self, base_datos_temporal, monkeypatch):
+        """No debería poder pasar en el flujo real (`ON DELETE RESTRICT`),
+        pero si el producto de una línea desapareciera, la anulación
+        entera se aborta -- ninguna otra línea queda restaurada a medias."""
+        servicio_caja.abrir_caja(100_000)
+        p1 = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        p2 = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 100, 300, stock_actual=5)
+        venta = servicio_ventas.registrar_venta([ItemVenta(p1.id, 1), ItemVenta(p2.id, 1)], "EFECTIVO")
+        owner = _owner()
+
+        original = repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos
+
+        def falla_para_p2(conexion, producto_id):
+            if producto_id == p2.id:
+                return None
+            return original(conexion, producto_id)
+
+        monkeypatch.setattr(
+            repositorio_productos, "obtener_por_id_en_conexion_incluyendo_inactivos", falla_para_p2
+        )
+
+        with pytest.raises(ProductoNoEncontradoError):
+            servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        # ninguna línea quedó restaurada, la venta sigue ACTIVA.
+        assert servicio_stock.obtener_por_id(p1.id).stock_actual == 9
+        with obtener_conexion() as conexion:
+            estado = conexion.execute("SELECT estado FROM ventas WHERE id = ?", (venta.id,)).fetchone()["estado"]
+        assert estado == "ACTIVA"
+
+    def test_venta_inexistente_falla(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        owner = _owner()
+
+        with pytest.raises(VentaNoEncontradaError):
+            servicio_ventas.anular_venta(9999, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+    def test_venta_ya_anulada_falla(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        owner = _owner()
+        servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        with pytest.raises(VentaYaAnuladaError):
+            servicio_ventas.anular_venta(venta.id, motivo="OTRO", observaciones="otro intento", usuario_id=owner.id)
+
+        # el stock no se restauró una segunda vez.
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    def test_motivo_invalido_no_toca_nada(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        owner = _owner()
+
+        with pytest.raises(DatosInvalidosError):
+            servicio_ventas.anular_venta(venta.id, motivo="PORQUE_SI", observaciones=None, usuario_id=owner.id)
+
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
+
+    def test_otro_sin_observaciones_no_toca_nada(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        owner = _owner()
+
+        with pytest.raises(DatosInvalidosError):
+            servicio_ventas.anular_venta(venta.id, motivo="OTRO", observaciones=None, usuario_id=owner.id)
+
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
+
+    def test_sin_caja_abierta_falla(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        owner = _owner()
+
+        with pytest.raises(VentaDeCajaCerradaError):
+            servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
+
+    def test_venta_de_sesion_de_caja_ya_cerrada_falla(self, base_datos_temporal):
+        """Caso obligatorio de la auditoría de diseño: 10:00 venta / 18:00
+        cierre / 20:00 apertura -- la venta pertenece a la sesión ya
+        cerrada, se rechaza sin tocar el cierre histórico.
+
+        `venta.fecha` se retrasa a mano (mismo recurso que ya usa el
+        resto de la suite, ej. `TestListarEnRango`) para que el caso sea
+        determinístico: el gap real entre `abrir_caja`/`cerrar_caja`/
+        `abrir_caja` en un test automatizado puede caer dentro del mismo
+        segundo (resolución de `datetime('now')` en SQLite), y el caso
+        que se quiere probar depende de una diferencia real de horas.
+        """
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE ventas SET fecha = ? WHERE id = ?", ("2020-01-01 10:00:00", venta.id))
+        servicio_caja.cerrar_caja(100_100)  # cierre de esa sesión (18:00)
+        servicio_caja.abrir_caja(50_000)  # nueva sesión, más tarde (20:00)
+        owner = _owner()
+
+        with pytest.raises(VentaDeCajaCerradaError):
+            servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
+        with obtener_conexion() as conexion:
+            estado = conexion.execute("SELECT estado FROM ventas WHERE id = ?", (venta.id,)).fetchone()["estado"]
+        assert estado == "ACTIVA"
+        # el cierre histórico no se tocó.
+        with obtener_conexion() as conexion:
+            cierres = conexion.execute(
+                "SELECT COUNT(*) AS n FROM caja_movimientos WHERE tipo = 'CIERRE'"
+            ).fetchone()["n"]
+        assert cierres == 1
+
+    def test_venta_dentro_de_la_sesion_vigente_con_movimientos_manuales_de_por_medio(self, base_datos_temporal):
+        """Ingresos/egresos manuales entre la apertura y la venta no
+        cambian cuál es la sesión vigente (ver
+        `db.repositorios.caja.obtener_fecha_ultima_apertura_en_conexion`)."""
+        servicio_caja.abrir_caja(100_000)
+        servicio_caja.registrar_ingreso(5_000, "cambio extra")
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        owner = _owner()
+
+        anulada = servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        assert anulada.estado == "ANULADA"
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    def test_persiste_motivo_observaciones_usuario_y_fecha(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        owner = _owner()
+
+        servicio_ventas.anular_venta(
+            venta.id, motivo="OTRO", observaciones="se equivocó de producto", usuario_id=owner.id
+        )
+
+        resumen = servicio_ventas.obtener_resumen_por_id(venta.id)
+        assert resumen.motivo_anulacion == "OTRO"
+        assert resumen.observaciones_anulacion == "se equivocó de producto"
+        assert resumen.anulado_por_nombre == "Test"
+        assert resumen.fecha_anulacion is not None
+
+    def test_no_altera_precio_costo_ni_vendedor_original(self, base_datos_temporal):
+        """El detalle histórico (precio, costo, vendedor) queda intacto:
+        anular solo agrega estado + auditoría a la cabecera."""
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        vendedor = _crear_usuario(nombre_usuario="cajera1", rol="CASHIER")
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO", usuario_id=vendedor.id)
+        owner = _owner()
+
+        servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        detalle = servicio_ventas.obtener_venta_con_detalle(venta.id)
+        resumen = servicio_ventas.obtener_resumen_por_id(venta.id)
+        assert detalle.lineas[0].precio_unitario_centavos == 200
+        assert resumen.vendedor_nombre == "Test"  # el vendedor original, no el que anuló
+        _, costos = _leer_ventas_y_costos(base_datos_temporal, venta.id)
+        assert costos == [100]
+
+    def test_no_inserta_ninguna_fila_en_caja_movimientos(self, base_datos_temporal):
+        """No hay reembolso financiero modelado: anular nunca genera un
+        movimiento de caja, ni INGRESO, EGRESO, ni ningún otro tipo."""
+        servicio_caja.abrir_caja(100_000)  # 1 fila (APERTURA)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        owner = _owner()
+
+        servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        assert _contar_filas(base_datos_temporal, "caja_movimientos") == 1  # solo la APERTURA original
+
+    def test_venta_efectivo_anulada_no_suma_al_efectivo_estimado(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 2)], "EFECTIVO")  # 400 centavos
+        owner = _owner()
+
+        arqueo_antes = servicio_caja.calcular_arqueo_del_dia()
+        assert arqueo_antes.total_efectivo_ventas_centavos == 400
+
+        servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        arqueo_despues = servicio_caja.calcular_arqueo_del_dia()
+        assert arqueo_despues.total_efectivo_ventas_centavos == 0
+        assert arqueo_despues.efectivo_estimado_centavos == 100_000  # solo la apertura
+        assert arqueo_despues.cantidad_ventas == 0
+
+    def test_fallo_al_persistir_la_anulacion_no_deja_stock_restaurado(self, base_datos_temporal, monkeypatch):
+        """Atomicidad: si la transición final de estado falla (simulada
+        acá después de que el stock ya se restauró en memoria de la
+        transacción), toda la transacción se revierte -- ni el stock
+        queda restaurado ni la venta queda anulada."""
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 3)], "EFECTIVO")
+        owner = _owner()
+
+        def falla(*_args, **_kwargs):
+            raise sqlite3.IntegrityError("fallo simulado")
+
+        monkeypatch.setattr(repositorio_ventas, "anular_venta_en_conexion", falla)
+
+        with pytest.raises(Exception):
+            servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 7  # sin restaurar
+        with obtener_conexion() as conexion:
+            estado = conexion.execute("SELECT estado FROM ventas WHERE id = ?", (venta.id,)).fetchone()["estado"]
+        assert estado == "ACTIVA"
+
+    def test_dos_anulaciones_concurrentes_de_la_misma_venta_una_sola_gana(self, base_datos_temporal):
+        """Mismo patrón que `TestAjustarStock.test_dos_ajustes_concurrentes_no_generan_lost_update`:
+        dos hilos reales, dos conexiones SQLite reales."""
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 3)], "EFECTIVO")
+        owner = _owner()
+
+        barrera = threading.Barrier(2)
+        resultados = {}
+
+        def anular(nombre):
+            barrera.wait()
+            try:
+                servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+                resultados[nombre] = "OK"
+            except VentaYaAnuladaError:
+                resultados[nombre] = "YA_ANULADA"
+
+        hilo_a = threading.Thread(target=anular, args=("A",))
+        hilo_b = threading.Thread(target=anular, args=("B",))
+        hilo_a.start()
+        hilo_b.start()
+        hilo_a.join(timeout=10)
+        hilo_b.join(timeout=10)
+
+        assert not hilo_a.is_alive()
+        assert not hilo_b.is_alive()
+
+        resueltos = list(resultados.values())
+        assert resueltos.count("OK") == 1
+        assert resueltos.count("YA_ANULADA") == 1
+
+        # el stock se restauró una sola vez: 10, nunca 13 (restaurado dos
+        # veces) ni 7 (nunca restaurado).
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    def test_anulacion_concurrente_con_ajuste_de_stock_del_mismo_producto_no_genera_lost_update(
+        self, base_datos_temporal
+    ):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 3)], "EFECTIVO")  # stock queda en 7
+        owner = _owner()
+
+        barrera = threading.Barrier(2)
+        errores = []
+
+        def anular():
+            barrera.wait()
+            try:
+                servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+            except Exception as error:  # noqa: BLE001 -- se inspecciona más abajo
+                errores.append(("anular", error))
+
+        def ajustar():
+            barrera.wait()
+            try:
+                servicio_stock.ajustar_stock(producto.id, delta=-2, motivo="MERMA", usuario_id=owner.id)
+            except Exception as error:  # noqa: BLE001
+                errores.append(("ajustar", error))
+
+        hilo_a = threading.Thread(target=anular)
+        hilo_b = threading.Thread(target=ajustar)
+        hilo_a.start()
+        hilo_b.start()
+        hilo_a.join(timeout=10)
+        hilo_b.join(timeout=10)
+
+        assert not hilo_a.is_alive()
+        assert not hilo_b.is_alive()
+        assert errores == []
+
+        # Stock final determinista sin importar el orden real de
+        # ejecución: 7 (post-venta) + 3 (restaurado por la anulación) -
+        # 2 (merma) = 8. Lo que NO puede pasar es un lost update (ej. 10
+        # o 5), que sería la señal de que las dos transacciones pisaron
+        # el valor de la otra.
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 8
+
+
+class TestListarHistorialIncluyeAnuladas:
+    def test_venta_anulada_sigue_apareciendo_en_el_historial(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        owner = _owner()
+        servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        _, _, ventas = servicio_ventas.listar_historial(fecha_desde="2000-01-01", fecha_hasta="2099-12-31")
+
+        assert len(ventas) == 1
+        assert ventas[0].id == venta.id
+        assert ventas[0].estado == "ANULADA"
+
+    def test_venta_anulada_sigue_accesible_por_detalle(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        owner = _owner()
+        servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        resumen = servicio_ventas.obtener_resumen_por_id(venta.id)
+        detalle = servicio_ventas.obtener_venta_con_detalle(venta.id)
+
+        assert resumen is not None
+        assert detalle is not None
+        assert len(detalle.lineas) == 1

@@ -14,6 +14,16 @@ from excepciones import DatosInvalidosError
 
 TIPOS_PAGO_VALIDOS = frozenset({"EFECTIVO", "TARJETA", "TRANSFERENCIA", "OTRO"})
 
+ESTADOS_VENTA_VALIDOS = frozenset({"ACTIVA", "ANULADA"})
+
+MOTIVOS_ANULACION_VALIDOS = frozenset(
+    {"ERROR_CARGA", "ARREPENTIMIENTO_CLIENTE", "PRODUCTO_INCORRECTO", "OTRO"}
+)
+
+# `OTRO` es el único motivo que no describe por sí mismo qué pasó -- mismo
+# criterio que ya usa `domain.ajuste_stock.MOTIVOS_QUE_REQUIEREN_OBSERVACIONES`.
+MOTIVOS_ANULACION_QUE_REQUIEREN_OBSERVACIONES = frozenset({"OTRO"})
+
 
 @dataclass
 class ItemVenta:
@@ -55,6 +65,28 @@ def calcular_hash_contenido(items: list[ItemVenta], tipo_pago: str) -> str:
     return hashlib.sha256(texto_canonico.encode("utf-8")).hexdigest()
 
 
+def validar_motivo_anulacion(motivo: str, observaciones: str | None) -> None:
+    """Valida el motivo y las observaciones de una anulación de venta
+    (ver `services.servicio_ventas.anular_venta`), antes de tocar stock
+    o caja.
+
+    No es un `__post_init__` de un dataclass propio (a diferencia de
+    `domain.ajuste_stock.AjusteStock`) porque anular no crea una entidad
+    nueva: transiciona el `estado` de una `Venta` ya persistida, así que
+    no hay ninguna instancia nueva que validar al construirse.
+    """
+    if motivo not in MOTIVOS_ANULACION_VALIDOS:
+        raise DatosInvalidosError(
+            f"Motivo de anulación inválido: {motivo!r}. Debe ser uno de {sorted(MOTIVOS_ANULACION_VALIDOS)}."
+        )
+    if motivo in MOTIVOS_ANULACION_QUE_REQUIEREN_OBSERVACIONES and not (
+        observaciones and observaciones.strip()
+    ):
+        raise DatosInvalidosError(
+            f"Las anulaciones de motivo {motivo} requieren una observación que las justifique."
+        )
+
+
 @dataclass
 class Venta:
     """Una venta ya confirmada y persistida, con su total y forma de pago.
@@ -62,12 +94,18 @@ class Venta:
     `total_centavos` está en centavos (`int`): la suma de los
     subtotales de sus líneas, calculada con aritmética entera exacta
     (ver `services.servicio_ventas.registrar_venta`).
+
+    `estado` (migración 013) es `'ACTIVA'` por defecto: una venta recién
+    registrada siempre lo es. `'ANULADA'` la deja marcada, pero nunca le
+    borra ni le modifica ningún otro campo -- ver
+    `services.servicio_ventas.anular_venta`.
     """
 
     id: int
     fecha: str
     total_centavos: int
     tipo_pago: str
+    estado: str = "ACTIVA"
 
 
 @dataclass
@@ -154,6 +192,16 @@ class ResumenVenta:
     reutilizando `VentaConDetalle` (vía
     `db.repositorios.ventas.obtener_venta_con_detalle`, sin cambios) para
     las líneas del detalle.
+
+    `estado`/`motivo_anulacion`/`observaciones_anulacion`/
+    `anulado_por_nombre`/`fecha_anulacion` (migración 013) resuelven la
+    auditoría de una anulación en la misma cabecera, sin una segunda
+    consulta: `listar_resumen`/`obtener_resumen_por_id` **incluyen**
+    ventas `ANULADA` a propósito (Historial y Detalle son herramientas
+    de auditoría, no un cálculo analítico -- ver
+    `services.servicio_ventas.anular_venta`). Los cuatro campos de
+    anulación quedan en `None` para una venta `ACTIVA`, nunca en una
+    cadena vacía.
     """
 
     id: int
@@ -162,3 +210,8 @@ class ResumenVenta:
     tipo_pago: str
     vendedor_nombre: str | None
     cantidad_lineas: int
+    estado: str = "ACTIVA"
+    motivo_anulacion: str | None = None
+    observaciones_anulacion: str | None = None
+    anulado_por_nombre: str | None = None
+    fecha_anulacion: str | None = None
