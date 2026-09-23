@@ -6,6 +6,7 @@ escritura entre dos transacciones, la que pierde el lock espere en vez
 de fallar de inmediato con "database is locked" (ver diseño de 5A).
 """
 
+import sqlite3
 import threading
 import time
 
@@ -117,3 +118,61 @@ def test_conflicto_real_de_locks_agota_el_timeout_y_muestra_mensaje_claro(base_d
     with obtener_conexion() as conexion:
         total = conexion.execute("SELECT COUNT(*) FROM productos").fetchone()[0]
     assert total == 1  # solo el INSERT de A, que sí llegó a comprometer
+
+
+# ---------------------------------------------------------------------------
+# hay_migraciones_pendientes_en_base_existente
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def base_con_migraciones_propias(tmp_path, monkeypatch):
+    """DB y directorio de migraciones temporales, con una sola migración
+    (001) escrita y la base todavía inexistente."""
+    import db.conexion as modulo
+
+    dir_migraciones = tmp_path / "migraciones"
+    dir_migraciones.mkdir()
+    (dir_migraciones / "001_a.sql").write_text("CREATE TABLE a (id INTEGER PRIMARY KEY);", encoding="utf-8")
+    monkeypatch.setattr(modulo, "RUTA_BASE_DATOS", tmp_path / "kiosco.db")
+    monkeypatch.setattr(modulo, "DIRECTORIO_MIGRACIONES", dir_migraciones)
+    return modulo, dir_migraciones
+
+
+def test_pendientes_es_false_si_la_base_no_existe_y_no_la_crea(base_con_migraciones_propias):
+    modulo, _ = base_con_migraciones_propias
+
+    assert modulo.hay_migraciones_pendientes_en_base_existente() is False
+    assert not modulo.RUTA_BASE_DATOS.exists()
+
+
+def test_pendientes_es_false_si_el_archivo_existe_pero_no_tiene_tablas(base_con_migraciones_propias):
+    modulo, _ = base_con_migraciones_propias
+    modulo.RUTA_BASE_DATOS.write_bytes(b"")
+
+    assert modulo.hay_migraciones_pendientes_en_base_existente() is False
+
+
+def test_pendientes_es_false_si_todas_las_migraciones_estan_aplicadas(base_con_migraciones_propias):
+    modulo, _ = base_con_migraciones_propias
+    modulo.inicializar_base_datos()
+
+    assert modulo.hay_migraciones_pendientes_en_base_existente() is False
+
+
+def test_pendientes_es_true_si_hay_una_migracion_sin_aplicar(base_con_migraciones_propias):
+    modulo, dir_migraciones = base_con_migraciones_propias
+    modulo.inicializar_base_datos()
+    (dir_migraciones / "002_b.sql").write_text("CREATE TABLE b (id INTEGER PRIMARY KEY);", encoding="utf-8")
+
+    assert modulo.hay_migraciones_pendientes_en_base_existente() is True
+
+
+def test_pendientes_es_true_para_base_con_tablas_pero_sin_registro_de_migraciones(base_con_migraciones_propias):
+    modulo, _ = base_con_migraciones_propias
+    conexion = sqlite3.connect(modulo.RUTA_BASE_DATOS)
+    conexion.execute("CREATE TABLE a (id INTEGER PRIMARY KEY)")
+    conexion.commit()
+    conexion.close()
+
+    assert modulo.hay_migraciones_pendientes_en_base_existente() is True

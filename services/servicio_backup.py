@@ -23,6 +23,7 @@ from config import (
     DIRECTORIO_IMAGENES_PRODUCTOS,
     RUTA_BASE_DATOS,
 )
+from db.conexion import hay_migraciones_pendientes_en_base_existente, inicializar_base_datos
 from excepciones import ErrorBackup
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,10 @@ _NOMBRE_DB_EN_ZIP = "kiosco.db"
 _NOMBRE_CARPETA_IMAGENES_EN_ZIP = "imagenes_productos"
 _PATRON_NOMBRE_BACKUP = re.compile(r"^KioscoApp_backup_(\d{4}-\d{2}-\d{2}_\d{4})\.zip$")
 _FORMATO_FECHA_EN_NOMBRE = "%Y-%m-%d_%H%M"
+# El backup preventivo lleva segundos y un marcador propio, y a propósito NO
+# coincide con `_PATRON_NOMBRE_BACKUP`: así no cuenta como "último backup"
+# para el backup automático de arranque, que sigue su propio calendario.
+_FORMATO_FECHA_EN_NOMBRE_PREVENTIVO = "%Y-%m-%d_%H%M%S"
 
 
 def _snapshot_base_datos(ruta_origen: Path, ruta_destino: Path) -> None:
@@ -63,9 +68,10 @@ def _construir_zip(directorio_datos: Path, ruta_zip: Path) -> None:
             zf.writestr(f"{_NOMBRE_CARPETA_IMAGENES_EN_ZIP}/", "")
 
 
-def crear_backup(directorio_destino: Path, control_escrituras) -> Path:
+def crear_backup(directorio_destino: Path, control_escrituras, *, nombre_archivo: str | None = None) -> Path:
     """Genera `KioscoApp_backup_<fecha>_<hora>.zip` dentro de
-    `directorio_destino` y devuelve su ruta.
+    `directorio_destino` (o `nombre_archivo`, si se indica) y devuelve
+    su ruta.
 
     `control_escrituras.iniciar_backup()` es la única sección crítica
     que decide, de forma atómica, si este backup puede arrancar (nunca
@@ -77,7 +83,7 @@ def crear_backup(directorio_destino: Path, control_escrituras) -> Path:
     las imágenes a un directorio temporal (ver docstring del módulo).
     """
     directorio_destino.mkdir(parents=True, exist_ok=True)
-    nombre_final = f"KioscoApp_backup_{datetime.now().strftime('%Y-%m-%d_%H%M')}.zip"
+    nombre_final = nombre_archivo or f"KioscoApp_backup_{datetime.now().strftime('%Y-%m-%d_%H%M')}.zip"
     ruta_final = directorio_destino / nombre_final
 
     with tempfile.TemporaryDirectory(dir=directorio_destino, prefix=".kioscoapp_backup_tmp_") as tmp:
@@ -169,3 +175,26 @@ def ejecutar_backup_automatico_si_corresponde(
 
     logger.info("Backup automático creado: %s", ruta_zip.name)
     return ruta_zip
+
+
+def migrar_base_datos_con_backup_preventivo(directorio_backups: Path, control_escrituras) -> Path | None:
+    """Aplica las migraciones pendientes, con un backup preventivo antes
+    si la base de datos ya existe.
+
+    Solo se crea el backup (`KioscoApp_backup_pre_migracion_<fecha>.zip`,
+    mismo formato y mismo `crear_backup` que cualquier otro) cuando
+    `kiosco.db` ya existe y tiene migraciones pendientes: una instalación
+    nueva, o una base al día, no generan ninguno. Si el backup falla, la
+    excepción se propaga y las migraciones NO se aplican; si la migración
+    falla después, el backup ya creado queda disponible para restaurar.
+
+    Devuelve la ruta del backup preventivo, o `None` si no hizo falta.
+    """
+    ruta_backup = None
+    if hay_migraciones_pendientes_en_base_existente():
+        nombre = f"KioscoApp_backup_pre_migracion_{datetime.now().strftime(_FORMATO_FECHA_EN_NOMBRE_PREVENTIVO)}.zip"
+        ruta_backup = crear_backup(directorio_backups, control_escrituras, nombre_archivo=nombre)
+        logger.info("Backup preventivo previo a la migración creado: %s", ruta_backup.name)
+
+    inicializar_base_datos()
+    return ruta_backup

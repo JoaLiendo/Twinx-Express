@@ -5,7 +5,6 @@ de forma que ningún otro módulo hardcodee rutas absolutas.
 """
 
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -13,7 +12,7 @@ RAIZ_PROYECTO = Path(__file__).resolve().parent
 
 
 class ErrorMigracionDatos(Exception):
-    """Error fatal al resolver o migrar el directorio persistente de datos."""
+    """Error fatal al resolver el directorio persistente de datos."""
 
 
 def ruta_datos_persistentes_frozen() -> Path:
@@ -34,49 +33,12 @@ def ruta_datos_persistentes_frozen() -> Path:
     return Path(local_appdata) / "KioscoApp" / "data"
 
 
-def resolver_directorio_datos_frozen(*, dir_origen: Path, dir_destino: Path) -> Path:
-    """Migra `data/` del bundle efímero de PyInstaller al destino persistente.
-
-    `dir_origen` es el `data/` embebido en el build (dentro de
-    `_internal/`, se pierde en cada rebuild); `dir_destino` es la
-    ubicación persistente fuera del bundle. Nunca borra `dir_origen`.
-
-    Casos:
-      - Ninguno existe (primera instalación real): se crea `dir_destino`
-        vacío.
-      - Solo existe `dir_origen` (migración pendiente): se copia
-        completo a `dir_destino`, sin tocar el origen.
-      - Solo existe `dir_destino` (uso normal post-migración): se usa
-        tal cual.
-      - Existen ambos: conflicto que no se puede resolver
-        automáticamente sin arriesgar pérdida de datos -> error fatal,
-        nunca se sobrescribe ni se fusiona en silencio.
-    """
-    origen_existe = dir_origen.is_dir()
-    destino_existe = dir_destino.is_dir()
-
-    if origen_existe and destino_existe:
-        raise ErrorMigracionDatos(
-            f"Se encontraron datos tanto en el origen empaquetado ({dir_origen}) "
-            f"como en el destino persistente ({dir_destino}). Para evitar "
-            "pérdida de datos, la aplicación no decide automáticamente cuál "
-            "usar: resolvé manualmente cuál carpeta 'data' es la válida y "
-            "eliminá o renombrá la otra antes de volver a iniciar."
-        )
-
-    if origen_existe:
-        shutil.copytree(dir_origen, dir_destino)
-        return dir_destino
-
-    dir_destino.mkdir(parents=True, exist_ok=True)
-    return dir_destino
-
-
+# En frozen, los datos del cliente nacen siempre en el directorio persistente
+# y nunca desde el bundle: si un build trajera un `data/` embebido dentro de
+# `_internal/`, se ignora por completo (no se lee ni se copia). Un build así
+# es inválido y `Construir_entregable.ps1` lo rechaza.
 if getattr(sys, "frozen", False):
-    DIRECTORIO_DATA = resolver_directorio_datos_frozen(
-        dir_origen=RAIZ_PROYECTO / "data",
-        dir_destino=ruta_datos_persistentes_frozen(),
-    )
+    DIRECTORIO_DATA = ruta_datos_persistentes_frozen()
 else:
     DIRECTORIO_DATA = RAIZ_PROYECTO / "data"
 
@@ -92,9 +54,7 @@ DIRECTORIO_IMAGENES_PRODUCTOS = DIRECTORIO_DATA / "imagenes_productos"
 # o primera ejecución en modo frozen): se crea automáticamente al importar
 # este módulo, para que cualquier código que use RUTA_BASE_DATOS pueda
 # asumir que el directorio contenedor ya existe. Lo mismo para el
-# subdirectorio de imágenes de producto. En el caso de migración (frozen,
-# Caso 2) ya quedó creada por `shutil.copytree`; `exist_ok=True` la deja
-# intacta.
+# subdirectorio de imágenes de producto.
 DIRECTORIO_DATA.mkdir(parents=True, exist_ok=True)
 DIRECTORIO_IMAGENES_PRODUCTOS.mkdir(parents=True, exist_ok=True)
 

@@ -1,11 +1,15 @@
 """Tests de la resolución de rutas de datos persistentes (`config.py`).
 
-Cubren la migración entre el directorio `data/` embebido en el build de
-PyInstaller (efímero: PyInstaller lo destruye en cada rebuild, ver
-auditoría de distribución) y el directorio persistente fuera del bundle
-(`%LOCALAPPDATA%\\KioscoApp\\data` en modo frozen). El modo desarrollo no
-se ve afectado: sigue usando `RAIZ_PROYECTO/data`.
+En modo frozen los datos del cliente viven siempre en
+`%LOCALAPPDATA%\\KioscoApp\\data`, fuera del bundle de PyInstaller: un
+`data/` embebido dentro del build nunca se lee ni se copia. El modo
+desarrollo no se ve afectado: sigue usando `RAIZ_PROYECTO/data`.
 """
+
+import os
+import shutil
+import subprocess
+import sys
 
 import pytest
 
@@ -34,67 +38,60 @@ def test_modo_frozen_sin_localappdata_falla(monkeypatch):
         config.ruta_datos_persistentes_frozen()
 
 
-def test_primera_ejecucion_crea_destino_vacio(tmp_path):
-    """Caso 1: ni origen ni destino existen -> se crea el destino vacío."""
-    origen = tmp_path / "origen"
-    destino = tmp_path / "destino"
+def _importar_config_en_modo_frozen(tmp_path):
+    """Importa una copia de `config.py` en un proceso aparte con
+    `sys.frozen = True`, junto a un `data/` "embebido" con una DB y una
+    imagen (lo que dejaría un build contaminado). Es la única forma de
+    ejercitar la rama frozen a nivel de módulo sin tocar el `config`
+    real de este proceso. Devuelve `(raiz, local_appdata, salida)`."""
+    raiz = tmp_path / "bundle"
+    (raiz / "data" / "imagenes_productos").mkdir(parents=True)
+    (raiz / "data" / "kiosco.db").write_bytes(b"DB-EMBEBIDA-DE-DESARROLLO")
+    (raiz / "data" / "imagenes_productos" / "1_abc.jpg").write_bytes(b"IMAGEN-EMBEBIDA")
+    shutil.copy(config.RAIZ_PROYECTO / "config.py", raiz / "config.py")
+    local_appdata = tmp_path / "local"
+    local_appdata.mkdir()
 
-    resultado = config.resolver_directorio_datos_frozen(dir_origen=origen, dir_destino=destino)
-
-    assert resultado == destino
-    assert destino.is_dir()
-    assert not origen.exists()
-
-
-def test_migracion_copia_db_e_imagenes_sin_borrar_origen(tmp_path):
-    """Caso 2: solo existe el origen -> se copia completo al destino, intacto."""
-    origen = tmp_path / "origen"
-    (origen / "imagenes_productos").mkdir(parents=True)
-    (origen / "kiosco.db").write_bytes(b"contenido-db-real")
-    (origen / "imagenes_productos" / "1_abc.jpg").write_bytes(b"contenido-imagen")
-    destino = tmp_path / "destino"
-
-    resultado = config.resolver_directorio_datos_frozen(dir_origen=origen, dir_destino=destino)
-
-    assert resultado == destino
-    assert (destino / "kiosco.db").read_bytes() == b"contenido-db-real"
-    assert (destino / "imagenes_productos" / "1_abc.jpg").read_bytes() == b"contenido-imagen"
-    # el origen nunca se borra
-    assert (origen / "kiosco.db").read_bytes() == b"contenido-db-real"
-    assert (origen / "imagenes_productos" / "1_abc.jpg").exists()
-
-
-def test_destino_existente_no_se_sobrescribe(tmp_path):
-    """Caso 3: solo existe el destino -> se usa tal cual, sin migrar nada."""
-    origen_inexistente = tmp_path / "origen"
-    destino = tmp_path / "destino"
-    destino.mkdir()
-    (destino / "kiosco.db").write_bytes(b"db-real-ya-migrada")
-
-    resultado = config.resolver_directorio_datos_frozen(
-        dir_origen=origen_inexistente, dir_destino=destino
+    entorno = {**os.environ, "LOCALAPPDATA": str(local_appdata)}
+    resultado = subprocess.run(
+        [sys.executable, "-B", "-c", "import sys; sys.frozen = True; import config; print(config.DIRECTORIO_DATA)"],
+        cwd=raiz,
+        env=entorno,
+        capture_output=True,
+        text=True,
+        check=True,
     )
-
-    assert resultado == destino
-    assert (destino / "kiosco.db").read_bytes() == b"db-real-ya-migrada"
+    return raiz, local_appdata, resultado.stdout.strip()
 
 
-def test_conflicto_origen_y_destino_produce_error_fatal(tmp_path):
-    """Caso 4: existen ambos -> error fatal, sin sobrescribir ni fusionar."""
-    origen = tmp_path / "origen"
-    origen.mkdir()
-    (origen / "kiosco.db").write_bytes(b"db-vieja-del-bundle")
+def test_frozen_no_copia_el_data_embebido_en_el_bundle(tmp_path):
+    """Un `data/` dentro del bundle (build contaminado) NO se copia a la
+    persistencia del cliente: la instalación nueva nace vacía."""
+    raiz, local_appdata, _salida = _importar_config_en_modo_frozen(tmp_path)
 
-    destino = tmp_path / "destino"
-    destino.mkdir()
-    (destino / "kiosco.db").write_bytes(b"db-real-ya-migrada")
+    destino = local_appdata / "KioscoApp" / "data"
+    assert destino.is_dir()
+    assert not (destino / "kiosco.db").exists()
+    assert list((destino / "imagenes_productos").iterdir()) == []
+    assert not (destino / "imagenes_productos" / "1_abc.jpg").exists()
 
-    with pytest.raises(config.ErrorMigracionDatos):
-        config.resolver_directorio_datos_frozen(dir_origen=origen, dir_destino=destino)
 
-    # ninguno de los dos se toca ante el conflicto
-    assert (destino / "kiosco.db").read_bytes() == b"db-real-ya-migrada"
-    assert (origen / "kiosco.db").read_bytes() == b"db-vieja-del-bundle"
+def test_frozen_usa_siempre_localappdata_aunque_haya_data_embebido(tmp_path):
+    raiz, local_appdata, salida = _importar_config_en_modo_frozen(tmp_path)
+
+    assert salida == str(local_appdata / "KioscoApp" / "data")
+
+
+def test_frozen_no_toca_ni_borra_el_data_embebido(tmp_path):
+    """El bundle se ignora, no se modifica."""
+    raiz, _local_appdata, _salida = _importar_config_en_modo_frozen(tmp_path)
+
+    assert (raiz / "data" / "kiosco.db").read_bytes() == b"DB-EMBEBIDA-DE-DESARROLLO"
+    assert (raiz / "data" / "imagenes_productos" / "1_abc.jpg").exists()
+
+
+def test_config_ya_no_expone_la_migracion_de_data_embebido():
+    assert not hasattr(config, "resolver_directorio_datos_frozen")
 
 
 def test_directorio_imagenes_deriva_del_directorio_data():

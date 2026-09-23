@@ -116,14 +116,24 @@ Instalar la dependencia de build:
 pip install -r requirements-build.txt
 ```
 
-Generar el ejecutable a partir de `KioscoApp.spec`:
+Generar el entregable con el script único de build (desde la raíz del repo):
 
 ```
-python -m PyInstaller KioscoApp.spec --noconfirm
+powershell -ExecutionPolicy Bypass -File .\Construir_entregable.ps1
 ```
 
-El resultado queda en `dist/KioscoApp/` (ejecutable `dist/KioscoApp/KioscoApp.exe`
-junto con sus dependencias en `dist/KioscoApp/_internal/`).
+El script borra solo `build\KioscoApp` y `dist\KioscoApp`, ejecuta PyInstaller
+con `KioscoApp.spec`, copia `LEEME.txt` y `Restaurar_backup.bat` junto al
+ejecutable y **valida el resultado**: falla (código de salida distinto de 0) si
+`dist\KioscoApp` no tiene el `.exe`, `_internal`, los archivos de entrega y las
+migraciones completas, o si contiene bases de datos (`*.db`, `*.sqlite`),
+ZIPs, `data\`, `imagenes_productos\` o `backups\`. El entregable queda en
+`dist\KioscoApp\` (`KioscoApp.exe` junto con `_internal\`); otras carpetas dentro
+de `dist\` no forman parte de él.
+
+`data/` **nunca** forma parte del build: los datos de cada cliente viven en
+`%LOCALAPPDATA%\KioscoApp\data\` y se crean en su primera ejecución. Un `data/`
+embebido dentro del bundle se ignora, nunca se copia a la instalación del cliente.
 
 ## Imágenes de productos
 
@@ -154,6 +164,11 @@ la aplicación rechaza brevemente nuevas escrituras (ventas, altas de
 producto, etc. devuelven un 503 transitorio) para garantizar que la DB y
 las imágenes queden consistentes entre sí; las lecturas nunca se ven
 afectadas.
+
+**Backup preventivo antes de migrar**: si al iniciar la aplicación la base de
+datos ya existe y tiene migraciones pendientes, se genera antes un backup
+(`KioscoApp_backup_pre_migracion_<fecha>.zip`, mismo formato y misma carpeta).
+Si ese backup falla, no se migra. Una instalación nueva no genera ninguno.
 
 **Restore**: no tiene interfaz web -- requiere la aplicación **cerrada**:
 

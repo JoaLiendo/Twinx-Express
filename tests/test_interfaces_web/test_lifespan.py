@@ -45,3 +45,21 @@ def test_lifespan_dispara_el_backup_automatico_en_un_hilo_sin_bloquear_el_arranq
         assert duracion < 2, "el arranque esperó al backup automático en vez de seguir de largo"
     finally:
         liberar_backup.set()
+
+
+def test_lifespan_migra_a_traves_del_backup_preventivo_con_el_directorio_de_backups(
+    base_datos_temporal, monkeypatch
+):
+    llamadas = []
+    monkeypatch.setattr(
+        modulo_servicio_backup,
+        "migrar_base_datos_con_backup_preventivo",
+        lambda directorio, control: llamadas.append(directorio),
+    )
+    monkeypatch.setattr(
+        modulo_servicio_backup, "ejecutar_backup_automatico_si_corresponde", lambda *_a, **_k: None
+    )
+
+    _entrar_y_salir_del_lifespan()
+
+    assert llamadas == [modulo_app.DIRECTORIO_BACKUPS]

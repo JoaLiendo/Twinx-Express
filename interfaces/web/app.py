@@ -26,7 +26,6 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from config import DIRECTORIO_BACKUPS, DIRECTORIO_IMAGENES_PRODUCTOS
-from db.conexion import inicializar_base_datos
 from excepciones import ErrorAplicacion, NoAutenticadoError, PermisoDenegadoError
 from interfaces.web.plantillas import templates
 from interfaces.web.rutas import (
@@ -55,8 +54,10 @@ DIRECTORIO_WEB = Path(__file__).resolve().parent
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Backup automático V1 (ver auditoría de distribución/backup): el
-    chequeo corre en un hilo daemon de un solo uso, disparado y olvidado --
+    """Migraciones con backup preventivo (solo si la base ya existía y tenía
+    migraciones pendientes: si el backup falla, no se migra) y luego backup
+    automático V1 (ver auditoría de distribución/backup): el chequeo corre
+    en un hilo daemon de un solo uso, disparado y olvidado --
     nunca se espera (`.join()`) desde acá, así un backup lento (o que
     directamente falla) no demora el arranque del servidor ni la apertura
     del navegador. `servicio_backup.ejecutar_backup_automatico_si_corresponde`
@@ -69,7 +70,7 @@ async def lifespan(app: FastAPI):
     del mismo proceso -- suficiente para el ejecutable single-process real
     de Twinx Express, que es el único caso que este bloque necesita cubrir.
     """
-    inicializar_base_datos()
+    servicio_backup.migrar_base_datos_con_backup_preventivo(DIRECTORIO_BACKUPS, control_escrituras)
     threading.Thread(
         target=servicio_backup.ejecutar_backup_automatico_si_corresponde,
         args=(DIRECTORIO_BACKUPS, control_escrituras),

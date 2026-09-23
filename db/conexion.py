@@ -154,6 +154,37 @@ def inicializar_base_datos(ruta_script: Path | None = None) -> None:
     logger.info("Base de datos inicializada correctamente en %s", RUTA_BASE_DATOS)
 
 
+def hay_migraciones_pendientes_en_base_existente() -> bool:
+    """Indica si `kiosco.db` ya existe con esquema y le faltan migraciones.
+
+    Sirve para decidir si conviene un backup preventivo antes de migrar
+    (ver `services.servicio_backup.migrar_base_datos_con_backup_preventivo`).
+    Es `False` para una instalación nueva -- el archivo no existe, o existe
+    pero todavía no tiene ninguna tabla -- porque no hay nada que proteger.
+    Solo lee: nunca crea el archivo ni aplica nada.
+    """
+    if not RUTA_BASE_DATOS.is_file():
+        return False
+
+    with obtener_conexion() as conexion:
+        tablas = {
+            fila["name"]
+            for fila in conexion.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()
+        }
+        if not tablas:
+            return False
+        aplicadas: set[str] = set()
+        if "schema_migraciones" in tablas:
+            aplicadas = {
+                fila["nombre_archivo"]
+                for fila in conexion.execute("SELECT nombre_archivo FROM schema_migraciones").fetchall()
+            }
+
+    return any(ruta.name not in aplicadas for ruta in DIRECTORIO_MIGRACIONES.glob("*.sql"))
+
+
 if __name__ == "__main__":
     # Permite inicializar la base de datos manualmente:
     #   python -m db.conexion

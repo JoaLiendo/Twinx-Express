@@ -7,6 +7,9 @@ ENV/
 # Datos de la aplicación (base de datos local, nunca se versiona)
 data/
 
+# Backups generados por la app (ZIP con la base de datos y las imágenes)
+backups/
+
 # Archivos de Python
 __pycache__/
 *.py[cod]
