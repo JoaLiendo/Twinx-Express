@@ -222,5 +222,46 @@
     {% endif %}
   </div>
 
+  <!-- Anulaciones del período -->
+  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+      <p class="font-semibold text-slate-900 dark:text-slate-100">Anulaciones del período</p>
+    </div>
+    {% if reporte.resumen_anulaciones.cantidad > 0 %}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 p-6">
+        <div>
+          <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Ventas anuladas</p>
+          <p class="mt-1 text-xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">{{ reporte.resumen_anulaciones.cantidad }}</p>
+        </div>
+        <div>
+          <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Monto total anulado</p>
+          <p class="mt-1 text-xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">${{ reporte.resumen_anulaciones.monto_total_centavos | dinero_ar }}</p>
+        </div>
+      </div>
+      <div class="overflow-x-auto border-t border-slate-100 dark:border-slate-800">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-6 py-2.5">Motivo</th>
+              <th class="px-6 py-2.5 text-right">Cantidad</th>
+              <th class="px-6 py-2.5 text-right">Monto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in reporte.resumen_anulaciones.por_motivo %}
+              <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                <td class="px-6 py-2.5 font-medium text-slate-800 dark:text-slate-200">{{ item.motivo }}</td>
+                <td class="px-6 py-2.5 text-right text-slate-600 dark:text-slate-400 tabular-nums">{{ item.cantidad }}</td>
+                <td class="px-6 py-2.5 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">${{ item.monto_centavos | dinero_ar }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      {{ ui.estado_vacio("Sin anulaciones en el período", "No se anuló ninguna venta entre las fechas elegidas.") }}
+    {% endif %}
+  </div>
+
 </div>
 {% endblock %}

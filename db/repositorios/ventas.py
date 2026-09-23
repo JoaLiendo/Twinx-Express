@@ -542,6 +542,7 @@ def listar_resumen(
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
     tipo_pago: str | None = None,
+    estado: str | None = None,
 ) -> list[ResumenVenta]:
     """Historial de ventas (Historial de Ventas): cabecera + vendedor +
     cantidad de líneas ya resueltos, en una sola consulta con `JOIN`
@@ -555,14 +556,19 @@ def listar_resumen(
     apareciendo con su nombre (mismo criterio que
     `listar_ventas_por_usuario_en_rango`).
 
-    Los tres filtros son opcionales y se combinan con `AND`, mismo
+    Los cuatro filtros son opcionales y se combinan con `AND`, mismo
     criterio que el resto del repositorio: `fecha_desde`/`fecha_hasta`
     son texto "YYYY-MM-DD" comparado solo por fecha con `date(...)`.
 
-    No filtra por `estado` (migración 013): a diferencia de las
-    consultas analíticas de Reportes, el Historial es una herramienta
-    de auditoría -- debe poder seguir encontrando una venta `ANULADA`,
-    nunca ocultarla.
+    `estado` (Visibilidad de Anulaciones) es `None` por defecto -- sin
+    filtrar, mismo comportamiento que antes de este parámetro: el
+    Historial es una herramienta de auditoría, debe poder seguir
+    encontrando ventas `ANULADA` junto con las `ACTIVA` cuando no se
+    pide lo contrario. Pasar `estado="ACTIVA"`/`"ANULADA"` acota el
+    listado a un único estado -- usado tanto por el filtro del
+    Historial como por `services.servicio_reportes._calcular_resumen_anulaciones`
+    (con `estado="ANULADA"`), sin que ninguno de los dos necesite su
+    propia consulta.
     """
     condiciones = []
     parametros: list[object] = []
@@ -575,6 +581,9 @@ def listar_resumen(
     if tipo_pago is not None:
         condiciones.append("v.tipo_pago = ?")
         parametros.append(tipo_pago)
+    if estado is not None:
+        condiciones.append("v.estado = ?")
+        parametros.append(estado)
 
     where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
     consulta = f"{_CONSULTA_RESUMEN_VENTA_BASE} {where} GROUP BY v.id ORDER BY v.id DESC"

@@ -232,6 +232,7 @@ def listar_historial(
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
     tipo_pago: str | None = None,
+    estado: str | None = None,
 ) -> tuple[str, str, list[ResumenVenta]]:
     """Historial de Ventas del período pedido: devuelve
     `(fecha_desde_efectiva, fecha_hasta_efectiva, ventas)`.
@@ -242,11 +243,16 @@ def listar_historial(
     así que se trata igual que "no se pidió ningún rango" en vez de
     adivinar el límite que falta (mismo criterio que
     `services.servicio_reportes.generar_reporte_ventas`).
+
+    `estado` (Visibilidad de Anulaciones) delega directo a
+    `repositorio_ventas.listar_resumen`: `None` (default) no filtra --
+    mismo comportamiento que antes de este parámetro -- y
+    `"ACTIVA"`/`"ANULADA"` acotan el listado a un único estado.
     """
     if fecha_desde is None or fecha_hasta is None:
         fecha_desde, fecha_hasta = _rango_por_defecto_historial()
 
-    ventas = repositorio_ventas.listar_resumen(fecha_desde, fecha_hasta, tipo_pago)
+    ventas = repositorio_ventas.listar_resumen(fecha_desde, fecha_hasta, tipo_pago, estado)
     return fecha_desde, fecha_hasta, ventas
 
 

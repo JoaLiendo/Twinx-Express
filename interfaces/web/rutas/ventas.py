@@ -10,7 +10,7 @@ igual que en la CLI).
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 
 from domain.usuario import Usuario
-from domain.venta import MOTIVOS_ANULACION_VALIDOS, TIPOS_PAGO_VALIDOS, ItemVenta
+from domain.venta import ESTADOS_VENTA_VALIDOS, MOTIVOS_ANULACION_VALIDOS, TIPOS_PAGO_VALIDOS, ItemVenta
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.esquemas import VentaEntrada, VentaSalida
 from interfaces.web.plantillas import templates
@@ -59,9 +59,16 @@ def historial_ventas(
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
     tipo_pago: str | None = None,
+    estado: str | None = None,
 ):
+    # `estado or None`: el <select> de "Todas" envía `estado=""` (una
+    # request GET siempre manda el campo, aunque esté vacío) -- sin esta
+    # normalización, `listar_resumen` interpretaría la cadena vacía como
+    # un filtro real (`v.estado = ''`, cero resultados) en vez de "sin
+    # filtrar" (mismo recurso que ya usa `accion_anular_venta` para
+    # `observaciones`).
     fecha_desde_efectiva, fecha_hasta_efectiva, ventas = servicio_ventas.listar_historial(
-        fecha_desde, fecha_hasta, tipo_pago
+        fecha_desde, fecha_hasta, tipo_pago, estado or None
     )
     contexto = {
         **contexto_base(request),
@@ -70,6 +77,8 @@ def historial_ventas(
         "fecha_hasta": fecha_hasta_efectiva,
         "tipo_pago": tipo_pago or "",
         "tipos_pago": sorted(TIPOS_PAGO_VALIDOS),
+        "estado": estado or "",
+        "estados": sorted(ESTADOS_VENTA_VALIDOS),
     }
     return templates.TemplateResponse(request, "ventas/historial.html", contexto)
 

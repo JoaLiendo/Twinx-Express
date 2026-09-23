@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from db.repositorios import ventas as repositorio_ventas
-from domain.venta import ProductoMasVendido, Venta
+from domain.venta import ProductoMasVendido, ResumenVenta, Venta
 
 LIMITE_PRODUCTOS_MAS_VENDIDOS = 10
 
@@ -95,6 +95,37 @@ class VentasPorUsuario:
 
 
 @dataclass
+class AnulacionesPorMotivo:
+    """Anulaciones de un `motivo_anulacion` puntual dentro del período
+    del reporte (Visibilidad de Anulaciones)."""
+
+    motivo: str
+    cantidad: int
+    monto_centavos: int
+
+
+@dataclass
+class ResumenAnulaciones:
+    """Resumen de ventas `ANULADA` del período (Visibilidad de
+    Anulaciones): cuántas se anularon, por cuánto y por qué motivo.
+
+    Es información puramente de auditoría/trazabilidad, separada de los
+    KPIs operativos del resto de `ReporteVentas` -- `cantidad`/
+    `monto_total_centavos` nunca suman ni restan sobre `cantidad_ventas`/
+    `total_facturado_centavos` (esos dos siguen calculándose solo sobre
+    ventas `ACTIVA`, sin ningún cambio). `monto_total_centavos` es la
+    suma de `total_centavos` original de cada venta anulada -- ese
+    campo no se toca al anular (ver `services.servicio_ventas.anular_venta`),
+    así que siempre representa el monto real de la venta que se
+    deshizo, nunca un valor recalculado.
+    """
+
+    cantidad: int
+    monto_total_centavos: int
+    por_motivo: list[AnulacionesPorMotivo] = field(default_factory=list)
+
+
+@dataclass
 class ReporteVentas:
     """Resumen de ventas para un período `[fecha_desde, fecha_hasta]`
     (ambos límites inclusive, texto "YYYY-MM-DD").
@@ -115,6 +146,7 @@ class ReporteVentas:
     total_facturado_centavos: int
     ticket_promedio_centavos: int
     rentabilidad: ResumenRentabilidad
+    resumen_anulaciones: ResumenAnulaciones
     ventas_por_medio_pago: list[VentasPorMedioPago] = field(default_factory=list)
     evolucion_por_dia: list[VentasPorDia] = field(default_factory=list)
     productos_mas_vendidos: list[ProductoMasVendido] = field(default_factory=list)
@@ -141,6 +173,28 @@ def _agrupar_por_medio_pago(ventas: list[Venta]) -> list[VentasPorMedioPago]:
             total_centavos=total_por_tipo[tipo_pago],
         )
         for tipo_pago in sorted(total_por_tipo, key=lambda t: total_por_tipo[t], reverse=True)
+    ]
+
+
+def _agrupar_por_motivo_anulacion(anuladas: list[ResumenVenta]) -> list[AnulacionesPorMotivo]:
+    """Agrupa ventas `ANULADA` por `motivo_anulacion`, mayor a menor
+    monto -- mismo criterio que `_agrupar_por_medio_pago`. `motivo` nunca
+    es `None` acá: toda venta con `estado == 'ANULADA'` tiene un motivo
+    persistido (ver `services.servicio_ventas.anular_venta`)."""
+    cantidad_por_motivo: dict[str, int] = {}
+    monto_por_motivo: dict[str, int] = {}
+    for venta in anuladas:
+        motivo = venta.motivo_anulacion
+        cantidad_por_motivo[motivo] = cantidad_por_motivo.get(motivo, 0) + 1
+        monto_por_motivo[motivo] = monto_por_motivo.get(motivo, 0) + venta.total_centavos
+
+    return [
+        AnulacionesPorMotivo(
+            motivo=motivo,
+            cantidad=cantidad_por_motivo[motivo],
+            monto_centavos=monto_por_motivo[motivo],
+        )
+        for motivo in sorted(monto_por_motivo, key=lambda m: monto_por_motivo[m], reverse=True)
     ]
 
 
@@ -189,6 +243,7 @@ def generar_reporte_ventas(fecha_desde: str | None = None, fecha_hasta: str | No
         total_facturado_centavos=total_facturado_centavos,
         ticket_promedio_centavos=ticket_promedio_centavos,
         rentabilidad=_calcular_rentabilidad(fecha_desde, fecha_hasta),
+        resumen_anulaciones=_calcular_resumen_anulaciones(fecha_desde, fecha_hasta),
         ventas_por_medio_pago=_agrupar_por_medio_pago(ventas_del_periodo),
         evolucion_por_dia=_agrupar_por_dia(ventas_del_periodo),
         productos_mas_vendidos=productos_mas_vendidos,
@@ -211,6 +266,25 @@ def _calcular_rentabilidad(fecha_desde: str, fecha_hasta: str) -> ResumenRentabi
         margen_bruto_centavos=margen_bruto_centavos,
         margen_porcentual=margen_porcentual,
         cantidad_ventas_sin_costo_historico=cantidad_ventas_sin_costo_historico,
+    )
+
+
+def _calcular_resumen_anulaciones(fecha_desde: str, fecha_hasta: str) -> ResumenAnulaciones:
+    """Resumen de ventas `ANULADA` del período (Visibilidad de
+    Anulaciones).
+
+    Usa `repositorio_ventas.listar_resumen(..., estado="ANULADA")` --
+    deliberadamente NO `listar_en_rango`/`calcular_rentabilidad_en_rango`/
+    `listar_productos_mas_vendidos_en_rango`/`listar_ventas_por_usuario_en_rango`,
+    que filtran `estado = 'ACTIVA'` a propósito y cuya semántica no debe
+    tocarse: este resumen es información aparte, no un ajuste de esos
+    cuatro cálculos.
+    """
+    anuladas = repositorio_ventas.listar_resumen(fecha_desde, fecha_hasta, estado="ANULADA")
+    return ResumenAnulaciones(
+        cantidad=len(anuladas),
+        monto_total_centavos=sum(venta.total_centavos for venta in anuladas),
+        por_motivo=_agrupar_por_motivo_anulacion(anuladas),
     )
 
 

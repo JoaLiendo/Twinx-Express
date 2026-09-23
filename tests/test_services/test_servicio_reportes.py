@@ -48,6 +48,22 @@ def _registrar_venta(total_centavos, tipo_pago, producto, cantidad=1, precio_uni
         )
 
 
+def _anular_directamente(venta_id, motivo="ERROR_CARGA"):
+    """Marca una venta como ANULADA directo por SQL (Visibilidad de
+    Anulaciones): estos tests prueban agregación de reportes, no el
+    mecanismo transaccional de anulación (ya cubierto en
+    tests/test_servicio_ventas.py::TestAnularVenta) -- no hace falta
+    pasar por `servicio_ventas.anular_venta` ni abrir una caja para
+    fijar `motivo_anulacion`, mismo criterio que el resto de este
+    archivo ya usa para manipular `fecha` directo."""
+    with obtener_conexion() as conexion:
+        conexion.execute(
+            "UPDATE ventas SET estado = 'ANULADA', motivo_anulacion = ?, "
+            "fecha_anulacion = datetime('now', 'localtime') WHERE id = ?",
+            (motivo, venta_id),
+        )
+
+
 class TestGenerarReporteVentas:
     def test_sin_ventas_devuelve_reporte_en_cero(self, base_datos_temporal):
         reporte = servicio_reportes.generar_reporte_ventas()
@@ -350,3 +366,116 @@ class TestVentasPorUsuario:
         reporte = servicio_reportes.generar_reporte_ventas()
 
         assert reporte.ventas_por_usuario == []
+
+
+class TestResumenAnulaciones:
+    """Visibilidad de Anulaciones: `ReporteVentas.resumen_anulaciones`,
+    calculado con `listar_resumen(..., estado="ANULADA")` -- separado
+    de los cuatro cálculos analíticos, que deben seguir dando lo mismo
+    con o sin ventas anuladas de por medio."""
+
+    def test_sin_anulaciones_devuelve_ceros(self, base_datos_temporal):
+        producto = _crear_producto()
+        _registrar_venta(200, "EFECTIVO", producto)
+
+        reporte = servicio_reportes.generar_reporte_ventas()
+
+        assert reporte.resumen_anulaciones.cantidad == 0
+        assert reporte.resumen_anulaciones.monto_total_centavos == 0
+        assert reporte.resumen_anulaciones.por_motivo == []
+
+    def test_una_anulacion(self, base_datos_temporal):
+        producto = _crear_producto()
+        venta = _registrar_venta(300, "EFECTIVO", producto)
+        _anular_directamente(venta.id, motivo="ERROR_CARGA")
+
+        reporte = servicio_reportes.generar_reporte_ventas()
+
+        assert reporte.resumen_anulaciones.cantidad == 1
+        assert reporte.resumen_anulaciones.monto_total_centavos == 300
+        assert len(reporte.resumen_anulaciones.por_motivo) == 1
+        item = reporte.resumen_anulaciones.por_motivo[0]
+        assert item.motivo == "ERROR_CARGA"
+        assert item.cantidad == 1
+        assert item.monto_centavos == 300
+
+    def test_multiples_motivos_se_agrupan_por_separado(self, base_datos_temporal):
+        producto = _crear_producto()
+        v1 = _registrar_venta(200, "EFECTIVO", producto)
+        v2 = _registrar_venta(500, "EFECTIVO", producto)
+        v3 = _registrar_venta(100, "EFECTIVO", producto)
+        _anular_directamente(v1.id, motivo="ERROR_CARGA")
+        _anular_directamente(v2.id, motivo="ARREPENTIMIENTO_CLIENTE")
+        _anular_directamente(v3.id, motivo="ERROR_CARGA")
+
+        reporte = servicio_reportes.generar_reporte_ventas()
+
+        assert reporte.resumen_anulaciones.cantidad == 3
+        assert reporte.resumen_anulaciones.monto_total_centavos == 800
+        por_motivo = {item.motivo: item for item in reporte.resumen_anulaciones.por_motivo}
+        assert por_motivo["ERROR_CARGA"].cantidad == 2
+        assert por_motivo["ERROR_CARGA"].monto_centavos == 300  # 200 + 100
+        assert por_motivo["ARREPENTIMIENTO_CLIENTE"].cantidad == 1
+        assert por_motivo["ARREPENTIMIENTO_CLIENTE"].monto_centavos == 500
+
+    def test_desglose_ordenado_por_monto_descendente(self, base_datos_temporal):
+        producto = _crear_producto()
+        v1 = _registrar_venta(100, "EFECTIVO", producto)
+        v2 = _registrar_venta(900, "EFECTIVO", producto)
+        _anular_directamente(v1.id, motivo="PRODUCTO_INCORRECTO")
+        _anular_directamente(v2.id, motivo="ERROR_CARGA")
+
+        reporte = servicio_reportes.generar_reporte_ventas()
+
+        motivos_en_orden = [item.motivo for item in reporte.resumen_anulaciones.por_motivo]
+        assert motivos_en_orden == ["ERROR_CARGA", "PRODUCTO_INCORRECTO"]
+
+    def test_anulacion_fuera_del_periodo_queda_excluida(self, base_datos_temporal):
+        producto = _crear_producto()
+        venta_vieja = _registrar_venta(200, "EFECTIVO", producto)
+        _anular_directamente(venta_vieja.id, motivo="ERROR_CARGA")
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE ventas SET fecha = ? WHERE id = ?", ("2020-01-01 10:00:00", venta_vieja.id))
+
+        reporte = servicio_reportes.generar_reporte_ventas(
+            fecha_desde="2020-01-02", fecha_hasta=date.today().isoformat()
+        )
+
+        assert reporte.resumen_anulaciones.cantidad == 0
+        assert reporte.resumen_anulaciones.por_motivo == []
+
+    def test_activas_y_anuladas_en_el_mismo_periodo_no_se_mezclan(self, base_datos_temporal):
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto, 1, precio_unitario=200, costo_unitario=100)
+        venta_anulada = _registrar_venta_con_costo(producto, 1, precio_unitario=300, costo_unitario=100)
+        _anular_directamente(venta_anulada.id, motivo="ERROR_CARGA")
+
+        reporte = servicio_reportes.generar_reporte_ventas()
+
+        assert reporte.cantidad_ventas == 1  # solo la activa
+        assert reporte.total_facturado_centavos == 200
+        assert reporte.resumen_anulaciones.cantidad == 1
+        assert reporte.resumen_anulaciones.monto_total_centavos == 300
+
+    def test_kpis_existentes_no_cambian_por_la_presencia_de_anulaciones(self, base_datos_temporal):
+        """Regresión explícita: cantidad_ventas/total_facturado/ticket
+        promedio/rentabilidad/productos_mas_vendidos/ventas_por_usuario
+        deben dar exactamente lo mismo con o sin una venta anulada de
+        por medio -- ninguna de las 4 consultas analíticas que las
+        calculan cambió su semántica."""
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto, 1, precio_unitario=200, costo_unitario=100)
+
+        reporte_sin_anulacion = servicio_reportes.generar_reporte_ventas()
+
+        venta_a_anular = _registrar_venta_con_costo(producto, 1, precio_unitario=500, costo_unitario=100)
+        _anular_directamente(venta_a_anular.id, motivo="ERROR_CARGA")
+
+        reporte_con_anulacion = servicio_reportes.generar_reporte_ventas()
+
+        assert reporte_con_anulacion.cantidad_ventas == reporte_sin_anulacion.cantidad_ventas
+        assert reporte_con_anulacion.total_facturado_centavos == reporte_sin_anulacion.total_facturado_centavos
+        assert reporte_con_anulacion.ticket_promedio_centavos == reporte_sin_anulacion.ticket_promedio_centavos
+        assert reporte_con_anulacion.rentabilidad == reporte_sin_anulacion.rentabilidad
+        assert reporte_con_anulacion.productos_mas_vendidos == reporte_sin_anulacion.productos_mas_vendidos
+        assert reporte_con_anulacion.ventas_por_usuario == reporte_sin_anulacion.ventas_por_usuario

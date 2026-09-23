@@ -12,7 +12,7 @@ from db.repositorios import ventas as repositorio_ventas
 from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from interfaces.web.auth import NOMBRE_COOKIE_SESION
-from services import servicio_auth, servicio_stock, servicio_ventas
+from services import servicio_auth, servicio_caja, servicio_stock, servicio_ventas
 
 from ._asgi_cliente import solicitud
 
@@ -170,3 +170,64 @@ class TestVentasPorVendedorEnLaPagina:
 
         assert respuesta.status == 200
         assert "Ventas por vendedor" in respuesta.texto
+
+
+class TestResumenAnulacionesEnLaPagina:
+    """Visibilidad de Anulaciones: sección "Anulaciones del período" de
+    /reportes, probada de punta a punta contra la ruta y el template
+    reales (no solo contra `servicio_reportes`, ya cubierto en
+    tests/test_services/test_servicio_reportes.py)."""
+
+    def test_muestra_cantidad_monto_y_motivo_sin_contaminar_los_kpis_existentes(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto(
+            codigo_barras="7790000000001",
+            nombre="Alfajor",
+            precio_costo_centavos=100,
+            precio_venta_centavos=200,
+            stock_actual=10,
+        )
+        usuario_owner = repositorio_usuarios.crear_usuario(
+            Usuario(
+                nombre_usuario="duenio",
+                nombre_completo="Usuario de prueba",
+                password_hash=servicio_auth.hashear_password("clave-correcta-123", iteraciones=1000),
+                rol="OWNER",
+            )
+        )
+        token = servicio_auth.iniciar_sesion("duenio", "clave-correcta-123").token
+        cookies = {NOMBRE_COOKIE_SESION: token}
+
+        servicio_caja.abrir_caja(100_000)
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")  # activa: 200 centavos
+        venta_anulada = servicio_ventas.registrar_venta([ItemVenta(producto.id, 3)], "EFECTIVO")  # 600 centavos
+        servicio_ventas.anular_venta(
+            venta_anulada.id, motivo="ARREPENTIMIENTO_CLIENTE", observaciones=None, usuario_id=usuario_owner.id
+        )
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Anulaciones del período" in respuesta.texto
+        assert "ARREPENTIMIENTO_CLIENTE" in respuesta.texto
+        assert "6,00" in respuesta.texto  # monto anulado (600 centavos)
+        # KPI operativo: solo la venta activa (200 centavos) -- si la
+        # anulada hubiera contaminado la facturación, el total sería
+        # 800 centavos ("8,00"), nunca "2,00".
+        assert "2,00" in respuesta.texto
+        assert "8,00" not in respuesta.texto
+
+    def test_sin_anulaciones_muestra_estado_vacio(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto(
+            codigo_barras="7790000000001",
+            nombre="Alfajor",
+            precio_costo_centavos=100,
+            precio_venta_centavos=200,
+            stock_actual=10,
+        )
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", "/reportes", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Sin anulaciones en el período" in respuesta.texto

@@ -311,3 +311,124 @@ class TestVisibilidadDeVentaAnulada:
 
         assert respuesta.status == 200
         assert f"/ventas/{venta.id}/anular" in respuesta.texto
+
+
+class TestFiltroEstadoEnHistorial:
+    """Visibilidad de Anulaciones: filtro `estado` del Historial,
+    probado de punta a punta contra la ruta y el template reales (no
+    solo contra el repositorio/servicio, ya cubiertos en
+    tests/test_db/test_ventas.py y tests/test_servicio_ventas.py)."""
+
+    def _href(self, venta_id: int) -> str:
+        return f'href="/ventas/{venta_id}"'
+
+    def test_sin_estado_mantiene_el_comportamiento_actual(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = _crear_producto()
+        venta_activa = _crear_venta(producto.id)
+        venta_anulada = _crear_venta(producto.id)
+        owner, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        servicio_ventas.anular_venta(venta_anulada.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        respuesta = solicitud("GET", "/ventas/historial", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert self._href(venta_activa.id) in respuesta.texto
+        assert self._href(venta_anulada.id) in respuesta.texto
+
+    def test_estado_activa_excluye_anuladas(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = _crear_producto()
+        venta_activa = _crear_venta(producto.id)
+        venta_anulada = _crear_venta(producto.id)
+        owner, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        servicio_ventas.anular_venta(venta_anulada.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        respuesta = solicitud("GET", "/ventas/historial?estado=ACTIVA", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert self._href(venta_activa.id) in respuesta.texto
+        assert self._href(venta_anulada.id) not in respuesta.texto
+
+    def test_estado_anulada_excluye_activas(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = _crear_producto()
+        venta_activa = _crear_venta(producto.id)
+        venta_anulada = _crear_venta(producto.id)
+        owner, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        servicio_ventas.anular_venta(venta_anulada.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        respuesta = solicitud("GET", "/ventas/historial?estado=ANULADA", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert self._href(venta_anulada.id) in respuesta.texto
+        assert self._href(venta_activa.id) not in respuesta.texto
+
+    def test_estado_vacio_del_formulario_no_rompe_el_listado(self, base_datos_temporal):
+        """El <select> de "Todas" envía `estado=""` -- no debe filtrar a
+        cero resultados (ver bonus fix de este mismo bloque:
+        `estado or None` en `interfaces.web.rutas.ventas.historial_ventas`).
+
+        Solo `estado=""` acá -- `tipo_pago=""` tiene un defecto
+        preexistente y ya conocido (mismo síntoma, otro campo, fuera de
+        alcance de este bloque: ver auditoría), que combinado rompería
+        este test por una razón ajena a lo que se quiere probar."""
+        servicio_caja.abrir_caja(100_000)
+        producto = _crear_producto()
+        venta = _crear_venta(producto.id)
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+
+        respuesta = solicitud("GET", "/ventas/historial?estado=", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert self._href(venta.id) in respuesta.texto
+        assert "Sin ventas en el período" not in respuesta.texto
+
+    def test_estado_se_combina_con_fecha_y_tipo_pago_desde_http(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = _crear_producto()
+        venta_efectivo_anulada = _crear_venta(producto.id, tipo_pago="EFECTIVO")
+        venta_tarjeta_activa = _crear_venta(producto.id, tipo_pago="TARJETA")
+        owner, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        servicio_ventas.anular_venta(
+            venta_efectivo_anulada.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id
+        )
+
+        respuesta = solicitud(
+            "GET",
+            "/ventas/historial?estado=ANULADA&tipo_pago=EFECTIVO&fecha_desde=2000-01-01&fecha_hasta=2099-12-31",
+            cookies=cookies,
+        )
+
+        assert respuesta.status == 200
+        assert self._href(venta_efectivo_anulada.id) in respuesta.texto
+        assert self._href(venta_tarjeta_activa.id) not in respuesta.texto
+
+    def test_venta_anulada_renderiza_badge_y_motivo(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = _crear_producto()
+        venta = _crear_venta(producto.id)
+        owner, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        servicio_ventas.anular_venta(venta.id, motivo="PRODUCTO_INCORRECTO", observaciones=None, usuario_id=owner.id)
+
+        respuesta = solicitud("GET", "/ventas/historial", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "ANULADA" in respuesta.texto
+        assert "PRODUCTO_INCORRECTO" in respuesta.texto
+
+    def test_venta_activa_no_renderiza_motivo_de_anulacion(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
+        producto = _crear_producto()
+        _crear_venta(producto.id)
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+
+        respuesta = solicitud("GET", "/ventas/historial", cookies=cookies)
+
+        assert respuesta.status == 200
+        # Ninguno de los motivos reales (salvo "OTRO", que también es una
+        # opción del <select> de tipo de pago y aparecería igual sin
+        # relación con esto) debe aparecer: no hay ninguna venta anulada.
+        assert "ERROR_CARGA" not in respuesta.texto
+        assert "ARREPENTIMIENTO_CLIENTE" not in respuesta.texto
+        assert "PRODUCTO_INCORRECTO" not in respuesta.texto

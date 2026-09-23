@@ -510,6 +510,24 @@ class TestListarHistorial:
         assert len(ventas) == 1
         assert ventas[0].id == venta.id
 
+    def test_delega_el_filtro_de_estado_al_repositorio(self, base_datos_temporal):
+        """Visibilidad de Anulaciones: `estado` se enhebra directo hacia
+        `repositorio_ventas.listar_resumen`, sin lógica propia."""
+        servicio_caja.abrir_caja(100_000)
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        venta_activa = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        venta_anulada = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        owner = _owner()
+        servicio_ventas.anular_venta(venta_anulada.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
+
+        _, _, activas = servicio_ventas.listar_historial(estado="ACTIVA")
+        _, _, anuladas = servicio_ventas.listar_historial(estado="ANULADA")
+        _, _, todas = servicio_ventas.listar_historial()
+
+        assert [v.id for v in activas] == [venta_activa.id]
+        assert [v.id for v in anuladas] == [venta_anulada.id]
+        assert {v.id for v in todas} == {venta_activa.id, venta_anulada.id}
+
 
 class TestObtenerResumenPorId:
     def test_delega_directamente_al_repositorio(self, base_datos_temporal):

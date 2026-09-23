@@ -922,6 +922,75 @@ class TestHistorialDeVentas:
     def test_obtener_resumen_por_id_inexistente(self, base_datos_temporal):
         assert repositorio_ventas.obtener_resumen_por_id(9999) is None
 
+    def test_filtro_estado_activa_excluye_anuladas(self, base_datos_temporal):
+        producto = _crear_producto()
+        venta_activa = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        venta_anulada = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta_anulada.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        resultado = repositorio_ventas.listar_resumen(estado="ACTIVA")
+
+        assert [item.id for item in resultado] == [venta_activa.id]
+
+    def test_filtro_estado_anulada_incluye_solo_anuladas(self, base_datos_temporal):
+        producto = _crear_producto()
+        _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        venta_anulada = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta_anulada.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        resultado = repositorio_ventas.listar_resumen(estado="ANULADA")
+
+        assert [item.id for item in resultado] == [venta_anulada.id]
+
+    def test_sin_filtro_estado_devuelve_activas_y_anuladas(self, base_datos_temporal):
+        """Regresión: `estado=None` (default) debe seguir sin filtrar,
+        mismo comportamiento que antes de agregar este parámetro."""
+        producto = _crear_producto()
+        venta_activa = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        venta_anulada = _registrar_venta_con_costo(producto.id, 1, precio_unitario=200, costo_unitario=100)
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta_anulada.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        resultado = repositorio_ventas.listar_resumen()
+
+        assert {item.id for item in resultado} == {venta_activa.id, venta_anulada.id}
+
+    def test_filtro_estado_se_combina_con_fecha_y_tipo_pago(self, base_datos_temporal):
+        producto = _crear_producto()
+        with obtener_conexion() as conexion:
+            venta_efectivo_activa = repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)]
+            )
+        with obtener_conexion() as conexion:
+            venta_efectivo_anulada = repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "EFECTIVO", [(ItemVenta(producto.id, 1), 200)]
+            )
+        with obtener_conexion() as conexion:
+            repositorio_ventas.registrar_venta_con_detalle(
+                conexion, 200, "TARJETA", [(ItemVenta(producto.id, 1), 200)]
+            )
+        usuario = _crear_usuario()
+        with obtener_conexion() as conexion:
+            repositorio_ventas.anular_venta_en_conexion(
+                conexion, venta_efectivo_anulada.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
+            )
+
+        resultado = repositorio_ventas.listar_resumen(tipo_pago="EFECTIVO", estado="ANULADA")
+
+        assert [item.id for item in resultado] == [venta_efectivo_anulada.id]
+        assert venta_efectivo_activa.id not in [item.id for item in resultado]
+
 
 def _crear_venta_activa(producto_id=None, cantidad=1, precio_unitario=200):
     """Venta ACTIVA (estado por defecto de la migración 013), a nivel
