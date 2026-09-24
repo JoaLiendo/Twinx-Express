@@ -43,7 +43,7 @@ def test_sin_sesion_usuario_actual_es_none_y_nav_completa(base_datos_temporal):
     contexto = contexto_base(_request_con_cookie(None))
 
     assert contexto["usuario_actual"] is None
-    assert _hrefs(contexto["nav_items"]) == _hrefs(NAV_ITEMS) - {"/pedidos", "/precios"}
+    assert _hrefs(contexto["nav_items"]) == _hrefs(NAV_ITEMS) - {"/pedidos"}
     assert "caja_abierta" in contexto
 
 
@@ -54,7 +54,7 @@ def test_con_sesion_owner_expone_el_usuario_y_nav_completa(base_datos_temporal):
 
     assert contexto["usuario_actual"] is not None
     assert contexto["usuario_actual"].rol == "OWNER"
-    assert _hrefs(contexto["nav_items"]) == _hrefs(NAV_ITEMS) - {"/pedidos", "/precios"}
+    assert _hrefs(contexto["nav_items"]) == _hrefs(NAV_ITEMS) - {"/pedidos"}
 
 
 def test_con_sesion_cashier_expone_el_usuario_y_nav_restringida(base_datos_temporal):

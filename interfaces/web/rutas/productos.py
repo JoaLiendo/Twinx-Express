@@ -18,7 +18,7 @@ from excepciones import ArchivoImagenInvalidoError, DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
-from services import servicio_categorias, servicio_exportacion, servicio_importacion, servicio_stock
+from services import servicio_categorias, servicio_exportacion, servicio_importacion, servicio_precios, servicio_stock
 
 router = APIRouter()
 
@@ -153,6 +153,7 @@ async def crear_producto(
     categoria_id: str = Form(""),
     unidad_medida: str = Form("UNIDAD"),
     imagen: UploadFile | None = File(None),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     producto = servicio_stock.registrar_producto(
         codigo_barras=codigo_barras,
@@ -163,6 +164,7 @@ async def crear_producto(
         stock_minimo=stock_minimo,
         categoria_id=int(categoria_id) if categoria_id else None,
         unidad_medida=unidad_medida,
+        usuario_id=usuario_actual.id,
     )
 
     # El producto ya se creó y tiene id antes de tocar la imagen (ver
@@ -189,26 +191,31 @@ def formulario_importar_productos(request: Request):
 
 
 @router.post("/productos/importar", dependencies=[_SOLO_OWNER])
-async def importar_productos(archivo: UploadFile = File(...)):
+async def importar_productos(
+    request: Request,
+    archivo: UploadFile = File(...),
+    modo: str = Form("CREAR"),
+    permitir_parcial: bool = Form(False),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    """Muestra un reporte completo (todas las filas rechazadas, no solo las
+    primeras). Reenviar el mismo archivo es inocuo: lo ya creado se omite y lo ya
+    actualizado queda "sin cambios"."""
     contenido = await archivo.read()
-    resultado = servicio_importacion.procesar_archivo(archivo.filename or "", contenido)
-
-    detalle_errores = ""
-    if resultado.errores:
-        primeros = "; ".join(resultado.errores[:5])
-        sufijo = " (y más...)" if len(resultado.errores) > 5 else ""
-        detalle_errores = f" Errores: {primeros}{sufijo}"
-
-    mensaje = (
-        f"Importación completa: {resultado.importados} producto(s) importado(s), "
-        f"{resultado.duplicados} duplicado(s) omitido(s), {len(resultado.errores)} con error(es)."
-        f"{detalle_errores}"
+    resultado = servicio_importacion.procesar_archivo(
+        archivo.filename or "",
+        contenido,
+        modo=modo,
+        todo_o_nada=not permitir_parcial,  # por defecto: todo o nada
+        usuario_id=usuario_actual.id,
     )
-    if resultado.errores:
-        tipo = "warning" if resultado.importados > 0 else "error"
-    else:
-        tipo = "success"
-    return redireccionar_con_mensaje("/productos", tipo, mensaje)
+    contexto = {
+        **contexto_base(request),
+        "resultado": resultado,
+        "modo": modo,
+        "nombre_archivo": archivo.filename,
+    }
+    return templates.TemplateResponse(request, "productos/importar_resultado.html", contexto)
 
 
 @router.get("/productos/exportar/csv", dependencies=[_SOLO_OWNER])
@@ -263,6 +270,7 @@ async def editar_producto(
     unidad_medida: str = Form("UNIDAD"),
     quitar_imagen: bool = Form(False),
     imagen: UploadFile | None = File(None),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     producto = servicio_stock.actualizar_producto(
         producto_id=producto_id,
@@ -273,6 +281,7 @@ async def editar_producto(
         stock_minimo=stock_minimo,
         categoria_id=int(categoria_id) if categoria_id else None,
         unidad_medida=unidad_medida,
+        usuario_id=usuario_actual.id,
     )
 
     # Una imagen nueva tiene prioridad sobre el checkbox de "quitar" (si
@@ -296,19 +305,19 @@ async def editar_producto(
 
 
 @router.post("/productos/{producto_id}/eliminar", dependencies=[_SOLO_OWNER])
-def eliminar_producto(producto_id: int):
-    fue_baja_logica = servicio_stock.eliminar_producto(producto_id)
-    mensaje = (
-        "Producto desactivado: tiene ventas asociadas, se conservó su historial."
-        if fue_baja_logica
-        else "Producto eliminado correctamente."
-    )
+def eliminar_producto(producto_id: int, usuario_actual: Usuario = Depends(obtener_usuario_actual)):
+    fue_baja_logica = servicio_stock.eliminar_producto(producto_id, usuario_id=usuario_actual.id)
+    if fue_baja_logica:
+        motivos = ", ".join(servicio_stock.motivos_de_conservacion(producto_id))
+        mensaje = f"Producto desactivado: tiene {motivos} asociados; se conservó su historial."
+    else:
+        mensaje = "Producto eliminado correctamente."
     return redireccionar_con_mensaje("/productos", "success", mensaje)
 
 
 @router.post("/productos/{producto_id}/reactivar", dependencies=[_SOLO_OWNER])
-def reactivar_producto(producto_id: int):
-    producto = servicio_stock.reactivar_producto(producto_id)
+def reactivar_producto(producto_id: int, usuario_actual: Usuario = Depends(obtener_usuario_actual)):
+    producto = servicio_stock.reactivar_producto(producto_id, usuario_id=usuario_actual.id)
     return redireccionar_con_mensaje(
         "/productos", "success", f"Producto '{producto.nombre}' reactivado correctamente."
     )
@@ -360,6 +369,20 @@ def ajustar_stock(
     return redireccionar_con_mensaje(
         f"/productos/{producto_id}/editar", "success", "Ajuste de stock registrado correctamente."
     )
+
+
+@router.get("/productos/{producto_id}/precios", dependencies=[_SOLO_OWNER])
+def historial_de_precios_de_producto(request: Request, producto_id: int):
+    producto = servicio_stock.obtener_por_id(producto_id)
+    if producto is None:
+        return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
+
+    contexto = {
+        **contexto_base(request),
+        "producto": producto,
+        "cambios": servicio_precios.listar_historial_de_producto(producto_id),
+    }
+    return templates.TemplateResponse(request, "productos/historial_precios.html", contexto)
 
 
 @router.get("/productos/{producto_id}/ajustes", dependencies=[_SOLO_OWNER])

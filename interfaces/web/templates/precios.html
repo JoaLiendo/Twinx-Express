@@ -2,17 +2,97 @@
 {% import "_componentes.html" as ui %}
 
 {% block titulo %}Precios{% endblock %}
-{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Precios</h1>{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Actualización de precios</h1>{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto space-y-6">
+<div class="max-w-3xl mx-auto space-y-8">
+
   {% call ui.card() %}
-    {{ ui.estado_vacio("Precios todavía no está disponible", "Esta sección se habilita en una fase posterior, cuando exista gestión de listas y reglas de precios.") }}
-    <ul class="mt-6 text-sm text-slate-500 space-y-2 max-w-md mx-auto text-left list-disc list-inside">
-      <li>Listas de precios y actualizaciones masivas</li>
-      <li>Historial de cambios de precio por producto</li>
-      <li>Márgenes sugeridos según precio de costo</li>
-    </ul>
+    <p class="font-semibold text-slate-900 dark:text-slate-100 mb-1">Actualización masiva de precios de venta</p>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
+      Primero se muestra una vista previa con el precio actual y el nuevo de cada producto; no se cambia nada hasta que confirmes.
+      Los productos sin precio configurado no participan.
+    </p>
+    <form method="get" action="/precios/vista-previa" class="space-y-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label for="tipo" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Tipo</label>
+          <select id="tipo" name="tipo" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+            <option value="PORCENTAJE">Porcentaje (%)</option>
+            <option value="MONTO">Monto fijo ($)</option>
+          </select>
+        </div>
+        <div>
+          <label for="direccion" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Sentido</label>
+          <select id="direccion" name="direccion" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+            <option value="AUMENTAR">Aumentar</option>
+            <option value="DISMINUIR">Disminuir</option>
+          </select>
+        </div>
+        <div>
+          <label for="valor" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Valor</label>
+          <input id="valor" name="valor" type="text" inputmode="decimal" required placeholder="10"
+                 class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label for="alcance" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Productos</label>
+          <select id="alcance" name="alcance" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+            <option value="TODOS">Todos</option>
+            <option value="SIN_CATEGORIA">Sin categoría</option>
+            {% for categoria in categorias %}
+              <option value="CATEGORIA:{{ categoria.id }}">Categoría: {{ categoria.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="redondeo" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Redondeo</label>
+          <select id="redondeo" name="redondeo" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+            <option value="NINGUNO">Sin redondeo</option>
+            <option value="ENTERO">Al peso más cercano</option>
+          </select>
+        </div>
+      </div>
+      <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
+        Ver vista previa
+      </button>
+    </form>
   {% endcall %}
+
+  <div>
+    <p class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Últimas actualizaciones</p>
+    {% if lotes %}
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                <th class="px-5 py-3">Lote</th><th class="px-5 py-3">Fecha</th><th class="px-5 py-3">Criterio</th>
+                <th class="px-5 py-3 text-right">Productos</th><th class="px-5 py-3">Usuario</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lote in lotes %}
+                <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                  <td class="px-5 py-3.5 tabular-nums">#{{ lote.id }}</td>
+                  <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ lote.fecha }}</td>
+                  <td class="px-5 py-3.5">
+                    {{ 'Aumentar' if lote.criterio.direccion == 'AUMENTAR' else 'Disminuir' }}
+                    {% if lote.criterio.tipo == 'PORCENTAJE' %}{{ lote.criterio.valor | dinero_ar }} %{% else %}${{ lote.criterio.valor | dinero_ar }}{% endif %}
+                  </td>
+                  <td class="px-5 py-3.5 text-right tabular-nums">{{ lote.cantidad_productos }}</td>
+                  <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ lote.usuario_nombre_completo or "—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% else %}
+      {{ ui.estado_vacio("Todavía no hay actualizaciones masivas", "Cada cambio de precio también queda en el historial del producto.") }}
+    {% endif %}
+  </div>
+
 </div>
 {% endblock %}

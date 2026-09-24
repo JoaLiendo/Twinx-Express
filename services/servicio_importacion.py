@@ -26,9 +26,13 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
+from db.conexion import obtener_conexion
+from db.repositorios import auditoria as repositorio_auditoria
+from db.repositorios import productos as repositorio_productos
 from domain.dinero import texto_a_centavos
-from excepciones import ArchivoImportacionInvalidoError, CodigoBarrasDuplicadoError, DatosInvalidosError
-from services import servicio_categorias, servicio_stock
+from domain.producto import Producto
+from excepciones import ArchivoImportacionInvalidoError, DatosInvalidosError
+from services import servicio_categorias
 
 logger = logging.getLogger(__name__)
 
@@ -44,24 +48,68 @@ COLUMNAS_REQUERIDAS = (
 EXTENSIONES_SOPORTADAS = frozenset({".csv", ".xlsx"})
 
 
+MODO_CREAR = "CREAR"
+MODO_CREAR_Y_ACTUALIZAR = "CREAR_Y_ACTUALIZAR"
+MODOS_IMPORTACION = frozenset({MODO_CREAR, MODO_CREAR_Y_ACTUALIZAR})
+
+
 @dataclass
 class ResultadoImportacion:
-    """Resumen de una importación masiva de productos."""
+    """Resumen de una importación masiva de productos.
+
+    `aplicado` es `False` cuando se pidió "todo o nada" y alguna fila falló: en
+    ese caso no se escribió nada (los contadores de creados/actualizados quedan
+    en 0) y `errores` lista todas las filas rechazadas.
+    """
 
     total_filas: int
     importados: int = 0
+    actualizados: int = 0
+    sin_cambios: int = 0
     duplicados: int = 0
     errores: list[str] = field(default_factory=list)
+    aplicado: bool = True
 
 
-def procesar_archivo(nombre_archivo: str, contenido: bytes) -> ResultadoImportacion:
+class _RevertirImportacion(Exception):
+    """Interna: aborta la transacción de la importación ("todo o nada")."""
+
+
+def procesar_archivo(
+    nombre_archivo: str,
+    contenido: bytes,
+    *,
+    modo: str = MODO_CREAR,
+    todo_o_nada: bool = True,
+    usuario_id: int | None = None,
+) -> ResultadoImportacion:
     """Importa productos desde un archivo `.csv` o `.xlsx` subido por el usuario.
 
+    Toda la importación corre en una única transacción (`BEGIN IMMEDIATE`).
+
+    `modo`:
+    - `CREAR` (default): crea los productos nuevos; los códigos de barras ya
+      existentes se omiten sin tocarlos.
+    - `CREAR_Y_ACTUALIZAR`: además actualiza los existentes con los datos del
+      archivo. **Nunca modifica `stock_actual` de un producto existente** (el stock
+      solo cambia con ventas, compras y ajustes con motivo). Una celda vacía en un
+      producto existente conserva el valor actual (no lo borra). Un producto dado
+      de baja se rechaza. Cada cambio de precio queda en el historial de precios
+      (origen `IMPORTACION`).
+
+    `todo_o_nada=True` (default, el comportamiento seguro): si cualquier fila es
+    inválida no se aplica NADA. Con `False` (importación parcial, opt-in explícito)
+    se aplican las filas válidas y se informan las rechazadas.
+
+    Con `usuario_id` se deja un único resumen en la auditoría.
+
     Raises:
-        ArchivoImportacionInvalidoError: si la extensión no es
-            soportada, el archivo está vacío/corrupto, o le faltan
-            columnas obligatorias.
+        ArchivoImportacionInvalidoError: si la extensión no es soportada, el
+            archivo está vacío/corrupto, le faltan columnas obligatorias o el
+            `modo` es inválido.
     """
+    if modo not in MODOS_IMPORTACION:
+        raise ArchivoImportacionInvalidoError(f"Modo de importación inválido: {modo!r}.")
     extension = Path(nombre_archivo).suffix.lower()
     if extension == ".csv":
         filas = _extraer_filas_csv(contenido)
@@ -73,51 +121,147 @@ def procesar_archivo(nombre_archivo: str, contenido: bytes) -> ResultadoImportac
         )
 
     resultado = ResultadoImportacion(total_filas=len(filas))
+    categorias_por_nombre: dict[str, int | None] = {}
+    fila_de_cada_codigo: dict[str, int] = {}
 
-    for numero_fila, fila in enumerate(filas, start=2):  # la fila 1 es el encabezado
-        try:
-            _importar_fila(fila)
-            resultado.importados += 1
-        except CodigoBarrasDuplicadoError:
-            resultado.duplicados += 1
-        except DatosInvalidosError as error:
-            resultado.errores.append(f"Fila {numero_fila}: {error}")
+    try:
+        with obtener_conexion(inmediata=True) as conexion:
+            for numero_fila, fila in enumerate(filas, start=2):  # la fila 1 es el encabezado
+                try:
+                    _procesar_fila(
+                        conexion, fila, numero_fila, modo, usuario_id, categorias_por_nombre, fila_de_cada_codigo, resultado
+                    )
+                except DatosInvalidosError as error:
+                    resultado.errores.append(f"Fila {numero_fila}: {error}")
+                except OverflowError:
+                    resultado.errores.append(f"Fila {numero_fila}: hay un valor numérico fuera de rango.")
+            if todo_o_nada and resultado.errores:
+                raise _RevertirImportacion
+            if usuario_id is not None and (resultado.importados or resultado.actualizados):
+                repositorio_auditoria.registrar_en_conexion(
+                    conexion,
+                    usuario_id,
+                    "PRODUCTOS_IMPORTADOS",
+                    "PRODUCTO",
+                    None,
+                    f"{Path(nombre_archivo).name}: {resultado.importados} creado(s), "
+                    f"{resultado.actualizados} actualizado(s)",
+                )
+    except _RevertirImportacion:
+        resultado.importados = resultado.actualizados = resultado.sin_cambios = 0
+        resultado.aplicado = False
 
     logger.info(
-        "Importación de productos: %s importados, %s duplicados, %s errores (de %s filas)",
+        "Importación de productos (%s): %s creados, %s actualizados, %s sin cambios, %s duplicados, "
+        "%s errores (de %s filas)%s",
+        modo,
         resultado.importados,
+        resultado.actualizados,
+        resultado.sin_cambios,
         resultado.duplicados,
         len(resultado.errores),
         resultado.total_filas,
+        "" if resultado.aplicado else " -- NO se aplicó nada (todo o nada)",
     )
     return resultado
 
 
-def _importar_fila(fila: dict[str, str]) -> None:
-    """Valida y persiste una fila. Toda la validación de negocio ocurre
-    en `servicio_stock.registrar_producto` (vía `domain.producto.Producto`),
-    incluida la de `unidad_medida` -- acá no se repite esa lista de valores
-    válidos, se deja pasar el texto tal cual y que la capa de dominio la
-    rechace si corresponde."""
-    codigo_barras = (fila.get("codigo_barras") or "").strip()
-    nombre = (fila.get("nombre") or "").strip()
-    precio_costo_centavos = texto_a_centavos(fila.get("precio_costo") or "0")
-    precio_venta_centavos = texto_a_centavos(fila.get("precio_venta") or "0")
-    stock_actual = _texto_a_entero(fila.get("stock_actual"), "stock_actual")
-    stock_minimo = _texto_a_entero(fila.get("stock_minimo"), "stock_minimo")
-    categoria_id = _resolver_categoria(fila.get("categoria"))
-    unidad_medida = (fila.get("unidad_medida") or "UNIDAD").strip().upper() or "UNIDAD"
+def _celda(fila: dict[str, str], columna: str) -> str:
+    return (fila.get(columna) or "").strip()
 
-    servicio_stock.registrar_producto(
-        codigo_barras=codigo_barras,
-        nombre=nombre,
-        precio_costo_centavos=precio_costo_centavos,
-        precio_venta_centavos=precio_venta_centavos,
-        stock_actual=stock_actual,
-        stock_minimo=stock_minimo,
-        categoria_id=categoria_id,
-        unidad_medida=unidad_medida,
+
+def _procesar_fila(
+    conexion,
+    fila: dict[str, str],
+    numero_fila: int,
+    modo: str,
+    usuario_id: int | None,
+    categorias_por_nombre: dict[str, int | None],
+    fila_de_cada_codigo: dict[str, int],
+    resultado: ResultadoImportacion,
+) -> None:
+    """Valida y aplica una fila dentro de la transacción de la importación.
+    Cualquier problema de la fila se informa como `DatosInvalidosError`. Toda la
+    validación de negocio ocurre al construir `domain.producto.Producto`, incluida
+    la de `unidad_medida`: acá no se repite esa lista de valores válidos."""
+    codigo_barras = _celda(fila, "codigo_barras")
+    if not codigo_barras:
+        raise DatosInvalidosError("El código de barras no puede estar vacío.")
+    if codigo_barras in fila_de_cada_codigo:
+        raise DatosInvalidosError(
+            f"El código '{codigo_barras}' está repetido en el archivo (ya aparece en la fila "
+            f"{fila_de_cada_codigo[codigo_barras]})."
+        )
+    fila_de_cada_codigo[codigo_barras] = numero_fila
+
+    existente = repositorio_productos.obtener_por_codigo_barras_en_conexion(conexion, codigo_barras)
+    categoria_id = _categoria_de_la_fila(fila, categorias_por_nombre)
+
+    if existente is None:
+        producto = Producto(
+            codigo_barras=codigo_barras,
+            nombre=_celda(fila, "nombre"),
+            precio_costo_centavos=texto_a_centavos(_celda(fila, "precio_costo") or "0"),
+            precio_venta_centavos=texto_a_centavos(_celda(fila, "precio_venta") or "0"),
+            stock_actual=_texto_a_entero(fila.get("stock_actual"), "stock_actual"),
+            stock_minimo=_texto_a_entero(fila.get("stock_minimo"), "stock_minimo"),
+            categoria_id=categoria_id,
+            unidad_medida=(_celda(fila, "unidad_medida") or "UNIDAD").upper(),
+        )
+        repositorio_productos.crear_producto_en_conexion(conexion, producto)
+        resultado.importados += 1
+        return
+
+    if modo == MODO_CREAR:
+        resultado.duplicados += 1
+        return
+
+    if not existente.activo:
+        raise DatosInvalidosError(
+            f"El producto '{codigo_barras}' está dado de baja: reactivalo antes de actualizarlo."
+        )
+    # Celda vacía = conservar el valor actual. `stock_actual` del archivo se ignora.
+    actualizado = Producto(
+        id=existente.id,
+        codigo_barras=existente.codigo_barras,
+        nombre=_celda(fila, "nombre") or existente.nombre,
+        precio_costo_centavos=(
+            texto_a_centavos(_celda(fila, "precio_costo")) if _celda(fila, "precio_costo") else existente.precio_costo_centavos
+        ),
+        precio_venta_centavos=(
+            texto_a_centavos(_celda(fila, "precio_venta")) if _celda(fila, "precio_venta") else existente.precio_venta_centavos
+        ),
+        stock_actual=existente.stock_actual,
+        stock_minimo=(
+            _texto_a_entero(fila.get("stock_minimo"), "stock_minimo")
+            if _celda(fila, "stock_minimo")
+            else existente.stock_minimo
+        ),
+        categoria_id=categoria_id if categoria_id is not None else existente.categoria_id,
+        unidad_medida=(_celda(fila, "unidad_medida").upper() or existente.unidad_medida),
     )
+    if _mismos_datos_editables(actualizado, existente):
+        resultado.sin_cambios += 1
+        return
+    repositorio_productos.actualizar_datos_en_conexion(
+        conexion, actualizado, usuario_id=usuario_id, origen="IMPORTACION", auditar=False
+    )
+    resultado.actualizados += 1
+
+
+def _mismos_datos_editables(a: Producto, b: Producto) -> bool:
+    return (
+        a.nombre, a.precio_costo_centavos, a.precio_venta_centavos, a.stock_minimo, a.categoria_id, a.unidad_medida
+    ) == (b.nombre, b.precio_costo_centavos, b.precio_venta_centavos, b.stock_minimo, b.categoria_id, b.unidad_medida)
+
+
+def _categoria_de_la_fila(fila: dict[str, str], categorias_por_nombre: dict[str, int | None]) -> int | None:
+    """Resuelve (con caché por importación) la categoría de la fila: `None` si la
+    celda está vacía o ausente."""
+    nombre = _celda(fila, "categoria")
+    if nombre not in categorias_por_nombre:
+        categorias_por_nombre[nombre] = _resolver_categoria(nombre)
+    return categorias_por_nombre[nombre]
 
 
 def _resolver_categoria(nombre_categoria: str | None) -> int | None:
@@ -146,7 +290,7 @@ def _texto_a_entero(texto: str | None, nombre_campo: str) -> int:
         return 0
     try:
         return int(float(texto))
-    except ValueError as error:
+    except (ValueError, OverflowError) as error:  # OverflowError: 'inf', '1e400'
         raise DatosInvalidosError(f"Valor inválido para '{nombre_campo}': {texto!r}.") from error
 
 

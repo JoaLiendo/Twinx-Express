@@ -29,8 +29,9 @@ def _fila_a_usuario(fila: sqlite3.Row) -> Usuario:
     )
 
 
-def crear_usuario(usuario: Usuario) -> Usuario:
-    """Inserta un nuevo usuario y devuelve la entidad con su id asignado.
+def crear_usuario_en_conexion(conexion: sqlite3.Connection, usuario: Usuario) -> Usuario:
+    """Inserta un nuevo usuario dentro de la transacción recibida y devuelve la
+    entidad con su id asignado.
 
     Traduce la violación de UNIQUE sobre `nombre_usuario` en
     `NombreUsuarioDuplicadoError`, para que la capa de servicios pueda
@@ -49,15 +50,18 @@ def crear_usuario(usuario: Usuario) -> Usuario:
         int(usuario.activo),
     )
     try:
-        with obtener_conexion() as conexion:
-            fila = conexion.execute(consulta, parametros).fetchone()
-    except ErrorBaseDatos as error:
-        if isinstance(error.__cause__, sqlite3.IntegrityError):
-            raise NombreUsuarioDuplicadoError(
-                f"Ya existe un usuario con el nombre de usuario '{usuario.nombre_usuario}'."
-            ) from error
-        raise
+        fila = conexion.execute(consulta, parametros).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise NombreUsuarioDuplicadoError(
+            f"Ya existe un usuario con el nombre de usuario '{usuario.nombre_usuario}'."
+        ) from error
     return _fila_a_usuario(fila)
+
+
+def crear_usuario(usuario: Usuario) -> Usuario:
+    """Inserta un nuevo usuario en su propia transacción (ver `crear_usuario_en_conexion`)."""
+    with obtener_conexion() as conexion:
+        return crear_usuario_en_conexion(conexion, usuario)
 
 
 def obtener_por_id(usuario_id: int) -> Usuario | None:
@@ -65,6 +69,11 @@ def obtener_por_id(usuario_id: int) -> Usuario | None:
     consulta = f"SELECT {_COLUMNAS} FROM usuarios WHERE id = ?"
     with obtener_conexion() as conexion:
         fila = conexion.execute(consulta, (usuario_id,)).fetchone()
+    return _fila_a_usuario(fila) if fila is not None else None
+
+
+def obtener_por_id_en_conexion(conexion: sqlite3.Connection, usuario_id: int) -> Usuario | None:
+    fila = conexion.execute(f"SELECT {_COLUMNAS} FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
     return _fila_a_usuario(fila) if fila is not None else None
 
 
@@ -99,7 +108,7 @@ def actualizar_nombre_completo(usuario_id: int, nombre_completo: str) -> Usuario
     return _fila_a_usuario(fila)
 
 
-def actualizar_rol(usuario_id: int, rol: str) -> Usuario:
+def actualizar_rol_en_conexion(conexion: sqlite3.Connection, usuario_id: int, rol: str) -> Usuario:
     """Actualiza el rol de un usuario. La regla de negocio de "nunca
     dejar el sistema sin ningún OWNER activo" se valida en
     `services.servicio_usuarios`, no acá: este repositorio solo
@@ -108,14 +117,19 @@ def actualizar_rol(usuario_id: int, rol: str) -> Usuario:
         UPDATE usuarios SET rol = ? WHERE id = ?
         RETURNING {_COLUMNAS}
     """
-    with obtener_conexion() as conexion:
-        fila = conexion.execute(consulta, (rol, usuario_id)).fetchone()
+    fila = conexion.execute(consulta, (rol, usuario_id)).fetchone()
     if fila is None:
         raise UsuarioNoEncontradoError(f"No existe un usuario con id {usuario_id}.")
     return _fila_a_usuario(fila)
 
 
-def actualizar_activo(usuario_id: int, activo: bool) -> Usuario:
+def actualizar_rol(usuario_id: int, rol: str) -> Usuario:
+    """Igual que `actualizar_rol_en_conexion`, en su propia transacción."""
+    with obtener_conexion() as conexion:
+        return actualizar_rol_en_conexion(conexion, usuario_id, rol)
+
+
+def actualizar_activo_en_conexion(conexion: sqlite3.Connection, usuario_id: int, activo: bool) -> Usuario:
     """Activa o desactiva un usuario (baja lógica: nunca hay
     eliminación física de usuarios). La regla de "nunca dejar el
     sistema sin ningún OWNER activo" se valida en
@@ -124,14 +138,19 @@ def actualizar_activo(usuario_id: int, activo: bool) -> Usuario:
         UPDATE usuarios SET activo = ? WHERE id = ?
         RETURNING {_COLUMNAS}
     """
-    with obtener_conexion() as conexion:
-        fila = conexion.execute(consulta, (int(activo), usuario_id)).fetchone()
+    fila = conexion.execute(consulta, (int(activo), usuario_id)).fetchone()
     if fila is None:
         raise UsuarioNoEncontradoError(f"No existe un usuario con id {usuario_id}.")
     return _fila_a_usuario(fila)
 
 
-def actualizar_password(usuario_id: int, password_hash: str) -> Usuario:
+def actualizar_activo(usuario_id: int, activo: bool) -> Usuario:
+    """Igual que `actualizar_activo_en_conexion`, en su propia transacción."""
+    with obtener_conexion() as conexion:
+        return actualizar_activo_en_conexion(conexion, usuario_id, activo)
+
+
+def actualizar_password_en_conexion(conexion: sqlite3.Connection, usuario_id: int, password_hash: str) -> Usuario:
     """Fija un `password_hash` nuevo (reset por un OWNER, o autocambio
     de la propia contraseña). Quien llama ya calculó el hash con
     `services.servicio_auth.hashear_password` -- este repositorio nunca
@@ -140,11 +159,16 @@ def actualizar_password(usuario_id: int, password_hash: str) -> Usuario:
         UPDATE usuarios SET password_hash = ? WHERE id = ?
         RETURNING {_COLUMNAS}
     """
-    with obtener_conexion() as conexion:
-        fila = conexion.execute(consulta, (password_hash, usuario_id)).fetchone()
+    fila = conexion.execute(consulta, (password_hash, usuario_id)).fetchone()
     if fila is None:
         raise UsuarioNoEncontradoError(f"No existe un usuario con id {usuario_id}.")
     return _fila_a_usuario(fila)
+
+
+def actualizar_password(usuario_id: int, password_hash: str) -> Usuario:
+    """Igual que `actualizar_password_en_conexion`, en su propia transacción."""
+    with obtener_conexion() as conexion:
+        return actualizar_password_en_conexion(conexion, usuario_id, password_hash)
 
 
 def crear_primer_owner(nombre_usuario: str, nombre_completo: str, password_hash: str) -> Usuario | None:
@@ -182,13 +206,17 @@ def crear_primer_owner(nombre_usuario: str, nombre_completo: str, password_hash:
     return _fila_a_usuario(fila) if fila is not None else None
 
 
-def contar_owners_activos() -> int:
+def contar_owners_activos_en_conexion(conexion: sqlite3.Connection) -> int:
     """Cantidad de usuarios con rol OWNER y `activo = 1`.
 
     Usado por `services.servicio_usuarios` para impedir cualquier
     operación (desactivar, cambiar rol) que dejaría al sistema sin
     ningún OWNER activo."""
-    consulta = "SELECT COUNT(*) AS total FROM usuarios WHERE rol = 'OWNER' AND activo = 1"
-    with obtener_conexion() as conexion:
-        fila = conexion.execute(consulta).fetchone()
+    fila = conexion.execute("SELECT COUNT(*) AS total FROM usuarios WHERE rol = 'OWNER' AND activo = 1").fetchone()
     return fila["total"]
+
+
+def contar_owners_activos() -> int:
+    """Igual que `contar_owners_activos_en_conexion`, en su propia transacción."""
+    with obtener_conexion() as conexion:
+        return contar_owners_activos_en_conexion(conexion)

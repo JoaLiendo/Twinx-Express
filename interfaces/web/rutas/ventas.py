@@ -15,7 +15,7 @@ from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.esquemas import VentaEntrada, VentaSalida
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
-from services import servicio_stock, servicio_ventas
+from services import servicio_configuracion, servicio_stock, servicio_ventas
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
 
@@ -115,7 +115,11 @@ def ticket_venta(request: Request, venta_id: int):
     venta_con_detalle = servicio_ventas.obtener_venta_con_detalle(venta_id)
     if venta_con_detalle is None:
         raise HTTPException(status_code=404, detail="La venta no existe.")
-    contexto = {"venta": venta_con_detalle.venta, "lineas": venta_con_detalle.lineas}
+    contexto = {
+        "venta": venta_con_detalle.venta,
+        "lineas": venta_con_detalle.lineas,
+        "comercio": servicio_configuracion.obtener_datos_comercio(),
+    }
     return templates.TemplateResponse(request, "ventas/ticket.html", contexto)
 
 

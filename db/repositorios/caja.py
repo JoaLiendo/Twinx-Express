@@ -10,6 +10,8 @@ no está abierta) en `services.servicio_caja`.
 import sqlite3
 
 from db.conexion import obtener_conexion
+from db.repositorios import auditoria as repositorio_auditoria
+from domain.dinero import centavos_a_texto
 from domain.caja import MovimientoCaja, SesionCaja
 
 _COLUMNAS = "id, fecha, tipo, monto_centavos, descripcion, diferencia_centavos"
@@ -25,6 +27,17 @@ def _fila_a_movimiento(fila: sqlite3.Row) -> MovimientoCaja:
         descripcion=fila["descripcion"],
         diferencia_centavos=fila["diferencia_centavos"],
     )
+
+
+def _resumen_de_movimiento(movimiento: MovimientoCaja) -> str:
+    monto = f"${centavos_a_texto(movimiento.monto_centavos)}"
+    if movimiento.tipo == "APERTURA":
+        return f"Apertura con {monto}"
+    if movimiento.tipo == "CIERRE":
+        diferencia = movimiento.diferencia_centavos or 0
+        signo = "+" if diferencia > 0 else "-" if diferencia < 0 else ""
+        return f"Cierre: contado {monto}, diferencia {signo}${centavos_a_texto(abs(diferencia))}"
+    return f"{monto}: {movimiento.descripcion}"
 
 
 def registrar_movimiento(
@@ -75,6 +88,10 @@ def registrar_movimiento(
             if existente is not None:
                 return _fila_a_movimiento(existente)
         fila = conexion.execute(consulta, parametros).fetchone()
+        if usuario_id is not None:
+            repositorio_auditoria.registrar_en_conexion(
+                conexion, usuario_id, f"CAJA_{movimiento.tipo}", "CAJA", fila["id"], _resumen_de_movimiento(movimiento)
+            )
     return _fila_a_movimiento(fila)
 
 

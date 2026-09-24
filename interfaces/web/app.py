@@ -31,9 +31,11 @@ from excepciones import ErrorAplicacion, NoAutenticadoError, PermisoDenegadoErro
 from interfaces.web.plantillas import templates
 from interfaces.web.rutas import (
     autenticacion,
+    auditoria,
     backup,
     caja,
     compras,
+    configuracion,
     configuracion_inicial,
     dashboard,
     empleados,
@@ -42,6 +44,7 @@ from interfaces.web.rutas import (
     productos,
     proveedores,
     reportes,
+    reposicion,
     ventas,
 )
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
@@ -149,6 +152,9 @@ app.include_router(precios.router)
 app.include_router(proveedores.router)
 app.include_router(compras.router)
 app.include_router(reportes.router)
+app.include_router(reposicion.router)
+app.include_router(auditoria.router)
+app.include_router(configuracion.router)
 app.include_router(empleados.router)
 app.include_router(empleados.router_cuenta)
 

@@ -13,12 +13,13 @@
       </p>
       <code class="block mt-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-700 overflow-x-auto whitespace-nowrap
                    dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
-        codigo_barras, nombre, precio_costo, precio_venta, stock_actual, stock_minimo
+        codigo_barras, nombre, precio_costo, precio_venta, stock_actual, stock_minimo[, categoria, unidad_medida]
       </code>
       <ul class="text-xs text-slate-500 dark:text-slate-400 mt-3 space-y-1 list-disc list-inside">
         <li>Los precios pueden llevar punto o coma decimal (ej. "150.50" o "150,50").</li>
-        <li>Los códigos de barras ya existentes se omiten (no se sobrescriben).</li>
-        <li>Las filas con datos inválidos se informan al finalizar, sin detener el resto de la importación.</li>
+        <li>La categoría debe existir ya (la importación no crea categorías).</li>
+        <li>Al actualizar productos existentes, una celda vacía conserva el valor actual y <strong>el stock nunca se modifica</strong> (usá ajustes o compras).</li>
+        <li>Cada cambio de precio queda en el historial del producto.</li>
       </ul>
     </div>
 
@@ -33,6 +34,22 @@
           <span id="nombre-archivo-importar" class="text-sm text-slate-500 dark:text-slate-400 truncate">Ningún archivo seleccionado</span>
         </div>
       </div>
+      <fieldset class="space-y-2">
+        <legend class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">¿Qué hacer con los códigos de barras que ya existen?</legend>
+        <label class="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input type="radio" name="modo" value="CREAR" checked class="mt-1" />
+          <span>Solo crear productos nuevos (los existentes se omiten sin tocarlos).</span>
+        </label>
+        <label class="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input type="radio" name="modo" value="CREAR_Y_ACTUALIZAR" class="mt-1" />
+          <span>Crear los nuevos y <strong>actualizar</strong> los existentes con los datos del archivo.</span>
+        </label>
+      </fieldset>
+      <label class="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+        <input type="checkbox" name="permitir_parcial" value="true" class="mt-1" />
+        <span>Permitir importación parcial: importar las filas válidas aunque otras tengan errores.
+          <span class="block text-xs text-slate-500 dark:text-slate-400">Si no lo marcás (recomendado), una fila con error cancela toda la importación y no se cambia nada.</span></span>
+      </label>
       <div class="flex items-center gap-3 pt-2">
         <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
           Importar

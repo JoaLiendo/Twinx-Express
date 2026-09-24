@@ -157,15 +157,27 @@ completo de la aplicación debe incluir también la carpeta
 
 ## Backup y restore
 
-**Backup**: desde la propia aplicación web, en `/backup` (solo visible/accesible
-para el rol OWNER). Genera un único archivo
-`KioscoApp_backup_YYYY-MM-DD_HHMM.zip` con `kiosco.db` +
+**Backup**: desde la propia aplicación web, en `/backup` (solo accesible para el
+rol OWNER; no tiene enlace en el menú: se abre escribiendo la dirección
+`http://127.0.0.1:8000/backup`). Genera un único archivo
+`KioscoApp_backup_YYYY-MM-DD_HHMMSS.zip` con `kiosco.db` +
 `imagenes_productos/`, guardado en `backups/` junto a `data/` (es decir,
 en modo frozen, `%LOCALAPPDATA%\KioscoApp\backups\`). Mientras se genera,
 la aplicación rechaza brevemente nuevas escrituras (ventas, altas de
 producto, etc. devuelven un 503 transitorio) para garantizar que la DB y
 las imágenes queden consistentes entre sí; las lecturas nunca se ven
 afectadas.
+
+**Retención**: tras cada backup se conservan los 30 más recientes (manuales y
+automáticos) y, aparte, los 5 más recientes de migración; el resto se borra
+(`config.BACKUPS_A_CONSERVAR`, `BACKUPS_PREMIGRACION_A_CONSERVAR`). El backup recién
+creado nunca se borra y solo se consideran archivos con el nombre exacto de
+los backups de la aplicación. Si dos backups caen en el mismo segundo, el nombre
+lleva un sufijo (`_2`, `_3`) y nunca se pisa uno anterior.
+
+**Registro (logs)**: el ejecutable escribe `%LOCALAPPDATA%\KioscoApp\logs\twinx_express.log`
+(rotativo, 1 MB × 5) con timestamp y nivel, incluidos los errores de arranque. No
+registra contraseñas, hashes, cookies ni claves de idempotencia (ver `logging_config.py`).
 
 **Backup preventivo antes de migrar**: si al iniciar la aplicación la base de
 datos ya existe y tiene migraciones pendientes, se genera antes un backup
@@ -239,6 +251,84 @@ transacción por `services/servicio_catalogo_inicial.py`.
 - Si el catálogo distribuido es inválido, la carga se revierte por completo, el
   error queda registrado y la aplicación no arranca.
 
+## Control comercial y trazabilidad (V1.2)
+
+Todas estas pantallas son **solo OWNER** (los CASHIER reciben 403; sin sesión se
+redirige a `/login`).
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /precios` | Formulario de actualización masiva de precios de venta y últimas actualizaciones. |
+| `GET /precios/vista-previa` | Calcula (sin escribir) el precio actual y el nuevo de cada producto. |
+| `POST /precios/aplicar` | Confirma la actualización: transaccional, todo o nada, idempotente. |
+| `GET /productos/{id}/precios` | Historial de cambios de precio de venta y de costo de un producto. |
+| `GET /auditoria` | Registro de auditoría con filtros por acción, usuario y fechas. |
+| `GET/POST /configuracion` | Datos comerciales del ticket (nombre, dirección, teléfono, leyenda de pie). |
+| `GET /reposicion` | Productos por debajo del stock mínimo y cantidad sugerida (solo consulta). |
+| `POST /productos/importar` | Importación CSV/XLSX en modo crear o crear y actualizar (muestra el reporte completo). |
+
+**Historial de precios.** Todo cambio de precio de venta o de costo queda en
+`historial_precios` (valor anterior y nuevo, usuario, fecha y origen: `EDICION`,
+`COMPRA`, `MASIVA` o `IMPORTACION`), solo si el valor realmente cambió, dentro de la
+misma transacción que el cambio. Empieza en V1.2 (sin relleno retroactivo) y el
+precio inicial de un producto no es un cambio. Hay dos únicos puntos de escritura
+de precios (`actualizar_datos_en_conexion` y `cambiar_precio_en_conexion`, en
+`db/repositorios/productos.py`) y `tests/test_estructura_precios.py` falla si
+aparece otro. Las ventas históricas conservan el precio y el costo con que se
+registraron (`detalle_venta`). Un producto con historial de precios no se
+elimina físicamente: se da de baja (lógica), igual que con ventas, compras o
+ajustes, y el aviso indica el motivo.
+
+**Actualización masiva.** Solo el precio de venta, por porcentaje (hasta ±1000 %)
+o monto fijo, sobre todos los productos activos con precio, una categoría o los
+sin categoría. Sin redondeo por defecto (opción explícita "al peso más cercano").
+Flujo: vista previa → confirmación; la confirmación revalida en el servidor el
+alcance, el criterio, los límites, la selección, el estado y el precio de cada
+producto (nunca confía en la vista previa) y rechaza toda la operación si algún
+producto seleccionado es inválido o su precio cambió entre la vista previa y la
+confirmación. Cada operación crea un lote (`lotes_precios`) con clave de
+idempotencia única.
+
+**Auditoría.** `auditoria` registra usuario, fecha, acción, entidad, id y un
+resumen corto de: alta/edición/baja/reactivación de productos, actualización masiva
+de precios, importaciones, ajustes de stock, compras, anulaciones, movimientos de
+caja, alta/rol/activación/desactivación/reseteo de contraseña de usuarios y cambios
+de configuración. La operación y su registro se escriben **en la misma
+transacción** (`db.repositorios.auditoria.registrar_en_conexion`): si la auditoría
+falla, la operación hace rollback. Solo se audita con un usuario autenticado (CLI,
+siembra inicial y tests no generan registros). Nunca guarda contraseñas, hashes,
+cookies ni claves de idempotencia.
+
+**Importación.** Modos `CREAR` (omite los códigos existentes) y `CREAR_Y_ACTUALIZAR`
+(actualiza los existentes: una celda vacía conserva el valor, el stock nunca se
+modifica, un producto dado de baja se rechaza). **Por defecto es todo o nada**
+(formulario, ruta y servicio coinciden): una fila inválida cancela la importación
+completa; la importación parcial requiere marcar explícitamente "Permitir importación
+parcial" (`todo_o_nada=False` en el servicio). Un valor numérico extremo (`inf`,
+`1e400`, fuera del rango de SQLite) es un error de fila controlado.
+
+**Ticket.** El encabezado y el pie se configuran en `/configuracion` (límites: nombre
+60, dirección 100, teléfono 30, leyenda 120 caracteres; el texto se sanea y se
+escapa). Sin configuración imprime "Kiosco". No hay datos fiscales (CUIT, condición
+frente al IVA) ni texto fijo agregado. Los nombres largos sin espacios se parten
+(`overflow-wrap`) para no romper el ancho de 80 mm.
+
+**Reposición.** Entra un producto activo con `stock_minimo > 0` y
+`stock_actual < stock_minimo` (el stock 0 entra; el stock igual al mínimo no). La
+cantidad sugerida es exactamente `stock_minimo - stock_actual` y se puede editar
+en pantalla antes de imprimir. No crea compras ni modifica stock. La alerta del
+dashboard (`listar_stock_critico`) no cambia.
+
+**Migraciones nuevas** (`db/migraciones/`, mismo mecanismo atómico y versionado):
+
+| Migración | Contenido |
+|---|---|
+| `014_idempotencia_operaciones.sql` | `clave_idempotencia` (UNIQUE) en caja, ajustes y compras. |
+| `015_historial_precios.sql` | Tabla `historial_precios`. |
+| `016_lotes_precios.sql` | Tabla `lotes_precios` y `historial_precios.lote_id`. |
+| `017_auditoria.sql` | Tabla `auditoria`. |
+| `018_configuracion.sql` | Tabla `configuracion` (clave/valor). |
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -253,5 +343,6 @@ transacción por `services/servicio_catalogo_inicial.py`.
 - [x] Compras, proveedores y empleados (alta/edición), reactivación de productos y categorías dados de baja
 - [x] Backup manual y restore (ver sección "Backup y restore" más arriba)
 - [x] Modo oscuro y layout responsive (375/768/1024/1440)
-- [ ] Pedidos, precios y reportes: solo cascarón visual, sin lógica de negocio todavía
+- [x] Reportes de ventas, precios (historial y actualización masiva), auditoría, importación, configuración del ticket y reposición (V1.2, ver sección anterior)
+- [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

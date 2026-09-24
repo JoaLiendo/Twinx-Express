@@ -21,6 +21,10 @@ from excepciones import DatosInvalidosError
 # decide soportar venta fraccionaria). Único lugar del proyecto donde se
 # define este conjunto: cualquier otro módulo que necesite validar o listar
 # unidades válidas debe importarlo de acá, no repetirlo.
+# Cota técnica, no comercial: SQLite guarda enteros de 64 bits. Un valor mayor no se puede
+# persistir (`OverflowError`), así que se rechaza como dato inválido antes de llegar a la base.
+MAXIMO_ENTERO = 2**63 - 1
+
 UNIDADES_VALIDAS = frozenset({"UNIDAD", "KG", "G", "LITRO", "ML"})
 
 
@@ -61,6 +65,14 @@ class Producto:
             raise DatosInvalidosError("El stock actual no puede ser negativo.")
         if self.stock_minimo < 0:
             raise DatosInvalidosError("El stock mínimo no puede ser negativo.")
+        for etiqueta, valor in (
+            ("El precio de costo", self.precio_costo_centavos),
+            ("El precio de venta", self.precio_venta_centavos),
+            ("El stock actual", self.stock_actual),
+            ("El stock mínimo", self.stock_minimo),
+        ):
+            if valor > MAXIMO_ENTERO:
+                raise DatosInvalidosError(f"{etiqueta} está fuera del rango admitido.")
         if self.unidad_medida not in UNIDADES_VALIDAS:
             raise DatosInvalidosError(
                 f"Unidad de medida inválida: {self.unidad_medida!r}. "

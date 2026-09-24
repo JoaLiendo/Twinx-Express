@@ -213,11 +213,11 @@ def test_registrar_compra_falla_a_mitad_de_camino_no_deja_nada_persistido(base_d
     original = repositorio_productos.actualizar_costo_en_conexion
     llamadas = {"contador": 0}
 
-    def falla_en_el_segundo(conexion, producto_id, nuevo_costo_centavos):
+    def falla_en_el_segundo(conexion, producto_id, nuevo_costo_centavos, *args, **kwargs):
         llamadas["contador"] += 1
         if llamadas["contador"] == 2:
             raise ErrorBaseDatos("fallo simulado para probar atomicidad")
-        return original(conexion, producto_id, nuevo_costo_centavos)
+        return original(conexion, producto_id, nuevo_costo_centavos, *args, **kwargs)
 
     monkeypatch.setattr(repositorio_productos, "actualizar_costo_en_conexion", falla_en_el_segundo)
 

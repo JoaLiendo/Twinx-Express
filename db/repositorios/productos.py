@@ -10,8 +10,10 @@ llegar acá. Cualquier caso de uso que necesite productos pasa por
 import sqlite3
 
 from db.conexion import obtener_conexion
+from db.repositorios import auditoria as repositorio_auditoria
+from db.repositorios import historial_precios as repositorio_historial_precios
 from domain.producto import Producto
-from excepciones import CodigoBarrasDuplicadoError, ErrorBaseDatos, ProductoNoEncontradoError
+from excepciones import CodigoBarrasDuplicadoError, ProductoNoEncontradoError
 
 _COLUMNAS = """
     id, codigo_barras, nombre, precio_costo_centavos, precio_venta_centavos,
@@ -44,8 +46,11 @@ def _escapar_comodines_like(texto: str) -> str:
     return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def crear_producto(producto: Producto) -> Producto:
-    """Inserta un nuevo producto y devuelve la entidad con su id asignado.
+def crear_producto_en_conexion(conexion: sqlite3.Connection, producto: Producto) -> Producto:
+    """Inserta un nuevo producto dentro de la transacción recibida y devuelve la
+    entidad con su id asignado. No hace *commit* (lo controla quien invoca: ver
+    `services.servicio_importacion`, que crea/actualiza muchos productos en una
+    única transacción).
 
     Traduce la violación de UNIQUE sobre `codigo_barras` en
     `CodigoBarrasDuplicadoError`, para que la capa de servicios pueda
@@ -69,15 +74,18 @@ def crear_producto(producto: Producto) -> Producto:
         producto.unidad_medida,
     )
     try:
-        with obtener_conexion() as conexion:
-            fila = conexion.execute(consulta, parametros).fetchone()
-    except ErrorBaseDatos as error:
-        if isinstance(error.__cause__, sqlite3.IntegrityError):
-            raise CodigoBarrasDuplicadoError(
-                f"Ya existe un producto con el código de barras '{producto.codigo_barras}'."
-            ) from error
-        raise
+        fila = conexion.execute(consulta, parametros).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise CodigoBarrasDuplicadoError(
+            f"Ya existe un producto con el código de barras '{producto.codigo_barras}'."
+        ) from error
     return _fila_a_producto(fila)
+
+
+def crear_producto(producto: Producto) -> Producto:
+    """Inserta un nuevo producto en su propia transacción (ver `crear_producto_en_conexion`)."""
+    with obtener_conexion() as conexion:
+        return crear_producto_en_conexion(conexion, producto)
 
 
 def obtener_por_id_en_conexion(conexion: sqlite3.Connection, producto_id: int) -> Producto | None:
@@ -140,11 +148,29 @@ def buscar_por_nombre(texto: str) -> list[Producto]:
     return [_fila_a_producto(fila) for fila in filas]
 
 
-def actualizar_datos(producto: Producto) -> Producto:
+def actualizar_datos_en_conexion(
+    conexion: sqlite3.Connection,
+    producto: Producto,
+    usuario_id: int | None = None,
+    origen: str = "EDICION",
+    auditar: bool = True,
+) -> Producto:
     """Actualiza los datos editables de un producto existente (no su id ni su stock).
 
     Para modificar el stock usar `actualizar_stock`, que es la
     operación que se ejecuta con cada venta o ajuste de inventario.
+
+    V1.2: si cambió el precio de venta o el de costo, el cambio queda en
+    el historial de precios (con `usuario_id`, `None` si no hay usuario
+    autenticado) dentro de la misma transacción que el `UPDATE`: el precio
+    anterior se lee bajo `BEGIN IMMEDIATE`, así el historial nunca refleja
+    un valor distinto del que realmente se pisó. Si el precio no cambió,
+    no se registra nada.
+
+    Recibe la conexión: la transacción (con `BEGIN IMMEDIATE`) la controla quien
+    invoca. `origen` es el origen del cambio de precio en el historial y
+    `auditar=False` evita la entrada individual de auditoría cuando el llamador
+    (una importación masiva) registra un único resumen.
     """
     if producto.id is None:
         raise ProductoNoEncontradoError("No se puede actualizar un producto sin id.")
@@ -173,18 +199,67 @@ def actualizar_datos(producto: Producto) -> Producto:
         producto.id,
     )
     try:
-        with obtener_conexion() as conexion:
-            fila = conexion.execute(consulta, parametros).fetchone()
-    except ErrorBaseDatos as error:
-        if isinstance(error.__cause__, sqlite3.IntegrityError):
-            raise CodigoBarrasDuplicadoError(
-                f"Ya existe un producto con el código de barras '{producto.codigo_barras}'."
-            ) from error
-        raise
+        anterior = conexion.execute(
+            "SELECT codigo_barras, nombre, precio_costo_centavos, precio_venta_centavos, stock_minimo,"
+            " categoria_id, unidad_medida FROM productos WHERE id = ?",
+            (producto.id,),
+        ).fetchone()
+        fila = conexion.execute(consulta, parametros).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise CodigoBarrasDuplicadoError(
+            f"Ya existe un producto con el código de barras '{producto.codigo_barras}'."
+        ) from error
+
+    if fila is not None and anterior is not None:
+        for campo, valor_anterior, valor_nuevo in (
+            ("VENTA", anterior["precio_venta_centavos"], producto.precio_venta_centavos),
+            ("COSTO", anterior["precio_costo_centavos"], producto.precio_costo_centavos),
+        ):
+            repositorio_historial_precios.registrar_cambio_en_conexion(
+                conexion, producto.id, campo, valor_anterior, valor_nuevo, usuario_id, origen
+            )
+        modificados = [
+            etiqueta
+            for etiqueta, valor_anterior, valor_nuevo in (
+                ("código de barras", anterior["codigo_barras"], producto.codigo_barras),
+                ("nombre", anterior["nombre"], producto.nombre),
+                ("precio de venta", anterior["precio_venta_centavos"], producto.precio_venta_centavos),
+                ("costo", anterior["precio_costo_centavos"], producto.precio_costo_centavos),
+                ("stock mínimo", anterior["stock_minimo"], producto.stock_minimo),
+                ("categoría", anterior["categoria_id"], producto.categoria_id),
+                ("unidad de medida", anterior["unidad_medida"], producto.unidad_medida),
+            )
+            if valor_anterior != valor_nuevo
+        ]
+        if auditar and usuario_id is not None and modificados:
+            repositorio_auditoria.registrar_en_conexion(
+                conexion,
+                usuario_id,
+                "PRODUCTO_EDITADO",
+                "PRODUCTO",
+                producto.id,
+                f"{producto.nombre}: se modificó {', '.join(modificados)}",
+            )
 
     if fila is None:
         raise ProductoNoEncontradoError(f"No existe un producto con id {producto.id}.")
     return _fila_a_producto(fila)
+
+
+def actualizar_datos(producto: Producto, usuario_id: int | None = None) -> Producto:
+    """Actualiza los datos editables de un producto en su propia transacción
+    (ver `actualizar_datos_en_conexion`)."""
+    with obtener_conexion(inmediata=True) as conexion:
+        return actualizar_datos_en_conexion(conexion, producto, usuario_id)
+
+
+def obtener_por_codigo_barras_en_conexion(conexion: sqlite3.Connection, codigo_barras: str) -> Producto | None:
+    """Producto con ese código de barras, activo o no, dentro de la transacción
+    recibida (una importación necesita distinguir "no existe" de "está dado de baja")."""
+    fila = conexion.execute(
+        f"SELECT {_COLUMNAS} FROM productos WHERE codigo_barras = ?", (codigo_barras,)
+    ).fetchone()
+    return _fila_a_producto(fila) if fila is not None else None
 
 
 def actualizar_imagen(producto_id: int, nombre_archivo: str | None) -> Producto:
@@ -235,28 +310,84 @@ def actualizar_stock_en_conexion(
     return _fila_a_producto(fila)
 
 
-def actualizar_costo_en_conexion(
-    conexion: sqlite3.Connection, producto_id: int, nuevo_costo_centavos: int
-) -> Producto:
-    """Fija el precio de costo vigente de un producto usando una conexión
-    ya abierta, sin tocar ninguna otra columna (mismo patrón aislado que
-    `actualizar_imagen`).
+def listar_activos_con_precio(
+    categoria_id: int | None = None,
+    sin_categoria: bool = False,
+    conexion: sqlite3.Connection | None = None,
+) -> list[Producto]:
+    """Productos activos con precio de venta configurado (> 0), por nombre,
+    opcionalmente de una categoría o sin categoría. Base de la actualización
+    masiva de precios: un producto sin precio no entra. Con `conexion` la
+    lectura ocurre dentro de esa transacción (la confirmación de una
+    actualización masiva revalida el alcance bajo el mismo lock)."""
+    condiciones = ["activo = 1", "precio_venta_centavos > 0"]
+    parametros: list[int] = []
+    if categoria_id is not None:
+        condiciones.append("categoria_id = ?")
+        parametros.append(categoria_id)
+    elif sin_categoria:
+        condiciones.append("categoria_id IS NULL")
+    consulta = f"SELECT {_COLUMNAS} FROM productos WHERE {' AND '.join(condiciones)} ORDER BY nombre"
+    if conexion is not None:
+        return [_fila_a_producto(fila) for fila in conexion.execute(consulta, parametros).fetchall()]
+    with obtener_conexion() as conexion_propia:
+        return [_fila_a_producto(fila) for fila in conexion_propia.execute(consulta, parametros).fetchall()]
 
-    Pensada para componerse dentro de la transacción atómica de un
-    ingreso de mercadería (ver `services.servicio_compras.registrar_compra`):
-    cada línea de una compra actualiza el costo vigente del producto al
-    costo unitario de esa compra (Fase 4B: sin promedio ponderado).
+
+_COLUMNA_DE_PRECIO = {"VENTA": "precio_venta_centavos", "COSTO": "precio_costo_centavos"}
+
+
+def cambiar_precio_en_conexion(
+    conexion: sqlite3.Connection,
+    producto_id: int,
+    campo: str,
+    nuevo_valor_centavos: int,
+    usuario_id: int | None,
+    origen: str,
+    lote_id: int | None = None,
+) -> bool:
+    """Único punto de escritura de un cambio de precio de venta o de costo
+    "suelto" (compras y actualización masiva): lee el valor anterior, lo
+    actualiza y registra el cambio en el historial, todo dentro de la
+    transacción recibida. Devuelve `False` (sin escribir nada) si el valor no
+    cambia. La edición completa de un producto (`actualizar_datos_en_conexion`)
+    es el otro punto de escritura y registra el historial por su cuenta; un test
+    estructural verifica que no exista ningún otro `UPDATE` de precios.
+
+    `campo`: `"VENTA"` o `"COSTO"`.
     """
-    consulta = f"""
-        UPDATE productos
-        SET precio_costo_centavos = ?,
-            fecha_actualizacion = datetime('now', 'localtime')
-        WHERE id = ?
-        RETURNING {_COLUMNAS}
-    """
-    fila = conexion.execute(consulta, (nuevo_costo_centavos, producto_id)).fetchone()
+    columna = _COLUMNA_DE_PRECIO[campo]  # KeyError ante un campo inválido: error de programación
+    fila = conexion.execute(f"SELECT {columna} FROM productos WHERE id = ?", (producto_id,)).fetchone()
     if fila is None:
         raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
+    valor_anterior = fila[0]
+    if valor_anterior == nuevo_valor_centavos:
+        return False
+    conexion.execute(
+        f"UPDATE productos SET {columna} = ?, fecha_actualizacion = datetime('now', 'localtime') WHERE id = ?",
+        (nuevo_valor_centavos, producto_id),
+    )
+    repositorio_historial_precios.registrar_cambio_en_conexion(
+        conexion, producto_id, campo, valor_anterior, nuevo_valor_centavos, usuario_id, origen, lote_id
+    )
+    return True
+
+
+def actualizar_costo_en_conexion(
+    conexion: sqlite3.Connection,
+    producto_id: int,
+    nuevo_costo_centavos: int,
+    usuario_id: int | None = None,
+    origen: str = "COMPRA",
+) -> Producto:
+    """Fija el costo vigente de un producto usando una conexión ya abierta,
+    sin tocar ninguna otra columna. Pensada para componerse dentro de la
+    transacción de un ingreso de mercadería (ver
+    `services.servicio_compras.registrar_compra`): cada línea actualiza el costo
+    al costo unitario de esa compra (sin promedio ponderado). Delega en
+    `cambiar_precio_en_conexion`, así el historial no depende del llamador."""
+    cambiar_precio_en_conexion(conexion, producto_id, "COSTO", nuevo_costo_centavos, usuario_id, origen)
+    fila = conexion.execute(f"SELECT {_COLUMNAS} FROM productos WHERE id = ?", (producto_id,)).fetchone()
     return _fila_a_producto(fila)
 
 
@@ -293,6 +424,22 @@ def listar_stock_critico() -> list[Producto]:
     return [_fila_a_producto(fila) for fila in filas]
 
 
+def listar_para_reposicion() -> list[Producto]:
+    """Productos activos con stock mínimo configurado (> 0) cuyo stock está
+    **estrictamente por debajo** del mínimo, incluido el stock 0 (a diferencia de
+    `listar_stock_critico`, que es la alerta del dashboard y lo excluye). Un stock
+    exactamente igual al mínimo no entra; sin mínimo configurado tampoco.
+    Primero los más urgentes (menos stock), luego por nombre."""
+    consulta = f"""
+        SELECT {_COLUMNAS} FROM productos
+        WHERE activo = 1 AND stock_minimo > 0 AND stock_actual < stock_minimo
+        ORDER BY stock_actual, nombre
+    """
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta).fetchall()
+    return [_fila_a_producto(fila) for fila in filas]
+
+
 def listar_valorizables() -> list[Producto]:
     """Productos con stock físico a valorizar (Valorización de Inventario):
     activos e inactivos por igual, mientras `stock_actual > 0` -- un
@@ -307,40 +454,63 @@ def listar_valorizables() -> list[Producto]:
     return [_fila_a_producto(fila) for fila in filas]
 
 
-def eliminar_producto(producto_id: int) -> bool:
-    """Elimina un producto activo. Devuelve `True` si la baja fue lógica.
+_CONSULTAS_DE_MOTIVOS = (
+    ("ventas", "SELECT 1 FROM detalle_venta WHERE producto_id = ? LIMIT 1"),
+    ("compras", "SELECT 1 FROM detalle_compra WHERE producto_id = ? LIMIT 1"),
+    ("ajustes de stock", "SELECT 1 FROM ajustes_stock WHERE producto_id = ? LIMIT 1"),
+    ("cambios de precio", "SELECT 1 FROM historial_precios WHERE producto_id = ? LIMIT 1"),
+)
 
-    Intenta primero un `DELETE` físico. Si el producto tiene ventas
-    asociadas, la clave foránea `ON DELETE RESTRICT` de
-    `detalle_venta` lo impide (`sqlite3.IntegrityError`): en ese caso
-    se lo desactiva (`activo = 0`) en vez de borrarlo, para conservar
-    el historial de ventas que lo referencia.
+
+def listar_motivos_de_conservacion_en_conexion(conexion: sqlite3.Connection, producto_id: int) -> list[str]:
+    """Qué registros asociados impiden borrar físicamente un producto (ventas,
+    compras, ajustes de stock, cambios de precio)."""
+    return [
+        motivo
+        for motivo, consulta in _CONSULTAS_DE_MOTIVOS
+        if conexion.execute(consulta, (producto_id,)).fetchone() is not None
+    ]
+
+
+def listar_motivos_de_conservacion(producto_id: int) -> list[str]:
+    with obtener_conexion() as conexion:
+        return listar_motivos_de_conservacion_en_conexion(conexion, producto_id)
+
+
+def eliminar_producto_en_conexion(conexion: sqlite3.Connection, producto_id: int) -> list[str] | None:
+    """Da de baja un producto activo dentro de la transacción recibida.
+
+    Intenta primero un `DELETE` físico. Si el producto tiene registros asociados
+    (ventas, compras, ajustes de stock o cambios de precio), la clave foránea
+    `ON DELETE RESTRICT` lo impide (`sqlite3.IntegrityError`; el `DELETE` fallido
+    no deja ningún efecto) y se lo desactiva (`activo = 0`) para conservar ese
+    historial.
+
+    Devuelve `None` si no existe un producto activo con ese id, `[]` si se
+    eliminó físicamente, o la lista de motivos de la baja lógica.
     """
+    existe = conexion.execute("SELECT 1 FROM productos WHERE id = ? AND activo = 1", (producto_id,)).fetchone()
+    if existe is None:
+        return None
     try:
-        with obtener_conexion() as conexion:
-            cursor = conexion.execute(
-                "DELETE FROM productos WHERE id = ? AND activo = 1", (producto_id,)
-            )
-            fue_eliminado = cursor.rowcount > 0
-        baja_logica = False
-    except ErrorBaseDatos as error:
-        if not isinstance(error.__cause__, sqlite3.IntegrityError):
-            raise
-        with obtener_conexion() as conexion:
-            cursor = conexion.execute(
-                """
-                UPDATE productos
-                SET activo = 0, fecha_actualizacion = datetime('now', 'localtime')
-                WHERE id = ? AND activo = 1
-                """,
-                (producto_id,),
-            )
-            fue_eliminado = cursor.rowcount > 0
-        baja_logica = True
+        conexion.execute("DELETE FROM productos WHERE id = ?", (producto_id,))
+        return []
+    except sqlite3.IntegrityError:
+        conexion.execute(
+            "UPDATE productos SET activo = 0, fecha_actualizacion = datetime('now', 'localtime') WHERE id = ?",
+            (producto_id,),
+        )
+        return listar_motivos_de_conservacion_en_conexion(conexion, producto_id)
 
-    if not fue_eliminado:
+
+def eliminar_producto(producto_id: int) -> bool:
+    """Elimina un producto activo en su propia transacción. Devuelve `True` si
+    la baja fue lógica (ver `eliminar_producto_en_conexion`)."""
+    with obtener_conexion() as conexion:
+        motivos = eliminar_producto_en_conexion(conexion, producto_id)
+    if motivos is None:
         raise ProductoNoEncontradoError(f"No existe un producto activo con id {producto_id}.")
-    return baja_logica
+    return bool(motivos)
 
 
 def listar_inactivos() -> list[Producto]:
@@ -352,23 +522,25 @@ def listar_inactivos() -> list[Producto]:
     return [_fila_a_producto(fila) for fila in filas]
 
 
-def reactivar_producto(producto_id: int) -> Producto:
-    """Revierte una baja lógica (`activo` de 0 a 1).
-
-    Simétrico al `UPDATE ... SET activo = 0` de `eliminar_producto`:
-    no hay ninguna regla de negocio que validar más allá de "que
-    exista y esté inactivo", así que es un `UPDATE` directo, sin pasar
-    por `domain.producto.Producto`. No toca `stock_actual` ni ninguna
-    otra columna.
-    """
+def reactivar_producto_en_conexion(conexion: sqlite3.Connection, producto_id: int) -> Producto:
+    """Revierte una baja lógica (`activo` de 0 a 1) dentro de la transacción
+    recibida. Simétrico al `UPDATE ... SET activo = 0` de la baja: no hay ninguna
+    regla de negocio que validar más allá de "que exista y esté inactivo". No toca
+    `stock_actual` ni ninguna otra columna."""
     consulta = f"""
         UPDATE productos
         SET activo = 1, fecha_actualizacion = datetime('now', 'localtime')
         WHERE id = ? AND activo = 0
         RETURNING {_COLUMNAS}
     """
-    with obtener_conexion() as conexion:
-        fila = conexion.execute(consulta, (producto_id,)).fetchone()
+    fila = conexion.execute(consulta, (producto_id,)).fetchone()
     if fila is None:
         raise ProductoNoEncontradoError(f"No existe un producto inactivo con id {producto_id}.")
     return _fila_a_producto(fila)
+
+
+def reactivar_producto(producto_id: int) -> Producto:
+    """Reactiva un producto en su propia transacción (ver `reactivar_producto_en_conexion`)."""
+    with obtener_conexion() as conexion:
+        return reactivar_producto_en_conexion(conexion, producto_id)
+

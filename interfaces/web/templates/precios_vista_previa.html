@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Vista previa de precios{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Vista previa de precios</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+  <p class="text-sm text-slate-600 dark:text-slate-400">
+    {{ 'Aumentar' if criterio.direccion == 'AUMENTAR' else 'Disminuir' }}
+    {% if criterio.tipo == 'PORCENTAJE' %}{{ criterio.valor | dinero_ar }} %{% else %}${{ criterio.valor | dinero_ar }}{% endif %}
+    · {{ 'redondeo al peso' if criterio.redondeo == 'ENTERO' else 'sin redondeo' }}
+    · <strong>{{ aplicables }}</strong> de {{ propuestas | length }} producto(s) se pueden actualizar.
+  </p>
+
+  {% if propuestas %}
+    <form method="post" action="/precios/aplicar" class="space-y-5">
+      <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia }}" />
+      <input type="hidden" name="tipo" value="{{ criterio.tipo }}" />
+      <input type="hidden" name="direccion" value="{{ criterio.direccion }}" />
+      <input type="hidden" name="valor" value="{{ criterio.valor }}" />
+      <input type="hidden" name="redondeo" value="{{ criterio.redondeo }}" />
+      <input type="hidden" name="alcance" value="{{ alcance }}" />
+
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                <th class="px-5 py-3 w-10"></th>
+                <th class="px-5 py-3">Producto</th>
+                <th class="px-5 py-3 text-right">Actual</th>
+                <th class="px-5 py-3 text-right">Nuevo</th>
+                <th class="px-5 py-3 text-right">Diferencia</th>
+                <th class="px-5 py-3">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in propuestas %}
+                <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                  <td class="px-5 py-3.5">
+                    {% if p.estado == 'OK' %}
+                      <input type="checkbox" name="seleccion" value="{{ p.producto_id }}:{{ p.precio_actual_centavos }}" checked aria-label="Actualizar {{ p.nombre }}" />
+                    {% endif %}
+                  </td>
+                  <td class="px-5 py-3.5 text-slate-800 dark:text-slate-200">{{ p.nombre }}</td>
+                  <td class="px-5 py-3.5 text-right tabular-nums text-slate-500 dark:text-slate-400">${{ p.precio_actual_centavos | dinero_ar }}</td>
+                  <td class="px-5 py-3.5 text-right tabular-nums font-semibold text-slate-900 dark:text-slate-100">
+                    {% if p.estado == 'INVALIDO' %}—{% else %}${{ p.precio_nuevo_centavos | dinero_ar }}{% endif %}
+                  </td>
+                  <td class="px-5 py-3.5 text-right tabular-nums {{ 'text-success' if p.diferencia_centavos > 0 else 'text-error' }}">
+                    {% if p.estado == 'OK' %}{{ '+' if p.diferencia_centavos > 0 else '−' }}${{ p.diferencia_centavos | abs | dinero_ar }}{% endif %}
+                  </td>
+                  <td class="px-5 py-3.5">
+                    {% if p.estado == 'OK' %}{{ ui.badge('Se actualiza', 'exito') }}
+                    {% elif p.estado == 'SIN_CAMBIO' %}{{ ui.badge('Sin cambio', 'neutral') }}
+                    {% else %}{{ ui.badge('Precio resultante no válido', 'alerta') }}{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <button type="submit" {{ 'disabled' if aplicables == 0 else '' }}
+                class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm disabled:opacity-50">
+          Confirmar actualización
+        </button>
+        <a href="/precios" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+    </form>
+  {% else %}
+    {{ ui.estado_vacio("No hay productos para actualizar", "Ningún producto activo con precio configurado coincide con ese alcance.") }}
+    <a href="/precios" class="inline-block text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver</a>
+  {% endif %}
+
+</div>
+{% endblock %}

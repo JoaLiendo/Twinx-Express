@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Historial de precios{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Historial de precios — {{ producto.nombre }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+  <div class="grid grid-cols-2 gap-4">
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Precio de venta actual</p>
+      <p class="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">${{ producto.precio_venta_centavos | dinero_ar }}</p>
+    </div>
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Costo actual</p>
+      <p class="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">${{ producto.precio_costo_centavos | dinero_ar }}</p>
+    </div>
+  </div>
+
+  {% if cambios %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <p class="sm:hidden text-xs text-slate-400 dark:text-slate-500 px-5 pt-3">Desliza hacia la derecha para ver más →</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-3">Fecha</th>
+              <th class="px-5 py-3">Precio</th>
+              <th class="px-5 py-3 text-right">Anterior</th>
+              <th class="px-5 py-3 text-right">Nuevo</th>
+              <th class="px-5 py-3 text-right">Diferencia</th>
+              <th class="px-5 py-3">Origen</th>
+              <th class="px-5 py-3">Usuario</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cambio in cambios %}
+              <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ cambio.fecha }}</td>
+                <td class="px-5 py-3.5 text-slate-700 dark:text-slate-300">{{ 'Venta' if cambio.campo == 'VENTA' else 'Costo' }}</td>
+                <td class="px-5 py-3.5 text-right text-slate-500 dark:text-slate-400 tabular-nums">${{ cambio.precio_anterior_centavos | dinero_ar }}</td>
+                <td class="px-5 py-3.5 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">${{ cambio.precio_nuevo_centavos | dinero_ar }}</td>
+                <td class="px-5 py-3.5 text-right font-semibold tabular-nums {{ 'text-success' if cambio.diferencia_centavos > 0 else 'text-error' }}">
+                  {{ '+' if cambio.diferencia_centavos > 0 else '−' }}${{ cambio.diferencia_centavos | abs | dinero_ar }}
+                </td>
+                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ {'EDICION': 'Edición', 'COMPRA': 'Compra', 'MASIVA': 'Actualización masiva', 'IMPORTACION': 'Importación'}[cambio.origen] }}</td>
+                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ cambio.usuario_nombre_completo or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    {{ ui.estado_vacio("Sin cambios registrados", "Todavía no se registró ningún cambio de precio para este producto. Las ventas ya hechas conservan el precio con el que se cobraron.") }}
+  {% endif %}
+
+  <a href="/productos/{{ producto.id }}/editar" class="inline-block text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver</a>
+
+</div>
+{% endblock %}

@@ -47,12 +47,14 @@ def crear_empleado(
     nombre_completo: str = Form(...),
     password: str = Form(...),
     rol: str = Form(...),
+    usuario_actual=Depends(obtener_usuario_actual),
 ):
     usuario = servicio_usuarios.crear_usuario(
         nombre_usuario=nombre_usuario,
         nombre_completo=nombre_completo,
         password=password,
         rol=rol,
+        actor_id=usuario_actual.id,
     )
     return redireccionar_con_mensaje(
         "/empleados", "success", f"Usuario '{usuario.nombre_usuario}' creado correctamente."
@@ -78,32 +80,34 @@ def editar_empleado(usuario_id: int, nombre_completo: str = Form(...)):
 
 
 @router.post("/empleados/{usuario_id}/rol")
-def cambiar_rol_empleado(usuario_id: int, rol: str = Form(...)):
-    usuario = servicio_usuarios.cambiar_rol(usuario_id, rol)
+def cambiar_rol_empleado(usuario_id: int, rol: str = Form(...), usuario_actual=Depends(obtener_usuario_actual)):
+    usuario = servicio_usuarios.cambiar_rol(usuario_id, rol, actor_id=usuario_actual.id)
     return redireccionar_con_mensaje(
         "/empleados", "success", f"Rol de '{usuario.nombre_usuario}' actualizado a {usuario.rol}."
     )
 
 
 @router.post("/empleados/{usuario_id}/activar")
-def activar_empleado(usuario_id: int):
-    usuario = servicio_usuarios.activar(usuario_id)
+def activar_empleado(usuario_id: int, usuario_actual=Depends(obtener_usuario_actual)):
+    usuario = servicio_usuarios.activar(usuario_id, actor_id=usuario_actual.id)
     return redireccionar_con_mensaje(
         "/empleados", "success", f"Usuario '{usuario.nombre_usuario}' activado correctamente."
     )
 
 
 @router.post("/empleados/{usuario_id}/desactivar")
-def desactivar_empleado(usuario_id: int):
-    usuario = servicio_usuarios.desactivar(usuario_id)
+def desactivar_empleado(usuario_id: int, usuario_actual=Depends(obtener_usuario_actual)):
+    usuario = servicio_usuarios.desactivar(usuario_id, actor_id=usuario_actual.id)
     return redireccionar_con_mensaje(
         "/empleados", "success", f"Usuario '{usuario.nombre_usuario}' desactivado correctamente."
     )
 
 
 @router.post("/empleados/{usuario_id}/resetear-password")
-def resetear_password_empleado(usuario_id: int, password_nueva: str = Form(...)):
-    usuario = servicio_usuarios.resetear_password(usuario_id, password_nueva)
+def resetear_password_empleado(
+    usuario_id: int, password_nueva: str = Form(...), usuario_actual=Depends(obtener_usuario_actual)
+):
+    usuario = servicio_usuarios.resetear_password(usuario_id, password_nueva, actor_id=usuario_actual.id)
     return redireccionar_con_mensaje(
         "/empleados", "success", f"Contraseña de '{usuario.nombre_usuario}' actualizada correctamente."
     )

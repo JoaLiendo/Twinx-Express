@@ -19,6 +19,7 @@ import sqlite3
 from datetime import date, timedelta
 
 from db.conexion import obtener_conexion
+from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import ventas as repositorio_ventas
@@ -361,6 +362,9 @@ def anular_venta(
 
         venta_anulada = repositorio_ventas.anular_venta_en_conexion(
             conexion, venta_id, motivo=motivo, observaciones=observaciones, usuario_id=usuario_id
+        )
+        repositorio_auditoria.registrar_en_conexion(
+            conexion, usuario_id, "VENTA_ANULADA", "VENTA", venta_id, f"Motivo: {motivo}"
         )
 
     logger.info(

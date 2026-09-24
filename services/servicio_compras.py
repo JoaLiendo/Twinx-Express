@@ -14,10 +14,12 @@ Las compras son inmutables en esta fase: no hay `actualizar_compra` ni
 import logging
 
 from db.conexion import obtener_conexion
+from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import compras as repositorio_compras
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import proveedores as repositorio_proveedores
 from domain.compra import Compra, DetalleCompra, ItemCompra, LineaDetalleCompra, ResumenCompra
+from domain.dinero import centavos_a_texto
 from excepciones import (
     MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
     ClaveIdempotenciaReutilizadaError,
@@ -137,9 +139,21 @@ def registrar_compra(
             producto = productos_por_id[item.producto_id]
             producto.actualizar_stock(producto.stock_actual + item.cantidad)
             repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
+            # El costo vigente cambia con cada compra: `actualizar_costo_en_conexion` lo
+            # actualiza y, si difiere del anterior, lo registra en el historial de precios
+            # (misma transacción que el ingreso de stock).
             repositorio_productos.actualizar_costo_en_conexion(
-                conexion, producto.id, item.costo_unitario_centavos
+                conexion, producto.id, item.costo_unitario_centavos, usuario_id, "COMPRA"
             )
+
+        repositorio_auditoria.registrar_en_conexion(
+            conexion,
+            usuario_id,
+            "COMPRA_REGISTRADA",
+            "COMPRA",
+            compra.id,
+            f"Proveedor {proveedor.nombre}: {len(items)} línea(s), total ${centavos_a_texto(total_centavos)}",
+        )
 
     logger.info(
         "Compra registrada: id=%s proveedor_id=%s total_centavos=%s items=%s",

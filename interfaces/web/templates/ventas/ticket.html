@@ -30,6 +30,9 @@
       max-width: 80mm;
       background: #fff;
       padding: 10px 12px;
+      /* Nombres/direcciones largos sin espacios no deben desbordar los 80 mm. */
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .encabezado {
       text-align: center;
@@ -60,6 +63,11 @@
       font-size: 16px;
       font-weight: bold;
       margin-top: 8px;
+    }
+    .pie {
+      text-align: center;
+      font-size: 11px;
+      margin-top: 6px;
     }
     .medio-pago {
       margin-top: 4px;
@@ -106,7 +114,9 @@
       <p class="anulada">VENTA ANULADA</p>
     {% endif %}
     <div class="encabezado">
-      <p><strong>Kiosco</strong></p>
+      <p><strong>{{ comercio.nombre }}</strong></p>
+      {% if comercio.direccion %}<p>{{ comercio.direccion }}</p>{% endif %}
+      {% if comercio.telefono %}<p>Tel. {{ comercio.telefono }}</p>{% endif %}
       <p>Ticket #{{ venta.id }}</p>
       <p>{{ venta.fecha }}</p>
     </div>
@@ -137,6 +147,7 @@
       <span>${{ venta.total_centavos | dinero_ar }}</span>
     </div>
     <p class="medio-pago">Medio de pago: {{ venta.tipo_pago }}</p>
+    {% if comercio.pie %}<p class="pie">{{ comercio.pie }}</p>{% endif %}
   </div>
   <div class="acciones">
     <button type="button" onclick="window.print()">Imprimir</button>

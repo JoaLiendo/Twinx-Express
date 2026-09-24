@@ -17,13 +17,16 @@ NAV_ITEMS: list[dict[str, object]] = [
     {"href": "/", "etiqueta": "Dashboard", "icono": "dashboard", "roles": None},
     {"href": "/ventas", "etiqueta": "Ventas", "icono": "ventas", "roles": None},
     {"href": "/pedidos", "etiqueta": "Pedidos", "icono": "pedidos", "roles": _SOLO_OWNER, "proximamente": True},
-    {"href": "/precios", "etiqueta": "Precios", "icono": "precios", "roles": _SOLO_OWNER, "proximamente": True},
+    {"href": "/precios", "etiqueta": "Precios", "icono": "precios", "roles": _SOLO_OWNER},
     {"href": "/caja", "etiqueta": "Caja", "icono": "caja", "roles": None},
     {"href": "/productos", "etiqueta": "Stock", "icono": "productos", "roles": None},
     {"href": "/proveedores", "etiqueta": "Proveedores", "icono": "proveedores", "roles": _SOLO_OWNER},
     {"href": "/compras", "etiqueta": "Compras", "icono": "compras", "roles": _SOLO_OWNER},
+    {"href": "/reposicion", "etiqueta": "Reposición", "icono": "pedidos", "roles": _SOLO_OWNER},
     {"href": "/reportes", "etiqueta": "Reportes", "icono": "reportes", "roles": _SOLO_OWNER},
     {"href": "/empleados", "etiqueta": "Empleados", "icono": "empleados", "roles": _SOLO_OWNER},
+    {"href": "/auditoria", "etiqueta": "Auditoría", "icono": "auditoria", "roles": _SOLO_OWNER},
+    {"href": "/configuracion", "etiqueta": "Configuración", "icono": "configuracion", "roles": _SOLO_OWNER},
 ]
 
 

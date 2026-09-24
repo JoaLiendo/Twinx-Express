@@ -154,6 +154,23 @@ def _sembrar_productos_de_prueba() -> None:
         precio_venta_centavos=0,
         stock_actual=10,
     )
+    # V1.2: producto bajo el stock mínimo (reposición) y producto exclusivo del
+    # test de actualización masiva de precios.
+    servicio_stock.registrar_producto(
+        "7790000000077",
+        "Bajo Stock E2E",
+        precio_costo_centavos=300,
+        precio_venta_centavos=600,
+        stock_actual=1,
+        stock_minimo=5,
+    )
+    servicio_stock.registrar_producto(
+        "7790000000066",
+        "Precio Masivo E2E",
+        precio_costo_centavos=500,
+        precio_venta_centavos=1000,
+        stock_actual=10,
+    )
     servicio_stock.registrar_producto(
         PRODUCTO_XSS_CODIGO_BARRAS,
         PRODUCTO_XSS_NOMBRE,

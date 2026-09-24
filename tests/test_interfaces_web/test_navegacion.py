@@ -16,7 +16,7 @@ def _hrefs(items):
     return {item["href"] for item in items}
 
 
-_PROXIMAMENTE = {"/pedidos", "/precios"}
+_PROXIMAMENTE = {"/pedidos"}
 
 
 def test_owner_ve_toda_la_navegacion_con_funcionalidad_real():
@@ -26,7 +26,7 @@ def test_owner_ve_toda_la_navegacion_con_funcionalidad_real():
 
 
 def test_las_secciones_proximamente_no_aparecen_en_ningun_menu():
-    """V1.1: Pedidos y Precios son cascarones sin funcionalidad."""
+    """V1.1: Pedidos sigue siendo un cascarón sin funcionalidad (Precios es real desde V1.2)."""
     for rol in ("OWNER", "CASHIER", None):
         assert _hrefs(navegacion_visible_para(rol)).isdisjoint(_PROXIMAMENTE)
     assert _PROXIMAMENTE <= _hrefs(NAV_ITEMS)  # siguen definidas, solo ocultas

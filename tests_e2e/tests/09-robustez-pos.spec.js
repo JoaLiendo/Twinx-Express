@@ -45,6 +45,7 @@ test('lector USB: el input arranca enfocado y código + Enter agrega el producto
 
 test('lector USB: un código inexistente avisa y no agrega nada', async ({ page }) => {
   await loginViaUI(page);
+  await expect(page.getByLabel('Código de barras')).toBeFocused(); // el lector solo funciona con el foco en el input
 
   await page.keyboard.type('0000000000000');
   await page.keyboard.press('Enter');

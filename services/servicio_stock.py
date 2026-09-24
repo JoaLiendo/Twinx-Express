@@ -23,6 +23,7 @@ from excepciones import (
     ProductoNoEncontradoError,
     StockInsuficienteError,
 )
+from db.repositorios import auditoria as repositorio_auditoria
 from services import servicio_categorias, servicio_imagenes
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ def registrar_producto(
     stock_minimo: int = 0,
     categoria_id: int | None = None,
     unidad_medida: str = "UNIDAD",
+    usuario_id: int | None = None,
 ) -> Producto:
     """Da de alta un nuevo producto.
 
@@ -71,7 +73,17 @@ def registrar_producto(
         categoria_id=categoria_id,
         unidad_medida=unidad_medida,
     )
-    producto_creado = repositorio_productos.crear_producto(producto)
+    with obtener_conexion() as conexion:
+        producto_creado = repositorio_productos.crear_producto_en_conexion(conexion, producto)
+        if usuario_id is not None:
+            repositorio_auditoria.registrar_en_conexion(
+                conexion,
+                usuario_id,
+                "PRODUCTO_CREADO",
+                "PRODUCTO",
+                producto_creado.id,
+                f"{producto_creado.nombre} ({producto_creado.codigo_barras})",
+            )
     logger.info("Producto registrado: %s (id=%s)", producto_creado.nombre, producto_creado.id)
     return producto_creado
 
@@ -99,6 +111,47 @@ def listar_todos() -> list[Producto]:
 def listar_stock_critico() -> list[Producto]:
     """Devuelve los productos cuyo stock llegó al mínimo o está por debajo, para alertas."""
     return repositorio_productos.listar_stock_critico()
+
+
+@dataclass(frozen=True)
+class SugerenciaReposicion:
+    """Un producto por debajo de su stock mínimo y cuánto se sugiere comprar.
+
+    `cantidad_sugerida` = `stock_minimo - stock_actual` (lo que falta para llegar
+    al mínimo; siempre positiva porque el producto está estrictamente por debajo).
+    `costo_estimado_centavos` usa el costo vigente del producto.
+    """
+
+    producto_id: int
+    codigo_barras: str
+    nombre: str
+    stock_actual: int
+    stock_minimo: int
+    cantidad_sugerida: int
+    costo_unitario_centavos: int
+
+    @property
+    def costo_estimado_centavos(self) -> int:
+        return self.cantidad_sugerida * self.costo_unitario_centavos
+
+
+def listar_reposicion() -> list[SugerenciaReposicion]:
+    """Productos que necesitan reposición (stock mínimo > 0 y stock actual
+    estrictamente por debajo del mínimo, incluido el stock 0) con la cantidad
+    sugerida `stock_minimo - stock_actual`. Solo lectura: no crea compras ni
+    modifica stock."""
+    return [
+        SugerenciaReposicion(
+            producto_id=producto.id,
+            codigo_barras=producto.codigo_barras,
+            nombre=producto.nombre,
+            stock_actual=producto.stock_actual,
+            stock_minimo=producto.stock_minimo,
+            cantidad_sugerida=producto.stock_minimo - producto.stock_actual,
+            costo_unitario_centavos=producto.precio_costo_centavos,
+        )
+        for producto in repositorio_productos.listar_para_reposicion()
+    ]
 
 
 @dataclass
@@ -180,12 +233,16 @@ def actualizar_producto(
     stock_minimo: int,
     categoria_id: int | None = None,
     unidad_medida: str = "UNIDAD",
+    usuario_id: int | None = None,
 ) -> Producto:
     """Actualiza los datos editables de un producto existente.
 
     El stock actual no se modifica acá: solo cambia con las ventas
     (ver `services.servicio_ventas.registrar_venta`). Los precios se
     reciben en centavos (`int`, ver `domain.dinero`).
+
+    Si cambia el precio de venta o el de costo, el cambio queda en el
+    historial de precios con `usuario_id` (V1.2).
 
     Raises:
         ProductoNoEncontradoError: si no existe un producto activo con ese id.
@@ -209,29 +266,48 @@ def actualizar_producto(
         categoria_id=categoria_id,
         unidad_medida=unidad_medida,
     )
-    resultado = repositorio_productos.actualizar_datos(producto_actualizado)
+    resultado = repositorio_productos.actualizar_datos(producto_actualizado, usuario_id=usuario_id)
     logger.info("Producto actualizado: %s (id=%s)", resultado.nombre, resultado.id)
     return resultado
 
 
-def eliminar_producto(producto_id: int) -> bool:
+def eliminar_producto(producto_id: int, usuario_id: int | None = None) -> bool:
     """Da de baja un producto. Devuelve `True` si la baja fue lógica.
 
-    Si el producto no tiene ventas asociadas se elimina físicamente;
-    si tiene, se desactiva (baja lógica) para conservar el historial
-    de ventas que lo referencia (ver `db.repositorios.productos.eliminar_producto`).
-    La baja lógica conserva la imagen (se sigue viendo si se reactiva);
-    la eliminación física borra también el archivo de imagen, si tenía.
+    Si el producto no tiene ningún registro asociado se elimina físicamente; si
+    tiene ventas, compras, ajustes de stock o cambios de precio, se desactiva
+    (baja lógica) para conservar ese historial (ver
+    `db.repositorios.productos.eliminar_producto_en_conexion`). La baja lógica
+    conserva la imagen (se sigue viendo si se reactiva); la eliminación física
+    borra también el archivo de imagen, si tenía.
+
+    La baja y su registro de auditoría (con `usuario_id`) ocurren en la misma
+    transacción: si la auditoría falla, la baja se revierte.
 
     Raises:
         ProductoNoEncontradoError: si no existe un producto activo con ese id.
     """
-    producto_antes = repositorio_productos.obtener_por_id(producto_id)
-    baja_logica = repositorio_productos.eliminar_producto(producto_id)
-    if not baja_logica and producto_antes is not None:
+    with obtener_conexion(inmediata=True) as conexion:
+        producto_antes = repositorio_productos.obtener_por_id_en_conexion(conexion, producto_id)
+        motivos = repositorio_productos.eliminar_producto_en_conexion(conexion, producto_id)
+        if motivos is None or producto_antes is None:
+            raise ProductoNoEncontradoError(f"No existe un producto activo con id {producto_id}.")
+        if usuario_id is not None:
+            detalle = f"baja lógica (tiene {', '.join(motivos)})" if motivos else "eliminado"
+            repositorio_auditoria.registrar_en_conexion(
+                conexion, usuario_id, "PRODUCTO_BAJA", "PRODUCTO", producto_id, f"{producto_antes.nombre}: {detalle}"
+            )
+    baja_logica = bool(motivos)
+    if not baja_logica:
         servicio_imagenes.eliminar_archivo(producto_antes.imagen_archivo)
     logger.info("Producto id=%s dado de baja (baja_logica=%s)", producto_id, baja_logica)
     return baja_logica
+
+
+def motivos_de_conservacion(producto_id: int) -> list[str]:
+    """Qué registros asociados (ventas, compras, ajustes de stock, cambios de
+    precio) tiene un producto y por qué una baja se conserva como baja lógica."""
+    return repositorio_productos.listar_motivos_de_conservacion(producto_id)
 
 
 def listar_inactivos() -> list[Producto]:
@@ -239,7 +315,7 @@ def listar_inactivos() -> list[Producto]:
     return repositorio_productos.listar_inactivos()
 
 
-def reactivar_producto(producto_id: int) -> Producto:
+def reactivar_producto(producto_id: int, usuario_id: int | None = None) -> Producto:
     """Reactiva un producto dado de baja lógica (`activo` vuelve a 1).
 
     No modifica `stock_actual` ni las ventas/detalle de venta
@@ -250,7 +326,12 @@ def reactivar_producto(producto_id: int) -> Producto:
         ProductoNoEncontradoError: si no existe un producto inactivo
             con ese id (no existe, o ya está activo).
     """
-    producto = repositorio_productos.reactivar_producto(producto_id)
+    with obtener_conexion(inmediata=True) as conexion:
+        producto = repositorio_productos.reactivar_producto_en_conexion(conexion, producto_id)
+        if usuario_id is not None:
+            repositorio_auditoria.registrar_en_conexion(
+                conexion, usuario_id, "PRODUCTO_REACTIVADO", "PRODUCTO", producto.id, producto.nombre
+            )
     logger.info("Producto reactivado: %s (id=%s)", producto.nombre, producto.id)
     return producto
 
@@ -361,6 +442,14 @@ def ajustar_stock(
         )
         ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(
             conexion, ajuste, clave_idempotencia=clave_idempotencia
+        )
+        repositorio_auditoria.registrar_en_conexion(
+            conexion,
+            usuario_id,
+            "AJUSTE_STOCK",
+            "PRODUCTO",
+            producto_id,
+            f"{producto.nombre}: {motivo} {delta:+d} (stock {stock_anterior} → {nuevo_stock})",
         )
 
     logger.info(

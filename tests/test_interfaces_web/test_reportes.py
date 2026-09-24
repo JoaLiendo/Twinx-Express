@@ -85,7 +85,7 @@ class TestVerReportes:
         assert 'title="Reportes"' in respuesta.texto
         assert "(próximamente)" not in respuesta.texto
         assert 'href="/pedidos"' not in respuesta.texto
-        assert 'href="/precios"' not in respuesta.texto
+        assert 'href="/precios"' in respuesta.texto  # V1.2: actualización masiva real
 
     def test_las_rutas_de_pedidos_y_precios_siguen_existiendo(self, base_datos_temporal):
         cookies = _cookies_owner()

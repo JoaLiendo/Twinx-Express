@@ -63,7 +63,7 @@ def test_importar_csv_con_fila_invalida_no_aborta_el_resto(base_datos_temporal):
         "7790000000003,Gaseosa,-50,200,10,2\n"  # precio negativo -> inválido
     ).encode("utf-8")
 
-    resultado = servicio_importacion.procesar_archivo("productos.csv", contenido)
+    resultado = servicio_importacion.procesar_archivo("productos.csv", contenido, todo_o_nada=False)
 
     assert resultado.total_filas == 3
     assert resultado.importados == 1
@@ -119,7 +119,7 @@ def test_importar_csv_con_categoria_inexistente_es_fila_invalida(base_datos_temp
         "7790000000002,Alfajor,100,200,10,2,\n"
     ).encode("utf-8")
 
-    resultado = servicio_importacion.procesar_archivo("productos.csv", contenido)
+    resultado = servicio_importacion.procesar_archivo("productos.csv", contenido, todo_o_nada=False)
 
     assert resultado.importados == 1  # la fila sin categoría sí se importa
     assert len(resultado.errores) == 1

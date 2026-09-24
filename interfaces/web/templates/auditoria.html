@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Auditoría{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Auditoría</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+
+  <form method="get" action="/auditoria" class="flex flex-wrap items-end gap-3">
+    <div>
+      <label for="accion" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Acción</label>
+      <select id="accion" name="accion" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+        <option value="">Todas</option>
+        {% for a in acciones %}<option value="{{ a }}" {{ 'selected' if filtro.accion == a else '' }}>{{ a }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="usuario_id" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Usuario</label>
+      <select id="usuario_id" name="usuario_id" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+        <option value="">Todos</option>
+        {% for u in usuarios %}<option value="{{ u.id }}" {{ 'selected' if filtro.usuario_id == u.id else '' }}>{{ u.nombre_completo }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="fecha_desde" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Desde</label>
+      <input id="fecha_desde" type="date" name="fecha_desde" value="{{ filtro.fecha_desde }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+    </div>
+    <div>
+      <label for="fecha_hasta" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Hasta</label>
+      <input id="fecha_hasta" type="date" name="fecha_hasta" value="{{ filtro.fecha_hasta }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+    </div>
+    <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">Filtrar</button>
+  </form>
+
+  {% if entradas %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <p class="sm:hidden text-xs text-slate-400 dark:text-slate-500 px-5 pt-3">Desliza hacia la derecha para ver más →</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-3">Fecha</th><th class="px-5 py-3">Usuario</th><th class="px-5 py-3">Acción</th>
+              <th class="px-5 py-3">Entidad</th><th class="px-5 py-3">Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in entradas %}
+              <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ e.fecha }}</td>
+                <td class="px-5 py-3.5 text-slate-700 dark:text-slate-300">{{ e.usuario_nombre_completo or "—" }}</td>
+                <td class="px-5 py-3.5 whitespace-nowrap">{{ ui.badge(e.accion, 'info') }}</td>
+                <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ e.entidad }}{{ ' #' ~ e.entidad_id if e.entidad_id else '' }}</td>
+                <td class="px-5 py-3.5 text-slate-700 dark:text-slate-300">{{ e.resumen }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="text-xs text-slate-400 dark:text-slate-500">Se muestran las 200 operaciones más recientes que coinciden con el filtro.</p>
+  {% else %}
+    {{ ui.estado_vacio("Sin registros", "No hay operaciones auditadas que coincidan con el filtro.") }}
+  {% endif %}
+
+</div>
+{% endblock %}

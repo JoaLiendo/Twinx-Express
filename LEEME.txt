@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.1.0
+Twinx Express 1.2.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -75,9 +75,15 @@ esos datos y la aplicacion arranca como una instalacion nueva.
 4) COMO HACER UN BACKUP (copia de seguridad)
 -----------------------------------------------
 
-Dentro de la aplicacion, en la seccion de Configuracion (solo la ve
-el dueño), hay un boton "Crear backup". Al tocarlo, se genera un
-archivo con toda tu informacion: productos, ventas e imagenes.
+Con KioscoApp abierta, entra como dueño a la pagina de backup escribiendo
+esta direccion en la barra del navegador:
+
+    http://127.0.0.1:8000/backup
+
+Ahi hay un boton "Crear backup". Al tocarlo, se genera un archivo con
+toda tu informacion: productos, ventas e imagenes. (La seccion
+"Configuracion" del menu es otra cosa: sirve para los datos del ticket,
+ver el punto 11.)
 
 Ese archivo (un ZIP con nombre "KioscoApp_backup_AAAA-MM-DD_HHMMSS.zip")
 se guarda solo en:
@@ -212,6 +218,13 @@ que otro programa lo esta usando.
   3. Si el problema sigue, reinicia Windows y proba de nuevo. Si aun asi
      no funciona, pedi soporte.
 
+Si en cambio la ventana dice "TWINX EXPRESS NO PUDO INICIAR", el problema
+NO es el puerto: es un error al abrir tus datos (por ejemplo, una base de
+datos danada). La ventana muestra la causa y donde estan tus datos y tus
+backups. Para volver a un backup usa Restaurar_backup.bat (punto 5). El
+archivo de registro %LOCALAPPDATA%\KioscoApp\logs\twinx_express.log tiene
+el detalle tecnico que puede pedirte soporte.
+
 
 10) USUARIOS DUEÑO Y CONTRASEÑA (RECOMENDACION)
 ---------------------------------------------------
@@ -227,3 +240,74 @@ pierde su contraseña, no puede recuperarla por su cuenta.
 Si el negocio prefiere trabajar con un solo dueño, tiene que existir un
 procedimiento de soporte acordado para recuperar el acceso. Anotalo y
 guardalo en un lugar seguro.
+
+
+11) NOVEDADES DE LA VERSION 1.2: CONTROL DE PRECIOS Y TRAZABILIDAD
+---------------------------------------------------------------------
+
+Estas pantallas las ve y las usa solo el dueño (OWNER). El menu lateral
+muestra: Precios, Reposicion, Auditoria y Configuracion.
+
+a) HISTORIAL DE PRECIOS
+   En la edicion de un producto, el enlace "Historial de precios" muestra
+   cada cambio de precio de venta y de costo: fecha, valor anterior, valor
+   nuevo, quien lo hizo y por que camino (edicion, compra, actualizacion
+   masiva o importacion). El historial empieza con esta version: no
+   incluye cambios anteriores. Las ventas ya hechas NO cambian: conservan
+   el precio con el que se cobraron.
+   Un producto con historial (o con ventas, compras o ajustes) no se
+   borra del todo: al eliminarlo queda dado de baja y se puede
+   reactivar. El aviso indica el motivo.
+
+b) ACTUALIZACION MASIVA DE PRECIOS (menu Precios)
+   Sube o baja el PRECIO DE VENTA de varios productos a la vez, en un
+   porcentaje (hasta 1000 %) o en un monto fijo.
+   1. Elegis el tipo, si aumenta o disminuye, el valor y a que productos
+      (todos, una categoria o los sin categoria). Por defecto NO se
+      redondea; si queres, podes elegir "Al peso mas cercano".
+   2. Ves una vista previa con el precio actual y el nuevo de cada
+      producto. Los productos sin precio de venta no participan.
+   3. Confirmas. Es todo o nada: si algun producto elegido no se puede
+      actualizar (por ejemplo, el precio quedaria en cero o cambio desde
+      la vista previa), no se cambia ninguno. Cada cambio queda en el
+      historial y en la auditoria.
+
+c) AUDITORIA (menu Auditoria)
+   Lista quien hizo cada operacion importante y cuando: altas, ediciones
+   y bajas de productos, actualizaciones de precios, ajustes de stock,
+   compras, anulaciones, movimientos de caja, importaciones, cambios de
+   usuarios y de la configuracion. Se puede filtrar por accion, usuario y
+   fechas. La operacion y su registro se guardan juntos: si el registro
+   fallara, la operacion no se realiza. Nunca guarda contraseñas.
+
+d) IMPORTAR PRODUCTOS (Stock > Importar)
+   Aceptas archivos .csv o .xlsx con las columnas: codigo_barras,
+   nombre, precio_costo, precio_venta, stock_actual, stock_minimo
+   (y opcionalmente categoria y unidad_medida).
+   - "Solo crear": agrega los productos nuevos y omite los codigos que ya
+     existen, sin tocarlos.
+   - "Crear y actualizar": ademas actualiza los existentes con los datos
+     del archivo. Una celda vacia conserva el valor actual. El stock NUNCA
+     se modifica desde una importacion, y un producto dado de baja se
+     rechaza.
+   Por defecto la importacion es TODO O NADA: si una sola fila tiene un
+   error, no se importa ninguna y se muestra la lista completa de filas
+   rechazadas. Solo si marcas "Permitir importacion parcial" se importan
+   las filas validas y se informan las rechazadas.
+
+e) CONFIGURACION DEL TICKET (menu Configuracion)
+   Podes cargar el nombre del negocio, la direccion, el telefono y una
+   leyenda al pie (por ejemplo "Gracias por su compra"). Se imprimen en
+   cada ticket; lo que dejes vacio no se imprime. Si no cargas el nombre,
+   el ticket dice "Kiosco". No hay datos fiscales.
+
+f) REPOSICION (menu Reposicion)
+   Lista los productos con stock minimo cargado cuyo stock esta POR
+   DEBAJO del minimo (incluye los que se quedaron sin stock; un producto
+   justo en el minimo no aparece). La cantidad sugerida es lo que falta
+   para llegar al minimo, y la podes cambiar antes de imprimir la lista.
+   Es una pantalla de consulta: no registra compras ni cambia el stock.
+
+Tus datos: esta version agrega cuatro tablas nuevas a la base de datos
+(historial de precios, lotes de actualizacion, auditoria y configuracion).
+Se crean solas al abrir la nueva version, con un backup previo automatico.
