@@ -115,8 +115,10 @@ def inicializar_base_datos(ruta_script: Path | None = None) -> None:
     Cada script se ejecuta una única vez en la vida de la base de
     datos, así que puede contener cambios no idempotentes (ej.
     `ALTER TABLE ... ADD COLUMN`) además de `CREATE TABLE IF NOT
-    EXISTS`. Es seguro llamar a esta función en cada arranque de la
-    aplicación: los scripts ya aplicados se saltean.
+    EXISTS`. Cada migración es atómica: se aplica completa junto con
+    su registro o no deja ningún cambio (los scripts no deben incluir
+    `BEGIN`/`COMMIT` propios). Es seguro llamar a esta función en cada
+    arranque de la aplicación: los scripts ya aplicados se saltean.
 
     Args:
         ruta_script: ruta a un único script SQL a ejecutar en lugar
@@ -145,10 +147,17 @@ def inicializar_base_datos(ruta_script: Path | None = None) -> None:
         for ruta in rutas_migraciones:
             if ruta.name in aplicadas:
                 continue
-            conexion.executescript(ruta.read_text(encoding="utf-8"))
+            # `executescript` confirma lo pendiente y luego corre el script en
+            # autocommit: sin este `BEGIN` una migración que falla a mitad
+            # deja cambios parciales persistidos. Con él, el script y su
+            # registro forman una única transacción: se confirma entera acá
+            # o, ante cualquier error, la hace revertir `obtener_conexion`
+            # y la migración sigue pendiente.
+            conexion.executescript("BEGIN IMMEDIATE;\n" + ruta.read_text(encoding="utf-8"))
             conexion.execute(
                 "INSERT INTO schema_migraciones (nombre_archivo) VALUES (?)", (ruta.name,)
             )
+            conexion.commit()
             logger.info("Migración aplicada: %s", ruta.name)
 
     logger.info("Base de datos inicializada correctamente en %s", RUTA_BASE_DATOS)
