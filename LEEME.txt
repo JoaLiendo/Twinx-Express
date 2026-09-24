@@ -43,8 +43,27 @@ Tus productos, ventas e imagenes NO se guardan dentro de esta carpeta.
 Se guardan aparte, en una carpeta propia de tu usuario de Windows, para
 que nunca se pierdan aunque reemplaces o actualices KioscoApp.
 
+Estas son las ubicaciones exactas:
+
+    Datos:      %LOCALAPPDATA%\KioscoApp\data\
+    Base de datos:
+                %LOCALAPPDATA%\KioscoApp\data\kiosco.db
+    Imagenes:   %LOCALAPPDATA%\KioscoApp\data\imagenes_productos\
+    Backups:    %LOCALAPPDATA%\KioscoApp\backups\
+
+Para abrir esa carpeta: abri el Explorador de archivos, pega
+%LOCALAPPDATA%\KioscoApp en la barra de direcciones y presiona Enter.
+
+Esas carpetas son tus datos. No forman parte del programa
+(KioscoApp.exe): el programa se puede reemplazar sin tocarlas.
+
 Esto es automatico, no tenes que hacer nada para que funcione. Solo
 es importante saberlo para el paso de "Actualizar" (mas abajo).
+
+ATENCION: NO borres la carpeta %LOCALAPPDATA%\KioscoApp\. Ahi estan
+guardados tu base de datos, tus imagenes y tus backups. Actualizar o
+reemplazar KioscoApp.exe NO requiere borrarla. Si la borras, se pierden
+esos datos y la aplicacion arranca como una instalacion nueva.
 
 
 4) COMO HACER UN BACKUP (copia de seguridad)
@@ -54,11 +73,21 @@ Dentro de la aplicacion, en la seccion de Configuracion (solo la ve
 el dueño), hay un boton "Crear backup". Al tocarlo, se genera un
 archivo con toda tu informacion: productos, ventas e imagenes.
 
-Ese archivo se guarda solo, en la misma carpeta de datos mencionada
-arriba (no hace falta elegir nada).
+Ese archivo (un ZIP con nombre "KioscoApp_backup_AAAA-MM-DD_HHMM.zip")
+se guarda solo en:
 
-Recomendacion: de vez en cuando, copia ese archivo de backup a otro
-lugar (un pendrive, otra computadora, la nube). Si algo le pasa a
+    %LOCALAPPDATA%\KioscoApp\backups\
+
+(no hace falta elegir nada). La aplicacion muestra el nombre del archivo
+creado, pero no tiene un boton para descargarlo: para copiarlo tenes que
+buscarlo en la carpeta de arriba.
+
+Ademas de los backups manuales, KioscoApp hace un backup automatico al
+abrirse si el ultimo backup tiene mas de 24 horas (o si todavia no hay
+ninguno). Se guardan en la misma carpeta.
+
+Recomendacion: de vez en cuando, copia los ZIP de backup de esa carpeta
+a otro lugar (un pendrive, otra computadora, la nube). Si algo le pasa a
 esta computadora, un backup que quedo solo en ella no te va a servir.
 
 
@@ -68,6 +97,16 @@ esta computadora, un backup que quedo solo en ella no te va a servir.
 Usa esto unicamente si perdiste datos o queres volver a un backup
 anterior. Restaurar reemplaza los datos actuales por los del backup
 que elijas, asi que fijate bien cual archivo estas por usar.
+
+Tene en cuenta:
+
+  - Lo que se cargo despues de la fecha del backup (ventas, productos,
+    cambios) NO esta en el backup y se pierde al restaurar.
+  - Restaurar NO crea antes una copia de tus datos actuales. Si dudas,
+    copia a mano tus backups a otro lugar antes de restaurar.
+  - Los backups de la carpeta backups\ no se modifican al restaurar.
+  - No modifiques ni reemplaces a mano el archivo kiosco.db: usa
+    siempre Restaurar_backup.bat.
 
 Pasos:
 
@@ -98,7 +137,19 @@ Cuando recibas una version nueva de KioscoApp:
 
 Importante: los datos NO estan dentro de esta carpeta, asi que no
 hace falta (ni conviene) copiarlos ni borrarlos a mano en ningun
-paso de este proceso.
+paso de este proceso. En particular, NO borres
+%LOCALAPPDATA%\KioscoApp\.
+
+Backup preventivo: cuando la version nueva trae cambios en la base de
+datos (migraciones pendientes), KioscoApp crea automaticamente un backup
+antes de aplicarlos. Se llama "KioscoApp_backup_pre_migracion_..." y
+queda en:
+
+    %LOCALAPPDATA%\KioscoApp\backups\
+
+Si la version nueva no trae cambios en la base de datos, ese backup no
+se crea. Por eso el paso 2 (hacer un backup por las dudas) sigue siendo
+recomendable.
 
 
 7) SI UNA ACTUALIZACION FALLA (volver a la version anterior)
@@ -112,6 +163,11 @@ paso de este proceso.
 
 Tus datos no se ven afectados por este paso, porque nunca estuvieron
 dentro de ninguna de las dos carpetas.
+
+Si la version nueva llego a abrirse y aplico cambios en la base de datos,
+antes de volver a la version anterior restaura el backup
+"KioscoApp_backup_pre_migracion_..." (ver punto 5). Si tenes dudas, pedi
+soporte antes de seguir.
 
 
 8) CATALOGO INICIAL
@@ -130,3 +186,32 @@ carga con una compra o un ajuste de stock.
 
 Esta lista se carga una unica vez. Al actualizar KioscoApp no se vuelve
 a cargar ni se modifica nada de lo que ya tenes.
+
+
+9) SI APARECE UN ERROR DE "PUERTO 8000"
+-------------------------------------------
+
+KioscoApp usa el puerto local 8000 de tu computadora. Si en la ventana
+negra aparece un error que indica que el puerto esta ocupado, significa
+que otro programa lo esta usando.
+
+  1. Fijate si ya tenes otra ventana de KioscoApp abierta y cerrala.
+  2. Volve a abrir KioscoApp.exe.
+  3. Si el problema sigue, reinicia Windows y proba de nuevo. Si aun asi
+     no funciona, pedi soporte.
+
+
+10) USUARIOS DUEÑO Y CONTRASEÑA (RECOMENDACION)
+---------------------------------------------------
+
+Al hacer la configuracion inicial, se recomienda tener DOS usuarios con
+rol dueño (OWNER) en el negocio: el principal y otro de respaldo.
+
+Motivo: un dueño puede restablecer la contraseña de otro usuario (en la
+seccion de empleados). Pero actualmente NO existe una recuperacion
+automatica de la contraseña para el unico dueño: si hay un solo dueño y
+pierde su contraseña, no puede recuperarla por su cuenta.
+
+Si el negocio prefiere trabajar con un solo dueño, tiene que existir un
+procedimiento de soporte acordado para recuperar el acceso. Anotalo y
+guardalo en un lugar seguro.
