@@ -71,8 +71,11 @@ class TestBloqueEfectivoVuelto:
     def test_no_se_agrego_ningun_campo_de_monto_recibido_al_esquema_de_venta(self, base_datos_temporal):
         """Regresión de alcance: el bloqueo por efectivo insuficiente es
         solo de UX (ver pos.js::actualizarEstadoCobrar) -- el body de
-        POST /api/ventas sigue siendo exactamente items/tipo_pago/clave."""
+        POST /api/ventas sigue siendo items/tipo_pago/clave (+ `cliente_id`, opcional, desde
+        la 021: la venta a cuenta). Ningún campo de monto recibido ni de vuelto."""
         from interfaces.web.esquemas import VentaEntrada
 
         campos = set(VentaEntrada.model_fields.keys())
-        assert campos == {"items", "tipo_pago", "clave_idempotencia"}
+        assert campos == {"items", "tipo_pago", "clave_idempotencia", "cliente_id"}
+        assert not {"monto_recibido", "vuelto", "efectivo_recibido"} & campos
+        assert VentaEntrada.model_fields["cliente_id"].is_required() is False

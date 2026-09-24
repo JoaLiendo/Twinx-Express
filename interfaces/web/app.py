@@ -34,6 +34,7 @@ from interfaces.web.rutas import (
     auditoria,
     backup,
     caja,
+    clientes,
     compras,
     configuracion,
     configuracion_inicial,
@@ -147,6 +148,7 @@ app.include_router(dashboard.router)
 app.include_router(productos.router)
 app.include_router(ventas.router)
 app.include_router(caja.router)
+app.include_router(clientes.router)
 app.include_router(pedidos.router)
 app.include_router(precios.router)
 app.include_router(proveedores.router)

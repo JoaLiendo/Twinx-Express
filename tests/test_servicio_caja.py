@@ -268,12 +268,13 @@ class TestDiferenciaDeCierre:
         directo un MovimientoCaja sin diferencia_centavos) debe poder
         seguir leyéndose con normalidad -- `listar_movimientos` no debe
         fallar ni inventar un valor."""
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=100000))
         repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000))
 
         movimientos = servicio_caja.listar_movimientos()
 
-        assert len(movimientos) == 1
-        assert movimientos[0].diferencia_centavos is None
+        assert [m.tipo for m in movimientos] == ["APERTURA", "CIERRE"]
+        assert movimientos[1].diferencia_centavos is None
 
 
 def _fechar(tabla: str, registro_id: int, fecha: str) -> None:

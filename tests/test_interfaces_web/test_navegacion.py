@@ -9,7 +9,9 @@ pura sobre la lista `NAV_ITEMS`.
 from interfaces.web.navegacion import NAV_ITEMS, navegacion_visible_para
 
 _SECCIONES_OWNER_EXCLUSIVAS = {"/pedidos", "/precios", "/proveedores", "/compras", "/reportes", "/empleados"}
-_SECCIONES_CASHIER = {"/", "/ventas", "/caja", "/productos"}
+# 021: Clientes es visible para ambos roles (los dos pueden verlos, crearlos y cobrar; editar/desactivar
+# lo restringe cada ruta, no el menú).
+_SECCIONES_CASHIER = {"/", "/ventas", "/caja", "/productos", "/clientes"}
 
 
 def _hrefs(items):

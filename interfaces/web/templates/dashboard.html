@@ -103,6 +103,7 @@
             <div class="flex items-center justify-between gap-3 px-6 py-3">
               <div class="min-w-0">
                 {{ ui.badge(movimiento.tipo, variantes_movimiento.get(movimiento.tipo, 'neutral')) }}
+                {% if movimiento.origen == 'COBRO_CUENTA' %}<span class="ml-1">{{ ui.badge('Cobro cta. cte.', 'marca') }}</span>{% endif %}
                 <p class="mt-1 text-xs text-slate-500 dark:text-slate-400 truncate">{{ movimiento.descripcion or '—' }} · {{ movimiento.fecha }}</p>
               </div>
               <p class="shrink-0 text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">${{ movimiento.monto_centavos | dinero_ar }}</p>

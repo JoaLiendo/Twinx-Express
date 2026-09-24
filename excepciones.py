@@ -198,3 +198,26 @@ class VentaDeCajaCerradaError(ErrorAplicacion):
     una caja que ni siquiera está abierta -- ninguna de las dos está
     en el alcance de este MVP (ver auditoría de diseño de anulación de
     ventas)."""
+
+
+class ClienteNoEncontradoError(ErrorAplicacion):
+    """No existe un cliente con el id solicitado."""
+
+
+class ClienteInactivoError(ErrorAplicacion):
+    """El cliente está desactivado: no puede asociarse a ninguna venta nueva
+    ni recibir cobros."""
+
+
+class ClienteConSaldoError(ErrorAplicacion):
+    """No se puede desactivar un cliente con saldo pendiente en su cuenta corriente."""
+
+
+class CobroInvalidoError(DatosInvalidosError):
+    """El cobro de cuenta corriente no cumple las reglas comerciales: medio
+    distinto de efectivo o monto fuera de `0 < monto <= saldo`."""
+
+
+class VentaACuentaNoAnulableError(ErrorAplicacion):
+    """Una venta a cuenta corriente no puede anularse en la V1.3: hacerlo
+    obligaría a reversar el CARGO de la cuenta del cliente."""

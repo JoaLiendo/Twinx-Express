@@ -14,9 +14,9 @@ Los montos se manejan en centavos (`int`): ver `domain.dinero`.
 import sqlite3
 
 from db.conexion import obtener_conexion
-from domain.caja import SesionCaja
+from db.repositorios import caja as repositorio_caja
 from domain.venta import ItemVenta, LineaVenta, ProductoMasVendido, ResumenVenta, Venta, VentaConDetalle
-from excepciones import VentaYaAnuladaError
+from excepciones import CajaCerradaError, VentaYaAnuladaError
 
 
 def registrar_venta_con_detalle(
@@ -28,6 +28,8 @@ def registrar_venta_con_detalle(
     contenido_hash: str | None = None,
     usuario_id: int | None = None,
     costos_unitarios_por_producto_id: dict[int, int] | None = None,
+    sesion_caja_id: int | None = None,
+    cliente_id: int | None = None,
 ) -> Venta:
     """Inserta la venta y su detalle dentro de la conexión recibida.
 
@@ -36,6 +38,18 @@ def registrar_venta_con_detalle(
     venta, no se vuelve a consultar el producto más adelante. El
     subtotal de cada línea se calcula con aritmética entera exacta
     (`precio_unitario_centavos * cantidad`), sin ningún redondeo.
+
+    `sesion_caja_id` (migración 019) es la sesión de caja ABIERTA a la que
+    pertenece la venta; `services.servicio_ventas.registrar_venta` la resuelve
+    dentro de la misma transacción y la pasa. Si no se indica, se resuelve
+    acá, en la conexión recibida. Sin sesión abierta se levanta
+    `CajaCerradaError`. Además un trigger del esquema rechaza cualquier
+    sesión que no esté abierta.
+
+    `cliente_id` (migración 020) asocia la venta a un cliente; el esquema exige
+    que el cliente esté activo y que una venta `CUENTA_CORRIENTE` tenga cliente.
+    La resolución del cliente y el CARGO de la cuenta los hace
+    `services.servicio_ventas.registrar_venta`.
 
     `clave_idempotencia`/`contenido_hash` son opcionales (Fase 5A): el
     CLI y los llamados directos al servicio sin clave siguen
@@ -63,13 +77,20 @@ def registrar_venta_con_detalle(
     la venta, su detalle y el descuento de stock queden todos dentro
     de una única transacción atómica.
     """
+    if sesion_caja_id is None:
+        sesion_abierta = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion)
+        if sesion_abierta is None:
+            raise CajaCerradaError("No hay una caja abierta: abrí la caja antes de registrar ventas.")
+        sesion_caja_id = sesion_abierta.id
+
     fila_venta = conexion.execute(
         """
-        INSERT INTO ventas (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO ventas
+            (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id, sesion_caja_id, cliente_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         RETURNING id, fecha, total_centavos, tipo_pago, estado
         """,
-        (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id),
+        (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id, sesion_caja_id, cliente_id),
     ).fetchone()
 
     venta_id = fila_venta["id"]
@@ -243,16 +264,14 @@ def obtener_venta_con_detalle(venta_id: int) -> VentaConDetalle | None:
     return VentaConDetalle(venta=venta, lineas=lineas)
 
 
-def listar_ventas_de_sesion(sesion: SesionCaja) -> list[Venta]:
-    """Devuelve las ventas `ACTIVA` de una sesión de caja (desde su
-    apertura hasta su cierre, o hasta ahora si sigue abierta), más
-    recientes primero.
+def listar_ventas_de_sesion_en_conexion(conexion: sqlite3.Connection, sesion_id: int) -> list[Venta]:
+    """Devuelve las ventas `ACTIVA` de una sesión de caja (`ventas.sesion_caja_id`,
+    migración 019), más recientes primero.
 
     Usada por el arqueo de caja para calcular el total vendido y el
     efectivo estimado de la sesión (ver `services.servicio_caja.calcular_arqueo_de_sesion`).
-    No depende del día calendario: una sesión que cruza medianoche
-    incluye las ventas posteriores a las 00:00, y dos sesiones del mismo
-    día no se mezclan.
+    No depende de fechas ni del día calendario: la sesión de cada venta quedó
+    fijada al registrarla (o al migrar) y es inmutable.
 
     Excluye `estado = 'ANULADA'` (migración 013): una venta anulada no
     cobró nada real, así que no puede seguir sumando al efectivo
@@ -260,15 +279,29 @@ def listar_ventas_de_sesion(sesion: SesionCaja) -> list[Venta]:
     que corrige el arqueo sin generar ningún movimiento de caja nuevo
     (ver `services.servicio_ventas.anular_venta`).
     """
-    consulta = """
+    filas = conexion.execute(
+        """
         SELECT id, fecha, total_centavos, tipo_pago, estado FROM ventas
-        WHERE fecha >= ? AND (? IS NULL OR fecha <= ?) AND estado = 'ACTIVA'
+        WHERE sesion_caja_id = ? AND estado = 'ACTIVA'
         ORDER BY id DESC
-    """
-    parametros = (sesion.fecha_apertura, sesion.fecha_cierre, sesion.fecha_cierre)
-    with obtener_conexion() as conexion:
-        filas = conexion.execute(consulta, parametros).fetchall()
+        """,
+        (sesion_id,),
+    ).fetchall()
     return [_fila_a_venta(fila) for fila in filas]
+
+
+def listar_ventas_de_sesion(sesion_id: int) -> list[Venta]:
+    """Ver `listar_ventas_de_sesion_en_conexion`."""
+    with obtener_conexion() as conexion:
+        return listar_ventas_de_sesion_en_conexion(conexion, sesion_id)
+
+
+def obtener_sesion_id_en_conexion(conexion: sqlite3.Connection, venta_id: int) -> int | None:
+    """`sesion_caja_id` de una venta, o `None` si la venta no existe. Es lo que
+    usa `services.servicio_ventas.anular_venta` para exigir que la venta
+    pertenezca a la sesión abierta."""
+    fila = conexion.execute("SELECT sesion_caja_id FROM ventas WHERE id = ?", (venta_id,)).fetchone()
+    return fila["sesion_caja_id"] if fila is not None else None
 
 
 def listar_en_rango(fecha_desde: str | None = None, fecha_hasta: str | None = None) -> list[Venta]:
@@ -521,10 +554,13 @@ _CONSULTA_RESUMEN_VENTA_BASE = """
         v.motivo_anulacion AS motivo_anulacion,
         v.observaciones_anulacion AS observaciones_anulacion,
         u2.nombre_completo AS anulado_por_nombre,
-        v.fecha_anulacion AS fecha_anulacion
+        v.fecha_anulacion AS fecha_anulacion,
+        v.cliente_id AS cliente_id,
+        c.nombre AS cliente_nombre
     FROM ventas v
     LEFT JOIN usuarios u ON u.id = v.usuario_id
     LEFT JOIN usuarios u2 ON u2.id = v.anulada_por_usuario_id
+    LEFT JOIN clientes c ON c.id = v.cliente_id
     LEFT JOIN detalle_venta dv ON dv.venta_id = v.id
 """
 
@@ -542,6 +578,8 @@ def _fila_a_resumen_venta(fila: sqlite3.Row) -> ResumenVenta:
         observaciones_anulacion=fila["observaciones_anulacion"],
         anulado_por_nombre=fila["anulado_por_nombre"],
         fecha_anulacion=fila["fecha_anulacion"],
+        cliente_id=fila["cliente_id"],
+        cliente_nombre=fila["cliente_nombre"],
     )
 
 

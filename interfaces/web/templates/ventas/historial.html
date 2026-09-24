@@ -53,7 +53,7 @@
   </form>
 
   {% if ventas %}
-    {% set variantes_medio_pago = {'EFECTIVO': 'exito', 'TARJETA': 'info', 'TRANSFERENCIA': 'advertencia', 'OTRO': 'neutral'} %}
+    {% set variantes_medio_pago = {'EFECTIVO': 'exito', 'TARJETA': 'info', 'TRANSFERENCIA': 'advertencia', 'OTRO': 'neutral', 'CUENTA_CORRIENTE': 'marca'} %}
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
       <p class="sm:hidden text-xs text-slate-400 dark:text-slate-500 px-5 pt-3">Desliza hacia la derecha para ver más →</p>
       <div class="overflow-x-auto">
@@ -64,6 +64,7 @@
               <th class="px-5 py-3">Venta #</th>
               <th class="px-5 py-3 text-right">Total</th>
               <th class="px-5 py-3">Medio de pago</th>
+              <th class="px-5 py-3">Cliente</th>
               <th class="px-5 py-3">Vendedor</th>
               <th class="px-5 py-3">Estado</th>
               <th class="px-5 py-3"><span class="sr-only">Acción</span></th>
@@ -77,6 +78,11 @@
                 <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">#{{ venta.id }}</td>
                 <td class="px-5 py-3.5 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">${{ venta.total_centavos | dinero_ar }}</td>
                 <td class="px-5 py-3.5">{{ ui.badge(venta.tipo_pago, variantes_medio_pago.get(venta.tipo_pago, 'neutral')) }}</td>
+                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">
+                  {% if venta.cliente_id %}
+                    <a href="/clientes/{{ venta.cliente_id }}" class="font-medium text-primary hover:text-primary-hover" onclick="event.stopPropagation()">{{ venta.cliente_nombre }}</a>
+                  {% else %}—{% endif %}
+                </td>
                 <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ venta.vendedor_nombre or "—" }}</td>
                 <td class="px-5 py-3.5">
                   {% if venta.estado == 'ANULADA' %}

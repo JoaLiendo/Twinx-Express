@@ -21,11 +21,16 @@ from datetime import date, timedelta
 from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import caja as repositorio_caja
+from db.repositorios import clientes as repositorio_clientes
 from db.repositorios import productos as repositorio_productos
+from db.repositorios import usuarios as repositorio_usuarios
 from db.repositorios import ventas as repositorio_ventas
+from domain.dinero import centavos_a_texto
 from domain.producto import Producto
+from domain.usuario import exigir_rol
 from domain.venta import (
-    TIPOS_PAGO_VALIDOS,
+    TIPO_PAGO_CUENTA_CORRIENTE,
+    TIPOS_PAGO_ACEPTADOS,
     ItemVenta,
     ResumenVenta,
     Venta,
@@ -36,11 +41,14 @@ from domain.venta import (
 from excepciones import (
     CajaCerradaError,
     ClaveIdempotenciaReutilizadaError,
+    ClienteInactivoError,
+    ClienteNoEncontradoError,
     DatosInvalidosError,
     ErrorBaseDatos,
     PrecioVentaNoConfiguradoError,
     ProductoNoEncontradoError,
     StockInsuficienteError,
+    VentaACuentaNoAnulableError,
     VentaDeCajaCerradaError,
     VentaNoEncontradaError,
     VentaYaAnuladaError,
@@ -53,6 +61,8 @@ logger = logging.getLogger(__name__)
 # vistazo analítico rápido) porque acá el caso de uso operativo típico
 # es "buscar una venta de hace un par de semanas", no un resumen del día.
 DIAS_RANGO_POR_DEFECTO_HISTORIAL = 30
+
+_ROLES_VENTA_A_CUENTA = frozenset({"OWNER", "CASHIER"})
 
 
 def _resolver_clave_reutilizada(
@@ -74,6 +84,7 @@ def registrar_venta(
     tipo_pago: str,
     clave_idempotencia: str | None = None,
     usuario_id: int | None = None,
+    cliente_id: int | None = None,
 ) -> Venta:
     """Registra una venta con sus líneas de detalle y descuenta stock.
 
@@ -87,9 +98,12 @@ def registrar_venta(
 
     Si se pasa `clave_idempotencia` (Fase 5A, obligatoria para la API
     web, opcional para el CLI y llamados internos): antes de tocar
-    stock se busca una venta ya registrada con esa clave.
-    - Si existe y su contenido (mismos productos+cantidades agregadas,
-      mismo `tipo_pago`) coincide, se devuelve esa venta sin volver a
+    stock se busca una venta ya registrada con esa clave. El contenido
+    que se compara para decidir si es "la misma venta" incluye: los
+    productos, sus cantidades (agregadas por producto), el `tipo_pago`
+    y, cuando la venta tiene cliente, el `cliente_id` (ver
+    `domain.venta.calcular_hash_contenido`); el precio nunca participa.
+    - Si existe y su contenido coincide, se devuelve esa venta sin volver a
       descontar stock ni insertar nada -- es un reintento legítimo.
     - Si existe con contenido distinto, se levanta
       `ClaveIdempotenciaReutilizadaError` sin tocar nada.
@@ -102,11 +116,18 @@ def registrar_venta(
       alcanzado a hacer), y acá se recupera la venta ganadora con una
       lectura nueva, aplicando el mismo criterio de arriba.
 
+    Venta a cuenta (migración 020): con `tipo_pago='CUENTA_CORRIENTE'` la venta
+    exige un cliente activo, una caja abierta y stock, y en la misma
+    transacción genera el CARGO en la cuenta del cliente y su auditoría
+    `VENTA_A_CUENTA`. Un `cliente_id` también puede asociarse a una venta
+    normal; en ambos casos el cliente debe existir y estar activo. Una venta
+    a cuenta no se puede anular (ver `anular_venta`).
+
     Args:
         items: líneas de venta (producto_id + cantidad). No puede
             estar vacío.
-        tipo_pago: uno de `domain.venta.TIPOS_PAGO_VALIDOS`
-            ('EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'OTRO').
+        tipo_pago: uno de `domain.venta.TIPOS_PAGO_ACEPTADOS`
+            ('EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'OTRO', 'CUENTA_CORRIENTE').
         clave_idempotencia: identificador que el cliente genera una
             vez por intento de cobro y reenvía igual en cualquier
             reintento de ese mismo intento. `None` (el default)
@@ -114,10 +135,17 @@ def registrar_venta(
             llamados internos que no la necesitan.
         usuario_id: id del usuario autenticado que registra la venta
             (migración 009). `None` (el default) para el CLI, que no
-            autentica a nadie -- nunca se inventa un usuario.
+            autentica a nadie -- nunca se inventa un usuario. Obligatorio
+            (OWNER o CASHIER activo) en una venta a cuenta.
+        cliente_id: cliente al que se asocia la venta (migración 020).
+            Obligatorio si `tipo_pago` es `CUENTA_CORRIENTE`.
 
     Raises:
-        DatosInvalidosError: si `items` está vacío o `tipo_pago` no es válido.
+        DatosInvalidosError: si `items` está vacío, `tipo_pago` no es válido o
+            una venta a cuenta no indica cliente.
+        PermisoDenegadoError: si una venta a cuenta no la hace un usuario activo.
+        ClienteNoEncontradoError / ClienteInactivoError: si el cliente no existe
+            o está inactivo.
         CajaCerradaError: si no hay una caja abierta (y no es el reintento
             de una venta ya registrada con la misma `clave_idempotencia`).
         ProductoNoEncontradoError: si algún `producto_id` no existe.
@@ -130,12 +158,17 @@ def registrar_venta(
     """
     if not items:
         raise DatosInvalidosError("Una venta debe tener al menos un ítem.")
-    if tipo_pago not in TIPOS_PAGO_VALIDOS:
+    if tipo_pago not in TIPOS_PAGO_ACEPTADOS:
         raise DatosInvalidosError(
-            f"Tipo de pago inválido: {tipo_pago!r}. Debe ser uno de {sorted(TIPOS_PAGO_VALIDOS)}."
+            f"Tipo de pago inválido: {tipo_pago!r}. Debe ser uno de {sorted(TIPOS_PAGO_ACEPTADOS)}."
         )
+    es_venta_a_cuenta = tipo_pago == TIPO_PAGO_CUENTA_CORRIENTE
+    if es_venta_a_cuenta and cliente_id is None:
+        raise DatosInvalidosError("Una venta a cuenta corriente requiere un cliente.")
 
-    contenido_hash = calcular_hash_contenido(items, tipo_pago) if clave_idempotencia is not None else None
+    contenido_hash = (
+        calcular_hash_contenido(items, tipo_pago, cliente_id) if clave_idempotencia is not None else None
+    )
 
     cantidad_pedida_por_producto: dict[int, int] = {}
     for item in items:
@@ -164,9 +197,29 @@ def registrar_venta(
             # venta ya registrada sigue devolviéndola aunque la caja se haya
             # cerrado entretanto. Una venta nueva sin caja abierta se rechaza
             # antes de tocar stock, y como la transacción se revierte, la clave
-            # de idempotencia no queda consumida.
-            if repositorio_caja.obtener_sesion_abierta_en_conexion(conexion) is None:
+            # de idempotencia no queda consumida. La sesión abierta se resuelve
+            # dentro de esta misma transacción `BEGIN IMMEDIATE`: no puede
+            # cerrarse entre la lectura y el `INSERT` de la venta.
+            sesion_abierta = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion)
+            if sesion_abierta is None:
                 raise CajaCerradaError("No hay una caja abierta: abrí la caja antes de registrar ventas.")
+
+            cliente = None
+            if es_venta_a_cuenta:
+                exigir_rol(
+                    repositorio_usuarios.obtener_por_id_en_conexion(conexion, usuario_id)
+                    if usuario_id is not None
+                    else None,
+                    _ROLES_VENTA_A_CUENTA,
+                )
+            if cliente_id is not None:
+                cliente = repositorio_clientes.obtener_por_id_en_conexion(conexion, cliente_id)
+                if cliente is None:
+                    raise ClienteNoEncontradoError(f"No existe un cliente con id {cliente_id}.")
+                if not cliente.activo:
+                    raise ClienteInactivoError(
+                        f"El cliente '{cliente.nombre}' está inactivo: no puede asociarse a una venta nueva."
+                    )
 
             productos_por_id: dict[int, Producto] = {}
             for producto_id, cantidad_total in cantidad_pedida_por_producto.items():
@@ -214,7 +267,21 @@ def registrar_venta(
                 contenido_hash=contenido_hash,
                 usuario_id=usuario_id,
                 costos_unitarios_por_producto_id=costos_unitarios_por_producto_id,
+                sesion_caja_id=sesion_abierta.id,
+                cliente_id=cliente_id,
             )
+            if es_venta_a_cuenta:
+                repositorio_clientes.registrar_cargo_en_conexion(
+                    conexion, cliente_id, venta.total_centavos, venta.id, usuario_id, f"Venta #{venta.id}"
+                )
+                repositorio_auditoria.registrar_en_conexion(
+                    conexion,
+                    usuario_id,
+                    "VENTA_A_CUENTA",
+                    "VENTA",
+                    venta.id,
+                    f"Venta #{venta.id} a cuenta de {cliente.nombre} por ${centavos_a_texto(venta.total_centavos)}",
+                )
     except ErrorBaseDatos as error:
         if clave_idempotencia is None or not isinstance(error.__cause__, sqlite3.IntegrityError):
             raise
@@ -305,19 +372,21 @@ def anular_venta(
     anularlas tampoco la toca.
 
     Solo se puede anular una venta `ACTIVA` que pertenezca a la sesión
-    de caja actualmente abierta -- `venta.fecha >= sesion_vigente.fecha_apertura`,
+    de caja actualmente abierta -- `venta.sesion_caja_id == sesion_vigente.id`,
     con `sesion_vigente` resuelta dentro de esta misma
     transacción (`repositorio_caja.obtener_sesion_abierta_en_conexion`).
-    El modelo no tiene `caja_id` en `ventas`; esta es la regla mínima
-    verificable con los datos existentes. Una venta de una sesión ya
-    cerrada, o sin ninguna caja abierta ahora mismo, se rechaza: el MVP
-    no modifica cierres históricos.
+    Una venta de una sesión ya cerrada (incluidas las `RECONSTRUIDA` y
+    `LEGADO` de la migración 019), o sin ninguna caja abierta ahora mismo,
+    se rechaza: es una limitación comercial consciente de la V1.3, que no
+    modifica cierres históricos ni modela devoluciones.
 
     Raises:
         DatosInvalidosError: si `motivo`/`observaciones` son inválidos
             (ver `domain.venta.validar_motivo_anulacion`).
         VentaNoEncontradaError: si no existe una venta con ese id.
         VentaYaAnuladaError: si la venta ya estaba `ANULADA`.
+        VentaACuentaNoAnulableError: si la venta es a cuenta corriente (V1.3:
+            anularla exigiría reversar el CARGO de la cuenta del cliente).
         VentaDeCajaCerradaError: si no hay caja abierta, o la venta
             pertenece a una sesión ya cerrada.
         ProductoNoEncontradoError: si algún `producto_id` de la venta no
@@ -332,13 +401,15 @@ def anular_venta(
             raise VentaNoEncontradaError(f"No existe una venta con id {venta_id}.")
         if venta.estado != "ACTIVA":
             raise VentaYaAnuladaError(f"La venta {venta_id} ya fue anulada anteriormente.")
+        if venta.tipo_pago == TIPO_PAGO_CUENTA_CORRIENTE:
+            raise VentaACuentaNoAnulableError(f"La venta {venta_id} es a cuenta corriente y no puede anularse.")
 
         sesion_vigente = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion)
         if sesion_vigente is None:
             raise VentaDeCajaCerradaError(
                 "No hay ninguna caja abierta en este momento: no se puede anular la venta."
             )
-        if venta.fecha < sesion_vigente.fecha_apertura:
+        if repositorio_ventas.obtener_sesion_id_en_conexion(conexion, venta_id) != sesion_vigente.id:
             raise VentaDeCajaCerradaError(
                 f"La venta {venta_id} pertenece a una sesión de caja ya cerrada: "
                 "anularla implicaría modificar un cierre histórico, fuera de alcance."

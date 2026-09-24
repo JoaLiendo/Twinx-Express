@@ -10,7 +10,14 @@ igual que en la CLI).
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 
 from domain.usuario import Usuario
-from domain.venta import ESTADOS_VENTA_VALIDOS, MOTIVOS_ANULACION_VALIDOS, TIPOS_PAGO_VALIDOS, ItemVenta
+from domain.venta import (
+    ESTADOS_VENTA_VALIDOS,
+    MOTIVOS_ANULACION_VALIDOS,
+    TIPO_PAGO_CUENTA_CORRIENTE,
+    TIPOS_PAGO_ACEPTADOS,
+    TIPOS_PAGO_VALIDOS,
+    ItemVenta,
+)
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.esquemas import VentaEntrada, VentaSalida
 from interfaces.web.plantillas import templates
@@ -34,7 +41,10 @@ def panel_ventas(request: Request, q: str = ""):
         **contexto_base(request),
         "productos": productos,
         "q": q,
+        # Los 4 medios de cobro inmediato, tal cual antes: el primero (EFECTIVO) es el predeterminado.
         "tipos_pago": sorted(TIPOS_PAGO_VALIDOS),
+        # Venta a cuenta: opción aparte, nunca marcada por defecto (ver `ventas/pos.html`).
+        "tipo_pago_cuenta_corriente": TIPO_PAGO_CUENTA_CORRIENTE,
     }
     return templates.TemplateResponse(request, "ventas/pos.html", contexto)
 
@@ -46,7 +56,11 @@ def api_registrar_venta(
 ) -> VentaSalida:
     items = [ItemVenta(producto_id=item.producto_id, cantidad=item.cantidad) for item in datos.items]
     venta = servicio_ventas.registrar_venta(
-        items, datos.tipo_pago, clave_idempotencia=datos.clave_idempotencia, usuario_id=usuario_actual.id
+        items,
+        datos.tipo_pago,
+        clave_idempotencia=datos.clave_idempotencia,
+        usuario_id=usuario_actual.id,
+        cliente_id=datos.cliente_id,
     )
     return VentaSalida(
         id=venta.id, fecha=venta.fecha, total_centavos=venta.total_centavos, tipo_pago=venta.tipo_pago
@@ -76,7 +90,8 @@ def historial_ventas(
         "fecha_desde": fecha_desde_efectiva,
         "fecha_hasta": fecha_hasta_efectiva,
         "tipo_pago": tipo_pago or "",
-        "tipos_pago": sorted(TIPOS_PAGO_VALIDOS),
+        # El filtro también ofrece CUENTA_CORRIENTE (021); el POS sigue usando solo TIPOS_PAGO_VALIDOS.
+        "tipos_pago": sorted(TIPOS_PAGO_ACEPTADOS),
         "estado": estado or "",
         "estados": sorted(ESTADOS_VENTA_VALIDOS),
     }
@@ -130,6 +145,10 @@ def formulario_anular_venta(request: Request, venta_id: int):
         return redireccionar_con_mensaje("/ventas/historial", "error", "La venta no existe.")
     if resumen.estado != "ACTIVA":
         return redireccionar_con_mensaje(f"/ventas/{venta_id}", "error", "La venta ya fue anulada.")
+    # Evita mostrar un formulario que no puede funcionar: la regla real (VentaACuentaNoAnulableError y el
+    # trigger de 020) sigue valiendo en el POST aunque alguien lo envíe a mano.
+    if resumen.tipo_pago == TIPO_PAGO_CUENTA_CORRIENTE:
+        return redireccionar_con_mensaje(f"/ventas/{venta_id}", "error", "Una venta a cuenta corriente no puede anularse.")
 
     contexto = {**contexto_base(request), "resumen": resumen, "motivos": sorted(MOTIVOS_ANULACION_VALIDOS)}
     return templates.TemplateResponse(request, "ventas/anular.html", contexto)

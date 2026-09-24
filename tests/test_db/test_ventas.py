@@ -10,14 +10,17 @@ import pytest
 
 import db.conexion as modulo_conexion
 from db.conexion import obtener_conexion
+from db.repositorios import caja as repositorio_caja
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
 from db.repositorios import ventas as repositorio_ventas
-from domain.caja import SesionCaja
 from domain.producto import Producto
 from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from excepciones import ErrorBaseDatos, VentaYaAnuladaError
+
+# Desde la migración 019 toda venta requiere una sesión de caja abierta.
+pytestmark = pytest.mark.usefixtures("caja_abierta")
 
 
 def _crear_producto(codigo="7790000000001"):
@@ -1102,9 +1105,9 @@ class TestAnulacionDeVentas:
                 conexion, venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
             )
 
-        sesion = SesionCaja(apertura_id=1, fecha_apertura="2000-01-01 00:00:00")
+        sesion = repositorio_caja.obtener_sesion_abierta()
 
-        assert repositorio_ventas.listar_ventas_de_sesion(sesion) == []
+        assert repositorio_ventas.listar_ventas_de_sesion(sesion.id) == []
 
     def test_listar_en_rango_excluye_anulada(self, base_datos_temporal):
         venta = _crear_venta_activa()

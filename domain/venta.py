@@ -14,6 +14,12 @@ from excepciones import DatosInvalidosError
 
 TIPOS_PAGO_VALIDOS = frozenset({"EFECTIVO", "TARJETA", "TRANSFERENCIA", "OTRO"})
 
+# Migración 020: la venta a cuenta no es un medio de cobro inmediato ni el
+# predeterminado, por eso vive aparte de `TIPOS_PAGO_VALIDOS` (que arma las
+# opciones del POS): exige un cliente activo y genera un CARGO en su cuenta.
+TIPO_PAGO_CUENTA_CORRIENTE = "CUENTA_CORRIENTE"
+TIPOS_PAGO_ACEPTADOS = TIPOS_PAGO_VALIDOS | {TIPO_PAGO_CUENTA_CORRIENTE}
+
 ESTADOS_VENTA_VALIDOS = frozenset({"ACTIVA", "ANULADA"})
 
 MOTIVOS_ANULACION_VALIDOS = frozenset(
@@ -37,7 +43,7 @@ class ItemVenta:
             raise DatosInvalidosError("La cantidad de un ítem de venta debe ser mayor a cero.")
 
 
-def calcular_hash_contenido(items: list[ItemVenta], tipo_pago: str) -> str:
+def calcular_hash_contenido(items: list[ItemVenta], tipo_pago: str, cliente_id: int | None = None) -> str:
     """Hash canónico y determinista del contenido lógico de una venta
     (Fase 5A: idempotencia de `services.servicio_ventas.registrar_venta`).
 
@@ -52,6 +58,9 @@ def calcular_hash_contenido(items: list[ItemVenta], tipo_pago: str) -> str:
     usa `registrar_venta` para sumar cantidades repetidas) y se
     ordenan por `producto_id`, así el resultado no depende del orden en
     que el cliente haya serializado las líneas.
+
+    `cliente_id` (migración 020) solo entra al hash cuando la venta tiene
+    cliente, así el hash de una venta sin cliente es idéntico al de siempre.
     """
     cantidad_por_producto: dict[int, int] = {}
     for item in items:
@@ -61,6 +70,8 @@ def calcular_hash_contenido(items: list[ItemVenta], tipo_pago: str) -> str:
         "tipo_pago": tipo_pago,
         "items": sorted(cantidad_por_producto.items()),
     }
+    if cliente_id is not None:
+        contenido_canonico["cliente_id"] = cliente_id
     texto_canonico = json.dumps(contenido_canonico, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(texto_canonico.encode("utf-8")).hexdigest()
 
@@ -215,3 +226,9 @@ class ResumenVenta:
     observaciones_anulacion: str | None = None
     anulado_por_nombre: str | None = None
     fecha_anulacion: str | None = None
+    # Migración 020 / 021: cliente de la venta (`None` en ventas históricas y en las que no tienen
+    # cliente). `cliente_nombre` es el nombre ACTUAL del cliente, no un snapshot, igual criterio
+    # que el nombre del producto en el ticket. Van al final y con default para no romper a nadie
+    # que construya un `ResumenVenta` por posición.
+    cliente_id: int | None = None
+    cliente_nombre: str | None = None

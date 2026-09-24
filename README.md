@@ -329,6 +329,67 @@ dashboard (`listar_stock_critico`) no cambia.
 | `017_auditoria.sql` | Tabla `auditoria`. |
 | `018_configuracion.sql` | Tabla `configuracion` (clave/valor). |
 
+## Caja por sesiones, clientes y cuenta corriente (V1.3)
+
+**Sesiones de caja.** Cada apertura de caja inicia una sesión y su cierre la termina.
+Las ventas y los movimientos de caja (ingresos, egresos y cobros de cuenta corriente)
+quedan asociados a la sesión en la que se hicieron, y el arqueo se calcula por
+sesión. Una venta solo puede anularse mientras su sesión sigue abierta: las ventas
+de sesiones cerradas no se anulan (sus datos no se modifican).
+
+**Clientes y cuenta corriente.** Los clientes se gestionan desde el menú *Clientes*
+(visible para OWNER y CASHIER). El saldo de un cliente es lo cargado a cuenta menos
+lo cobrado. Los clientes no se borran: se desactivan.
+
+| Ruta | Quién | Qué hace |
+|---|---|---|
+| `GET /clientes` | OWNER, CASHIER | Lista con saldo; búsqueda por nombre o teléfono y filtro de estado (activos por defecto). |
+| `GET/POST /clientes/nuevo` | OWNER, CASHIER | Alta de cliente. |
+| `GET /clientes/{id}` | OWNER, CASHIER | Ficha: datos, estado, saldo, total de cargos y de cobros, y movimientos (el más reciente primero, con enlace a cada venta). |
+| `GET/POST /clientes/{id}/editar` | solo OWNER | Edición de datos. |
+| `POST /clientes/{id}/desactivar` y `/reactivar` | solo OWNER | Baja y reactivación lógicas. La baja se rechaza con saldo pendiente. |
+| `GET/POST /clientes/{id}/cobro` | OWNER, CASHIER | Cobro de la deuda, solo en efectivo, parcial o total, idempotente. |
+| `GET /api/clientes/buscar?q=` | OWNER, CASHIER | Buscador del POS: solo clientes activos, máximo 20. |
+
+Los CASHIER reciben 403 en editar, desactivar y reactivar (el permiso lo exige el
+servidor, no solo el menú); sin sesión se redirige a `/login`.
+
+**Reglas de la cuenta corriente.**
+- Una venta a cuenta usa el medio de pago `CUENTA_CORRIENTE`, exige un cliente activo
+  y una caja abierta, y suma su total al saldo del cliente. No puede anularse.
+- Un cliente inactivo no recibe ventas nuevas; un cliente con saldo pendiente no puede
+  desactivarse.
+- Un cobro es solo en efectivo, mayor a cero y no superior al saldo. Requiere una caja
+  abierta y entra a la caja como ingreso (se identifica como *Cobro cta. cte.* en Caja y
+  en el Dashboard). Un cobro **no es una venta**: no suma a los reportes de ventas.
+- La venta a cuenta sí es una venta como las demás: cuenta en ventas, facturación y
+  productos vendidos, y aparece en Reportes como medio de pago `CUENTA_CORRIENTE`.
+- Las ventas y los cobros son idempotentes (una clave por intento). La venta a cuenta,
+  el cobro y el alta, edición, baja y reactivación de clientes se auditan en la misma
+  transacción que la operación.
+
+**Punto de venta.** `EFECTIVO` sigue siendo el medio marcado por defecto. `CUENTA_CORRIENTE`
+es una opción aparte, que nunca queda marcada sola: al elegirla hay que seleccionar un
+cliente activo, y sin cliente no se puede cobrar. Si se cambia a otro medio de pago, el
+cliente elegido se descarta y al volver hay que elegirlo de nuevo.
+
+**Historial de ventas.** Muestra el cliente de cada venta, permite filtrar por
+`CUENTA_CORRIENTE` y no ofrece anular una venta a cuenta (el servidor la rechaza igual).
+
+**Actualizar desde V1.2.** Las migraciones se aplican solas al abrir la nueva versión,
+con un backup preventivo previo. Se conservan todas las ventas, sus detalles y los
+movimientos de caja; las cajas anteriores se reconstruyen como sesiones históricas (la
+última, si no tenía cierre, queda sin fecha de cierre). **Después de actualizar no hay
+ninguna caja abierta**: hay que abrir una nueva antes de vender. Las ventas de las
+sesiones anteriores no pueden anularse, y las ventas anteriores quedan sin cliente.
+
+**Migraciones nuevas** (`db/migraciones/`, mismo mecanismo atómico y versionado):
+
+| Migración | Contenido |
+|---|---|
+| `019_sesiones_caja.sql` | Sesiones de caja, con reconstrucción histórica de las cajas de V1.2. |
+| `020_clientes_cuenta_corriente.sql` | Clientes, ventas a cuenta y libro de cuenta corriente (cargos y cobros). |
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -343,6 +404,7 @@ dashboard (`listar_stock_critico`) no cambia.
 - [x] Compras, proveedores y empleados (alta/edición), reactivación de productos y categorías dados de baja
 - [x] Backup manual y restore (ver sección "Backup y restore" más arriba)
 - [x] Modo oscuro y layout responsive (375/768/1024/1440)
-- [x] Reportes de ventas, precios (historial y actualización masiva), auditoría, importación, configuración del ticket y reposición (V1.2, ver sección anterior)
+- [x] Reportes de ventas, precios (historial y actualización masiva), auditoría, importación, configuración del ticket y reposición (V1.2, ver la sección «Control comercial y trazabilidad (V1.2)»)
+- [x] Caja por sesiones, clientes y cuenta corriente (ventas a cuenta y cobros en efectivo) (V1.3, ver sección anterior)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

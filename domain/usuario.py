@@ -13,7 +13,7 @@ Fase 2): acá no hay ninguna lógica de autenticación.
 
 from dataclasses import dataclass
 
-from excepciones import DatosInvalidosError
+from excepciones import DatosInvalidosError, PermisoDenegadoError
 
 ROLES_VALIDOS = frozenset({"OWNER", "CASHIER"})
 
@@ -56,3 +56,18 @@ class Usuario:
     def es_owner(self) -> bool:
         """True si el usuario tiene rol OWNER."""
         return self.rol == "OWNER"
+
+
+def exigir_rol(usuario: Usuario | None, roles: frozenset[str]) -> None:
+    """Exige que el usuario exista, esté activo y tenga uno de los `roles`.
+
+    Los servicios de clientes y cuenta corriente la aplican además del control
+    de la interfaz web, para que la regla no dependa de quién invoque el caso de uso.
+
+    Raises:
+        PermisoDenegadoError: si `usuario` es `None`, está inactivo o su rol no alcanza.
+    """
+    if usuario is None or not usuario.activo:
+        raise PermisoDenegadoError("La operación requiere un usuario activo.")
+    if usuario.rol not in roles:
+        raise PermisoDenegadoError(f"El rol {usuario.rol} no tiene permiso para esta operación.")

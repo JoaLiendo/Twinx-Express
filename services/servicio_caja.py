@@ -4,7 +4,8 @@ Orquesta `domain.caja` (reglas de negocio del movimiento en sí) y
 `db.repositorios.caja` (persistencia). Además aplica las reglas de
 secuencia de una caja física: no se puede abrir una caja que ya está
 abierta, ni cerrarla o registrar ingresos/egresos si no hay ninguna
-caja abierta.
+caja abierta. La caja abierta es la fila de `sesiones_caja` con
+`estado = 'ABIERTA'` (migración 019), no se infiere de los movimientos.
 
 Los montos se manejan en centavos (`int`, ver `domain.dinero`).
 """
@@ -12,6 +13,7 @@ Los montos se manejan en centavos (`int`, ver `domain.dinero`).
 import logging
 from dataclasses import dataclass, field
 
+from db.conexion import obtener_conexion
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import ventas as repositorio_ventas
 from domain.caja import MovimientoCaja, clasificar_diferencia
@@ -43,9 +45,8 @@ class ArqueoCaja:
 
 
 def _caja_esta_abierta() -> bool:
-    """True si hay una caja abierta (el último movimiento no es un CIERRE)."""
-    ultimo_movimiento = repositorio_caja.obtener_ultimo_movimiento()
-    return ultimo_movimiento is not None and ultimo_movimiento.tipo != "CIERRE"
+    """True si hay una sesión de caja abierta."""
+    return repositorio_caja.obtener_sesion_abierta() is not None
 
 
 def consultar_estado() -> bool:
@@ -58,16 +59,43 @@ def listar_movimientos() -> list[MovimientoCaja]:
     return repositorio_caja.listar_movimientos()
 
 
+def _resumir_sesion(
+    ventas: list[Venta], movimientos: list[MovimientoCaja], sesion_abierta: bool
+) -> ArqueoCaja:
+    """Totales de una sesión a partir de sus ventas `ACTIVA` y sus movimientos.
+
+    El efectivo estimado suma el efectivo físico que entró (montos de apertura
+    e ingresos manuales, más ventas cobradas en efectivo) y resta los egresos
+    manuales; las ventas con otros medios de pago (tarjeta, transferencia) no
+    mueven el efectivo de la caja.
+    """
+    total_efectivo_ventas_centavos = sum(venta.total_centavos for venta in ventas if venta.tipo_pago == "EFECTIVO")
+
+    efectivo_estimado_centavos = total_efectivo_ventas_centavos
+    for movimiento in movimientos:
+        if movimiento.tipo in ("APERTURA", "INGRESO"):
+            efectivo_estimado_centavos += movimiento.monto_centavos
+        elif movimiento.tipo == "EGRESO":
+            efectivo_estimado_centavos -= movimiento.monto_centavos
+        # CIERRE es el monto contado al cerrar la caja, no un ingreso: no se suma.
+
+    return ArqueoCaja(
+        total_vendido_centavos=sum(venta.total_centavos for venta in ventas),
+        total_efectivo_ventas_centavos=total_efectivo_ventas_centavos,
+        efectivo_estimado_centavos=efectivo_estimado_centavos,
+        cantidad_ventas=len(ventas),
+        sesion_abierta=sesion_abierta,
+        ventas=ventas,
+    )
+
+
 def calcular_arqueo_de_sesion() -> ArqueoCaja:
-    """Calcula el arqueo de la sesión de caja vigente (o de la última, si
-    ya está cerrada): ventas y movimientos entre su APERTURA y su CIERRE.
+    """Calcula el arqueo de la sesión de caja abierta (o de la última ya
+    cerrada, si no hay ninguna abierta), por `sesion_caja_id`.
 
     Es por sesión y no por día calendario: una caja que cruza medianoche
-    o dos aperturas el mismo día no se mezclan. El efectivo estimado suma
-    el efectivo físico que entró (montos de apertura e ingresos manuales,
-    más ventas cobradas en efectivo) y resta los egresos manuales; las
-    ventas con otros medios de pago (tarjeta, transferencia) no mueven el
-    efectivo de la caja.
+    o dos aperturas el mismo día no se mezclan. La sesión `LEGADO` (datos
+    históricos sin sesión reconstruible) nunca se muestra como arqueo.
     """
     sesion = repositorio_caja.obtener_ultima_sesion()
     if sesion is None:
@@ -78,36 +106,19 @@ def calcular_arqueo_de_sesion() -> ArqueoCaja:
             cantidad_ventas=0,
         )
 
-    ventas_de_sesion = repositorio_ventas.listar_ventas_de_sesion(sesion)
-    movimientos_de_sesion = repositorio_caja.listar_movimientos_de_sesion(sesion)
-
-    total_vendido_centavos = sum(venta.total_centavos for venta in ventas_de_sesion)
-    total_efectivo_ventas_centavos = sum(
-        venta.total_centavos for venta in ventas_de_sesion if venta.tipo_pago == "EFECTIVO"
-    )
-
-    efectivo_estimado_centavos = total_efectivo_ventas_centavos
-    for movimiento in movimientos_de_sesion:
-        if movimiento.tipo in ("APERTURA", "INGRESO"):
-            efectivo_estimado_centavos += movimiento.monto_centavos
-        elif movimiento.tipo == "EGRESO":
-            efectivo_estimado_centavos -= movimiento.monto_centavos
-        # CIERRE es el monto contado al cerrar la caja, no un ingreso: no se suma.
-
-    return ArqueoCaja(
-        total_vendido_centavos=total_vendido_centavos,
-        total_efectivo_ventas_centavos=total_efectivo_ventas_centavos,
-        efectivo_estimado_centavos=efectivo_estimado_centavos,
-        cantidad_ventas=len(ventas_de_sesion),
-        sesion_abierta=sesion.abierta,
-        ventas=ventas_de_sesion,
+    return _resumir_sesion(
+        repositorio_ventas.listar_ventas_de_sesion(sesion.id),
+        repositorio_caja.listar_movimientos_de_sesion(sesion.id),
+        sesion.abierta,
     )
 
 
 def abrir_caja(
     monto_inicial_centavos: int, descripcion: str | None = None, usuario_id: int | None = None
 ) -> MovimientoCaja:
-    """Abre la caja registrando un movimiento de APERTURA con el monto inicial.
+    """Abre la caja: crea una sesión `NORMAL`/`ABIERTA` con el monto inicial
+    como fondo y registra el movimiento de APERTURA asociado, todo en una
+    única transacción `BEGIN IMMEDIATE`.
 
     Raises:
         CajaError: si ya hay una caja abierta.
@@ -116,9 +127,6 @@ def abrir_caja(
     `usuario_id` (migración 010) es opcional: `None` (el default) para
     el CLI, que no autentica a nadie -- nunca se inventa un usuario.
     """
-    if _caja_esta_abierta():
-        raise CajaError("La caja ya está abierta: hay que cerrarla antes de abrir una nueva.")
-
     movimiento = MovimientoCaja(tipo="APERTURA", monto_centavos=monto_inicial_centavos, descripcion=descripcion)
     movimiento_creado = repositorio_caja.registrar_movimiento(movimiento, usuario_id=usuario_id)
     logger.info("Caja abierta con monto inicial %s centavos", movimiento_creado.monto_centavos)
@@ -130,7 +138,7 @@ def cerrar_caja(
 ) -> MovimientoCaja:
     """Cierra la caja registrando un movimiento de CIERRE con el monto
     contado y la diferencia contra el efectivo esperado (migración 011:
-    faltante/sobrante).
+    faltante/sobrante), y pasa la sesión a `CERRADA`.
 
     Raises:
         CajaError: si no hay una caja abierta para cerrar.
@@ -138,29 +146,32 @@ def cerrar_caja(
 
     `usuario_id` (migración 010): ver `abrir_caja`.
 
-    `diferencia_centavos = monto_final_centavos - efectivo_estimado_centavos`,
-    con `efectivo_estimado_centavos` resuelto acá mismo, en el momento del
-    cierre, con `calcular_arqueo_de_sesion()` -- la misma función que ya
-    usa `/caja/arqueo`, sin duplicar esa lógica. Se calcula recién
-    después de confirmar que la caja está abierta y justo antes de
-    persistir, para no depender de un valor que el usuario haya visto
-    antes en otra pantalla (la única ventana real que queda es la propia
-    ejecución de esta función, no el tiempo que tarde el cajero en mirar
-    el arqueo y completar el formulario de cierre).
+    `diferencia_centavos = monto_final_centavos - efectivo_estimado_centavos`.
+    El esperado se calcula por `sesion_caja_id` en la misma transacción
+    `BEGIN IMMEDIATE` que inserta el cierre: ninguna venta o movimiento puede
+    colarse entre el cálculo y la persistencia.
     """
-    if not _caja_esta_abierta():
-        raise CajaError("No hay una caja abierta para cerrar.")
+    with obtener_conexion(inmediata=True) as conexion:
+        sesion = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion)
+        if sesion is None:
+            raise CajaError("No hay una caja abierta para cerrar.")
 
-    efectivo_estimado_centavos = calcular_arqueo_de_sesion().efectivo_estimado_centavos
-    diferencia_centavos = monto_final_centavos - efectivo_estimado_centavos
+        efectivo_estimado_centavos = _resumir_sesion(
+            repositorio_ventas.listar_ventas_de_sesion_en_conexion(conexion, sesion.id),
+            repositorio_caja.listar_movimientos_de_sesion_en_conexion(conexion, sesion.id),
+            sesion_abierta=True,
+        ).efectivo_estimado_centavos
+        diferencia_centavos = monto_final_centavos - efectivo_estimado_centavos
 
-    movimiento = MovimientoCaja(
-        tipo="CIERRE",
-        monto_centavos=monto_final_centavos,
-        descripcion=descripcion,
-        diferencia_centavos=diferencia_centavos,
-    )
-    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento, usuario_id=usuario_id)
+        movimiento = MovimientoCaja(
+            tipo="CIERRE",
+            monto_centavos=monto_final_centavos,
+            descripcion=descripcion,
+            diferencia_centavos=diferencia_centavos,
+        )
+        movimiento_creado = repositorio_caja.registrar_movimiento_en_conexion(
+            conexion, movimiento, usuario_id=usuario_id
+        )
     logger.info(
         "Caja cerrada con monto final %s centavos (diferencia %s centavos, %s)",
         movimiento_creado.monto_centavos,

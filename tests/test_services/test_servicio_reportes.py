@@ -5,6 +5,8 @@ tests/test_db/test_ventas.py -- acá se prueba la agregación en sí
 
 from datetime import date, timedelta
 
+import pytest
+
 from db.conexion import obtener_conexion
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
@@ -13,6 +15,9 @@ from domain.producto import Producto
 from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from services import servicio_reportes
+
+# Desde la migración 019 toda venta requiere una sesión de caja abierta.
+pytestmark = pytest.mark.usefixtures("caja_abierta")
 
 
 def _crear_producto(codigo="7790000000001"):

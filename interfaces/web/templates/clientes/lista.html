@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Clientes{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Clientes</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <form method="get" action="/clientes" class="flex flex-wrap items-end gap-2">
+      <div>
+        <label for="filtro-q" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Buscar</label>
+        <input type="search" id="filtro-q" name="q" value="{{ q }}" placeholder="Nombre o teléfono"
+               class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+      </div>
+      <div>
+        <label for="filtro-estado" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Estado</label>
+        {% set etiquetas_estado = {'activos': 'Activos', 'inactivos': 'Inactivos', 'todos': 'Todos'} %}
+        <select id="filtro-estado" name="estado"
+                class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white
+                       dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300
+                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+          {% for valor, etiqueta in etiquetas_estado.items() %}
+            <option value="{{ valor }}" {{ 'selected' if estado == valor else '' }}>{{ etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">
+        Filtrar
+      </button>
+    </form>
+
+    <a href="/clientes/nuevo" class="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14M5 12h14"/></svg>
+      Nuevo cliente
+    </a>
+  </div>
+
+  {% if clientes %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-3">Nombre</th>
+              <th class="px-5 py-3">Teléfono</th>
+              <th class="px-5 py-3">Estado</th>
+              <th class="px-5 py-3 text-right">Saldo</th>
+              <th class="px-5 py-3"><span class="sr-only">Acción</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in clientes %}
+              <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer dark:border-slate-800 dark:hover:bg-slate-800/60"
+                  onclick="window.location.href='/clientes/{{ item.cliente.id }}'">
+                <td class="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{{ item.cliente.nombre }}</td>
+                <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400">{{ item.cliente.telefono or "—" }}</td>
+                <td class="px-5 py-3.5">
+                  {% if item.cliente.activo %}{{ ui.badge('Activo', 'exito') }}{% else %}{{ ui.badge('Inactivo', 'neutral') }}{% endif %}
+                </td>
+                <td class="px-5 py-3.5 text-right font-semibold tabular-nums
+                           {{ 'text-error' if item.saldo_centavos > 0 else 'text-slate-900 dark:text-slate-100' }}">
+                  ${{ item.saldo_centavos | dinero_ar }}
+                </td>
+                <td class="px-5 py-3.5 text-right">
+                  <a href="/clientes/{{ item.cliente.id }}" class="text-sm font-medium text-primary hover:text-primary-hover" onclick="event.stopPropagation()">Ver</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    {{ ui.estado_vacio("No se encontraron clientes.", "Probá con otra búsqueda o cambiá el filtro de estado." if (q or estado != 'activos') else "Todavía no hay clientes cargados.") }}
+  {% endif %}
+
+</div>
+{% endblock %}

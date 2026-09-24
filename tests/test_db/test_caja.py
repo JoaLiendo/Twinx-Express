@@ -159,34 +159,42 @@ def test_migracion_011_no_inventa_datos_para_cierres_anteriores(tmp_path, monkey
     assert fila["diferencia_centavos"] is None
 
 
+def _abrir() -> None:
+    repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=100000))
+
+
 class TestDiferenciaDeCierre:
     """Migración 011: `registrar_movimiento` persiste `diferencia_centavos`
     tal cual viene en el `MovimientoCaja` -- no la calcula (eso es
-    responsabilidad de `services.servicio_caja.cerrar_caja`)."""
+    responsabilidad de `services.servicio_caja.cerrar_caja`). Desde la migración
+    019 un cierre siempre pertenece a una sesión abierta."""
 
     def test_persiste_diferencia_positiva(self, base_datos_temporal):
+        _abrir()
         repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=500))
 
         with obtener_conexion() as conexion:
-            fila = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos").fetchone()
+            fila = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos WHERE tipo = 'CIERRE'").fetchone()
         assert fila["diferencia_centavos"] == 500
 
     def test_persiste_diferencia_negativa(self, base_datos_temporal):
+        _abrir()
         repositorio_caja.registrar_movimiento(
             MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=-500)
         )
 
         with obtener_conexion() as conexion:
-            fila = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos").fetchone()
+            fila = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos WHERE tipo = 'CIERRE'").fetchone()
         assert fila["diferencia_centavos"] == -500
 
     def test_persiste_diferencia_cero(self, base_datos_temporal):
         """Cero es un resultado real (caja cuadrada) -- se persiste como
         `0`, nunca como `NULL` (que significaría "no calculado")."""
+        _abrir()
         repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=0))
 
         with obtener_conexion() as conexion:
-            fila = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos").fetchone()
+            fila = conexion.execute("SELECT diferencia_centavos FROM caja_movimientos WHERE tipo = 'CIERRE'").fetchone()
         assert fila["diferencia_centavos"] == 0
 
     def test_otros_movimientos_quedan_null(self, base_datos_temporal):
@@ -203,14 +211,15 @@ class TestDiferenciaDeCierre:
         assert [fila["diferencia_centavos"] for fila in filas] == [None, None, None]
 
     def test_lectura_devuelve_la_diferencia_correcta(self, base_datos_temporal):
+        _abrir()
         repositorio_caja.registrar_movimiento(
             MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=-300)
         )
 
         movimientos = repositorio_caja.listar_movimientos()
 
-        assert len(movimientos) == 1
-        assert movimientos[0].diferencia_centavos == -300
+        assert [m.tipo for m in movimientos] == ["APERTURA", "CIERRE"]
+        assert movimientos[1].diferencia_centavos == -300
 
 
 class TestObtenerFechaUltimaAperturaEnConexion:

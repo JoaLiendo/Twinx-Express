@@ -186,6 +186,7 @@ class TestDiferenciaDeCierre:
         """Un cierre insertado directo (simulando uno anterior a la
         migración 011, sin diferencia_centavos) no debe romper el
         render de /caja ni mostrar ningún resultado inventado."""
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=100000))
         repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000))
         _, cookies = _crear_usuario_logueado("OWNER", "duenio")
 

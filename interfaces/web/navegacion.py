@@ -9,6 +9,8 @@ duplicar la misma regla de permisos en cada `.html`.
 Matriz aprobada en la auditoría de Fase 2: OWNER ve las 9 secciones;
 CASHIER ve Dashboard, Ventas, Caja y Stock (Stock en modo consulta,
 algo que decide la ruta en una fase posterior, no la navegación).
+V1.3 (021) agrega Clientes para ambos roles: los dos pueden ver clientes,
+crearlos y cobrar; editar/desactivar/reactivar lo restringe cada ruta.
 """
 
 _SOLO_OWNER = ("OWNER",)
@@ -19,6 +21,7 @@ NAV_ITEMS: list[dict[str, object]] = [
     {"href": "/pedidos", "etiqueta": "Pedidos", "icono": "pedidos", "roles": _SOLO_OWNER, "proximamente": True},
     {"href": "/precios", "etiqueta": "Precios", "icono": "precios", "roles": _SOLO_OWNER},
     {"href": "/caja", "etiqueta": "Caja", "icono": "caja", "roles": None},
+    {"href": "/clientes", "etiqueta": "Clientes", "icono": "clientes", "roles": None},
     {"href": "/productos", "etiqueta": "Stock", "icono": "productos", "roles": None},
     {"href": "/proveedores", "etiqueta": "Proveedores", "icono": "proveedores", "roles": _SOLO_OWNER},
     {"href": "/compras", "etiqueta": "Compras", "icono": "compras", "roles": _SOLO_OWNER},

@@ -47,11 +47,12 @@
     'alerta': 'bg-error/10 text-error ring-error/20',
     'advertencia': 'bg-warning/10 text-warning ring-warning/20',
     'info': 'bg-info/10 text-info ring-info/20',
+    'marca': 'bg-primary-subtle text-primary ring-primary/20',
     'neutral': 'bg-slate-100 text-slate-500 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700',
   } %}
   {% set punto = {
     'exito': 'bg-success', 'alerta': 'bg-error', 'advertencia': 'bg-warning',
-    'info': 'bg-info', 'neutral': 'bg-slate-400',
+    'info': 'bg-info', 'marca': 'bg-primary', 'neutral': 'bg-slate-400',
   } %}
   <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset {{ pastilla.get(variante, pastilla['neutral']) }}">
     <span class="w-1.5 h-1.5 rounded-full {{ punto.get(variante, punto['neutral']) }}"></span>

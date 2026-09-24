@@ -49,6 +49,21 @@
   const vueltoResultadoEl = document.getElementById('vuelto-resultado');
   const radiosTipoPago = document.querySelectorAll('input[name="tipo_pago"]');
 
+  // 021: venta a cuenta. El selector (cliente_selector.js) solo recuerda a qué cliente activo se
+  // le va a vender; el servidor vuelve a validarlo todo en POST /api/ventas.
+  const bloqueClienteEl = document.getElementById('bloque-cliente');
+  const selectorCliente =
+    bloqueClienteEl && window.ClienteSelector
+      ? window.ClienteSelector.iniciar({
+          contenedor: bloqueClienteEl,
+          endpoint: '/api/clientes/buscar',
+          formatearCentavos: formatearCentavos,
+          alCambiar: function () {
+            actualizarEstadoCobrar();
+          },
+        })
+      : null;
+
   // Fase 5D: acciones tras un cobro exitoso ("Imprimir ticket" abre
   // GET /ventas/{id}/ticket en otra pestaña -- solo lectura, datos de
   // DB, ver esa ruta; "Nueva venta" reproduce el reload que antes
@@ -276,6 +291,22 @@
 
     if (bloqueEfectivoEl) bloqueEfectivoEl.classList.toggle('hidden', !requiereEfectivo);
 
+    // 021: con CUENTA_CORRIENTE se pide un cliente; sin cliente elegido "Cobrar" queda bloqueado (solo
+    // UX: el servidor rechaza igual una venta a cuenta sin cliente o con un cliente inactivo).
+    const esCuentaCorriente = tipoPagoActual === 'CUENTA_CORRIENTE';
+    if (bloqueClienteEl) {
+      bloqueClienteEl.classList.toggle('hidden', !esCuentaCorriente);
+      if (esCuentaCorriente && selectorCliente) {
+        selectorCliente.establecerTotal(totalActualCentavos);
+        selectorCliente.alMostrar();
+      } else if (selectorCliente && selectorCliente.obtener()) {
+        // Al dejar CUENTA_CORRIENTE el cliente elegido se descarta: si el cajero vuelve, elige de nuevo
+        // (y ve el saldo actual), no un cliente viejo con un saldo que pudo haber cambiado.
+        selectorCliente.reiniciar();
+      }
+    }
+    const bloqueadoPorCliente = esCuentaCorriente && (!selectorCliente || !selectorCliente.obtener());
+
     let bloqueadoPorEfectivo = false;
 
     if (requiereEfectivo && vueltoResultadoEl) {
@@ -320,7 +351,7 @@
     // cobroEnCurso va primero y nunca puede ser revertido por nada de lo
     // de acá arriba (ver comentario junto a su declaración).
     const carritoVacio = carrito.size === 0;
-    const disabled = cobroEnCurso || carritoVacio || bloqueadoPorEfectivo;
+    const disabled = cobroEnCurso || carritoVacio || bloqueadoPorEfectivo || bloqueadoPorCliente;
 
     if (botonCobrar) {
       botonCobrar.disabled = disabled;
@@ -339,12 +370,13 @@
     // sheet de 5B en vez de intentar cobrar -- nunca ejecuta la venta.
     // #boton-cobrar (dentro del sheet) no lo necesita: cuando está
     // visible, el campo de monto ya está al lado.
-    const bloqueadoSoloPorEfectivo = !cobroEnCurso && !carritoVacio && bloqueadoPorEfectivo;
+    // 021: mismo criterio cuando lo que falta es elegir el cliente de una venta a cuenta.
+    const bloqueadoSoloPorEfectivo = !cobroEnCurso && !carritoVacio && (bloqueadoPorEfectivo || bloqueadoPorCliente);
 
     if (botonCobrarBar) {
       if (bloqueadoSoloPorEfectivo) {
         botonCobrarBar.disabled = false;
-        botonCobrarBar.textContent = 'Ingresar monto';
+        botonCobrarBar.textContent = bloqueadoPorEfectivo ? 'Ingresar monto' : 'Elegir cliente';
         botonCobrarBar.classList.remove('opacity-50', 'cursor-not-allowed');
         botonCobrarBar.dataset.accion = 'abrir-sheet';
       } else {
@@ -511,6 +543,15 @@
       cantidad: item.cantidad,
     }));
 
+    // 021: `cliente_id` viaja solo en una venta a cuenta. Cualquier otro medio de pago manda exactamente
+    // el mismo cuerpo que antes.
+    const esCuentaCorriente = tipoPagoInput.value === 'CUENTA_CORRIENTE';
+    const clienteElegido = esCuentaCorriente && selectorCliente ? selectorCliente.obtener() : null;
+    if (esCuentaCorriente && !clienteElegido) {
+      mostrarToast('Elegí un cliente para vender a cuenta.', 'warning');
+      return;
+    }
+
     if (!claveIdempotenciaActual) {
       claveIdempotenciaActual = crypto.randomUUID();
     }
@@ -532,6 +573,7 @@
           items,
           tipo_pago: tipoPagoInput.value,
           clave_idempotencia: claveIdempotenciaActual,
+          ...(clienteElegido ? { cliente_id: clienteElegido.id } : {}),
         }),
       });
       const datos = await leerJsonSiLoHay(respuesta);
@@ -559,7 +601,9 @@
         return;
       }
 
-      mostrarToast(`Venta #${datos.id} registrada. Total: ${formatearCentavos(datos.total_centavos)}.`, 'success');
+      const destino = clienteElegido ? ` a cuenta de ${clienteElegido.nombre}` : '';
+      mostrarToast(`Venta #${datos.id} registrada${destino}. Total: ${formatearCentavos(datos.total_centavos)}.`, 'success');
+      if (selectorCliente) selectorCliente.reiniciar();
       claveIdempotenciaActual = null; // el intento terminó bien: el próximo cobro arranca uno nuevo
       cobroEnCurso = false;
       carrito.clear();

@@ -13,6 +13,10 @@ from excepciones import DatosInvalidosError
 
 TIPOS_MOVIMIENTO_VALIDOS = frozenset({"APERTURA", "CIERRE", "INGRESO", "EGRESO"})
 
+# Migración 020: `COBRO_CUENTA` es el INGRESO que respalda un cobro de cuenta
+# corriente; el resto de los movimientos son `MANUAL`.
+ORIGENES_MOVIMIENTO_VALIDOS = frozenset({"MANUAL", "COBRO_CUENTA"})
+
 # Los movimientos manuales (a diferencia de apertura/cierre) exigen una
 # descripción que los justifique, ej. "pago a proveedor" o "retiro de efectivo".
 TIPOS_QUE_REQUIEREN_DESCRIPCION = frozenset({"INGRESO", "EGRESO"})
@@ -30,6 +34,11 @@ class MovimientoCaja:
     este dataclass solo lo transporta y lo valida). `None` para
     cualquier otro tipo de movimiento, y también para cierres
     anteriores a que este campo existiera.
+
+    `origen` (migración 020) es `MANUAL` salvo el INGRESO de un cobro de
+    cuenta corriente (`COBRO_CUENTA`), que solo crea
+    `services.servicio_cuenta_corriente.registrar_cobro`. Una vez creado,
+    el esquema no permite modificarlo.
     """
 
     tipo: str
@@ -38,6 +47,7 @@ class MovimientoCaja:
     id: int | None = None
     fecha: str | None = None
     diferencia_centavos: int | None = None
+    origen: str = "MANUAL"
 
     def __post_init__(self) -> None:
         self._validar()
@@ -56,6 +66,13 @@ class MovimientoCaja:
             raise DatosInvalidosError(
                 f"Los movimientos de tipo {self.tipo} requieren una descripción que los justifique."
             )
+        if self.origen not in ORIGENES_MOVIMIENTO_VALIDOS:
+            raise DatosInvalidosError(
+                f"Origen de movimiento de caja inválido: {self.origen!r}. "
+                f"Debe ser uno de {sorted(ORIGENES_MOVIMIENTO_VALIDOS)}."
+            )
+        if self.origen == "COBRO_CUENTA" and self.tipo != "INGRESO":
+            raise DatosInvalidosError("Un movimiento de cobro de cuenta solo puede ser un INGRESO.")
         if self.diferencia_centavos is not None and self.tipo != "CIERRE":
             raise DatosInvalidosError(
                 f"Solo un movimiento de tipo CIERRE puede tener diferencia_centavos (recibido: {self.tipo!r})."
@@ -64,19 +81,31 @@ class MovimientoCaja:
 
 @dataclass(frozen=True)
 class SesionCaja:
-    """Una sesión de caja: desde una APERTURA hasta su CIERRE (o hasta
-    ahora, si todavía no se cerró). Es la unidad sobre la que se calcula el
-    arqueo: no depende del día calendario, así una caja que cruza
-    medianoche o dos cajas el mismo día no se mezclan entre sí."""
+    """Una sesión de caja (tabla `sesiones_caja`, migración 019): desde una
+    apertura explícita hasta su cierre. Es la unidad sobre la que se calcula
+    el arqueo: no depende del día calendario, así una caja que cruza
+    medianoche o dos cajas el mismo día no se mezclan entre sí.
 
-    apertura_id: int
+    `origen` distingue cómo nació la fila: `NORMAL` (abierta por la
+    aplicación desde la V1.3), `RECONSTRUIDA` (derivada de los movimientos
+    de la V1.2 por la migración; siempre `CERRADA`, con `fecha_cierre`
+    `None` si su cierre nunca se registró) o `LEGADO` (contenedor de datos
+    históricos sin sesión reconstruible: nunca es una caja real ni admite
+    operaciones nuevas).
+    """
+
+    id: int
+    estado: str
+    origen: str
     fecha_apertura: str
-    cierre_id: int | None = None
     fecha_cierre: str | None = None
+    fondo_centavos: int | None = None
+    contado_centavos: int | None = None
+    diferencia_centavos: int | None = None
 
     @property
     def abierta(self) -> bool:
-        return self.cierre_id is None
+        return self.estado == "ABIERTA"
 
 
 def clasificar_diferencia(diferencia_centavos: int) -> str:

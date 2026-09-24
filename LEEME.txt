@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.2.0
+Twinx Express 1.3.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -169,6 +169,9 @@ Si la version nueva no trae cambios en la base de datos, ese backup no
 se crea. Por eso el paso 2 (hacer un backup por las dudas) sigue siendo
 recomendable.
 
+Si actualizas desde la version 1.2: despues de abrir la nueva version
+tenes que abrir una caja nueva antes de vender. Lee el punto 12, apartado f).
+
 
 7) SI UNA ACTUALIZACION FALLA (volver a la version anterior)
 ------------------------------------------------------------------
@@ -311,3 +314,85 @@ f) REPOSICION (menu Reposicion)
 Tus datos: esta version agrega cuatro tablas nuevas a la base de datos
 (historial de precios, lotes de actualizacion, auditoria y configuracion).
 Se crean solas al abrir la nueva version, con un backup previo automatico.
+
+
+12) NOVEDADES DE LA VERSION 1.3: CAJA POR SESIONES, CLIENTES Y CUENTA CORRIENTE
+----------------------------------------------------------------------------------
+
+a) CAJA POR SESIONES
+   Cada vez que abris la caja empieza una sesion de caja, y termina
+   cuando la cerras. Todas las ventas y movimientos de caja (ingresos,
+   egresos y cobros de cuenta corriente) quedan asociados a la sesion en
+   la que se hicieron, y el arqueo se calcula por sesion.
+   - Para vender o registrar movimientos hace falta una caja abierta.
+   - Una venta solo se puede anular mientras su sesion sigue abierta. Las
+     ventas de sesiones ya cerradas no se pueden anular. Sus datos no se
+     pierden ni se modifican.
+
+b) CLIENTES (menu Clientes)
+   Lista con el saldo de cada cliente, busqueda por nombre o telefono y
+   filtro de activos / inactivos (por defecto se ven los activos). Al
+   entrar a un cliente ves sus datos, su saldo, el total cargado a cuenta,
+   el total cobrado y todos sus movimientos, del mas reciente al mas
+   antiguo (cada venta a cuenta enlaza a la venta).
+   - El dueño (OWNER) y el cajero (CASHIER) pueden ver clientes y crear
+     clientes nuevos.
+   - Solo el dueño puede editar, desactivar y reactivar un cliente.
+   - Un cliente desactivado no puede recibir ventas nuevas.
+   - No se puede desactivar un cliente que tiene saldo pendiente.
+   - Los clientes no se borran: se desactivan.
+
+c) VENTAS A CUENTA (CUENTA_CORRIENTE)
+   En el punto de venta, junto a los medios de pago, aparece "A cuenta
+   (CUENTA_CORRIENTE)". EFECTIVO sigue siendo el medio elegido por
+   defecto; "A cuenta" nunca se elige sola.
+   - Al elegirla es obligatorio seleccionar un cliente (se busca por
+     nombre o telefono; solo aparecen clientes activos). Sin cliente no
+     se puede cobrar la venta.
+   - Si cambias a otro medio de pago, el cliente elegido se descarta. Al
+     volver a "A cuenta" tenes que elegir el cliente otra vez.
+   - La venta queda asociada al cliente y se suma a lo que debe. En el
+     historial de ventas figura con el medio CUENTA_CORRIENTE, y en los
+     reportes cuenta como una venta mas, igual que las demas.
+   - Una venta a cuenta no se puede anular: su detalle no ofrece el boton
+     de anular.
+
+d) COBROS DE CUENTA CORRIENTE
+   En la ficha del cliente, el boton "Registrar cobro".
+   - Los cobros son unicamente en efectivo. Pueden ser parciales o por el
+     total, y no pueden superar lo que el cliente debe.
+   - Hace falta una caja abierta: el cobro entra como efectivo en la caja
+     (se ve con la etiqueta "Cobro cta. cte." en Caja y en el Dashboard).
+   - El saldo del cliente es lo cargado a cuenta menos lo cobrado.
+   - Un cobro no es una venta: no suma a las ventas ni a los reportes de
+     ventas.
+   - Si tocas dos veces el boton de confirmar, el cobro se registra una
+     sola vez.
+
+e) QUIEN PUEDE HACER QUE
+   - Dueño (OWNER): gestion completa de clientes (ver, crear, editar,
+     desactivar y reactivar) y cobros.
+   - Cajero (CASHIER): consultar clientes, crearlos y registrar cobros.
+     No puede editar, desactivar ni reactivar clientes. Las ventas a
+     cuenta se hacen desde el punto de venta, como cualquier venta.
+
+f) AL ACTUALIZAR DESDE LA VERSION 1.2 (LEER ANTES DE ABRIR LA CAJA)
+   Al abrir la nueva version por primera vez, KioscoApp actualiza tus
+   datos automaticamente. Antes de hacerlo crea sola un backup preventivo
+   ("KioscoApp_backup_pre_migracion_...") en
+   %LOCALAPPDATA%\KioscoApp\backups\ (ver punto 6).
+   - Se conservan todas tus ventas, sus detalles y los movimientos de
+     caja. No se borra ni se pierde nada.
+   - Las cajas anteriores se reconstruyen como sesiones a partir de los
+     movimientos que ya tenias. Si la ultima caja de la version anterior
+     habia quedado abierta, queda como una sesion pasada sin fecha de
+     cierre.
+   - Despues de actualizar NO hay ninguna caja abierta, aunque la
+     hubieras dejado abierta antes. Antes de vender, abri una caja nueva
+     desde el menu Caja. Hasta entonces el punto de venta avisa que no
+     hay caja abierta.
+   - Las ventas de esas cajas anteriores no se pueden anular.
+   - Los clientes empiezan vacios: las ventas anteriores no tienen
+     cliente asociado.
+   Si algo sale mal y necesitas volver a la version anterior, segui el
+   punto 7 (restaurar el backup preventivo).
