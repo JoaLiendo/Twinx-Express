@@ -15,6 +15,9 @@ from interfaces.web.auth import NOMBRE_COOKIE_SESION
 from services import servicio_auth, servicio_caja, servicio_stock, servicio_ventas
 
 from ._asgi_cliente import solicitud
+import pytest
+
+pytestmark = pytest.mark.usefixtures("caja_abierta")
 
 
 def _cookies_owner(nombre_usuario: str = "ana") -> dict[str, str]:
@@ -70,20 +73,25 @@ class TestVerReportes:
         assert 'value="2024-01-01"' in respuesta.texto
         assert 'value="2024-01-31"' in respuesta.texto
 
-    def test_dashboard_ya_no_marca_reportes_como_proximamente(self, base_datos_temporal):
-        """Pedidos y Precios siguen siendo cascarones (title con el
-        sufijo "(próximamente)"): solo el acceso rápido de Reportes debe
-        haber perdido esa marca al dejar de tener `proximamente=True`
-        en `interfaces.web.navegacion.NAV_ITEMS`."""
+    def test_dashboard_no_ofrece_las_secciones_proximamente(self, base_datos_temporal):
+        """Reportes ya es real (V1); Pedidos y Precios siguen siendo
+        cascarones y, desde V1.1, no aparecen en los accesos del dashboard
+        ni en el menú."""
         cookies = _cookies_owner()
 
         respuesta = solicitud("GET", "/", cookies=cookies)
 
         assert respuesta.status == 200
         assert 'title="Reportes"' in respuesta.texto
-        assert 'title="Reportes (próximamente)"' not in respuesta.texto
-        # Pedidos/Precios no se tocaron en esta fase: siguen marcados.
-        assert 'title="Pedidos (próximamente)"' in respuesta.texto
+        assert "(próximamente)" not in respuesta.texto
+        assert 'href="/pedidos"' not in respuesta.texto
+        assert 'href="/precios"' not in respuesta.texto
+
+    def test_las_rutas_de_pedidos_y_precios_siguen_existiendo(self, base_datos_temporal):
+        cookies = _cookies_owner()
+
+        assert solicitud("GET", "/pedidos", cookies=cookies).status == 200
+        assert solicitud("GET", "/precios", cookies=cookies).status == 200
 
 
 class TestRentabilidadEnLaPagina:
@@ -178,6 +186,7 @@ class TestResumenAnulacionesEnLaPagina:
     reales (no solo contra `servicio_reportes`, ya cubierto en
     tests/test_services/test_servicio_reportes.py)."""
 
+    @pytest.mark.sin_caja_abierta
     def test_muestra_cantidad_monto_y_motivo_sin_contaminar_los_kpis_existentes(self, base_datos_temporal):
         producto = servicio_stock.registrar_producto(
             codigo_barras="7790000000001",

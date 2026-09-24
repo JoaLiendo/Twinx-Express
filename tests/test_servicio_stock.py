@@ -20,6 +20,8 @@ from excepciones import (
 )
 from services import servicio_categorias, servicio_stock, servicio_ventas
 
+pytestmark = pytest.mark.usefixtures("caja_abierta")
+
 
 def _crear_usuario(nombre_usuario="duenio", rol="OWNER"):
     return repositorio_usuarios.crear_usuario(

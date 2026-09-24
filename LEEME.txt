@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.0.0
+Twinx Express 1.1.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -55,6 +55,7 @@ Estas son las ubicaciones exactas:
                 %LOCALAPPDATA%\KioscoApp\data\kiosco.db
     Imagenes:   %LOCALAPPDATA%\KioscoApp\data\imagenes_productos\
     Backups:    %LOCALAPPDATA%\KioscoApp\backups\
+    Registro:   %LOCALAPPDATA%\KioscoApp\logs\  (twinx_express.log)
 
 Para abrir esa carpeta: abri el Explorador de archivos, pega
 %LOCALAPPDATA%\KioscoApp en la barra de direcciones y presiona Enter.
@@ -78,7 +79,7 @@ Dentro de la aplicacion, en la seccion de Configuracion (solo la ve
 el dueño), hay un boton "Crear backup". Al tocarlo, se genera un
 archivo con toda tu informacion: productos, ventas e imagenes.
 
-Ese archivo (un ZIP con nombre "KioscoApp_backup_AAAA-MM-DD_HHMM.zip")
+Ese archivo (un ZIP con nombre "KioscoApp_backup_AAAA-MM-DD_HHMMSS.zip")
 se guarda solo en:
 
     %LOCALAPPDATA%\KioscoApp\backups\
@@ -90,6 +91,12 @@ buscarlo en la carpeta de arriba.
 Ademas de los backups manuales, KioscoApp hace un backup automatico al
 abrirse si el ultimo backup tiene mas de 24 horas (o si todavia no hay
 ninguno). Se guardan en la misma carpeta.
+
+Para que la carpeta no crezca sin limite, KioscoApp conserva los 30
+backups mas recientes (manuales y automaticos) y, aparte, los 5 mas
+recientes de los que crea antes de actualizar. Los anteriores se borran
+solos; el backup recien creado nunca se borra. Si queres guardar uno
+para siempre, copialo a otra carpeta.
 
 Recomendacion: de vez en cuando, copia los ZIP de backup de esa carpeta
 a otro lugar (un pendrive, otra computadora, la nube). Si algo le pasa a

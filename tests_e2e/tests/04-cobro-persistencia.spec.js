@@ -56,8 +56,8 @@ test('cobro real desde la UI: acciones post-venta, ticket persistido y stock des
   await expect(page.getByText(`Ticket #${ventaId}`)).toBeVisible();
   const filaTicket = page.locator('table tbody tr');
   await expect(filaTicket).toContainText(PRODUCTO_1.nombre);
-  await expect(filaTicket).toContainText('2.50'); // precio unitario Y subtotal (cantidad 1)
-  await expect(page.locator('.total')).toContainText('2.50');
+  await expect(filaTicket).toContainText("2,50"); // precio unitario Y subtotal (cantidad 1)
+  await expect(page.locator('.total')).toContainText("2,50");
   await expect(page.getByText('Medio de pago: EFECTIVO')).toBeVisible();
 
   // Recibido/vuelto tampoco aparecen en el ticket (Fase 5C/5D).

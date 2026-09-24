@@ -16,7 +16,9 @@ from db.repositorios import productos as repositorio_productos
 from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario
 from domain.producto import Producto
 from excepciones import (
+    MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
     CategoriaNoEncontradaError,
+    ClaveIdempotenciaReutilizadaError,
     ErrorBaseDatos,
     ProductoNoEncontradoError,
     StockInsuficienteError,
@@ -292,6 +294,7 @@ def ajustar_stock(
     motivo: str,
     usuario_id: int,
     observaciones: str | None = None,
+    clave_idempotencia: str | None = None,
 ) -> AjusteStock:
     """Corrige `stock_actual` fuera de una venta o una compra (merma,
     rotura, vencimiento, pérdida, robo o una diferencia de recuento),
@@ -305,6 +308,12 @@ def ajustar_stock(
     transacción con `BEGIN IMMEDIATE`, para que dos ajustes concurrentes
     sobre el mismo producto no generen un lost update.
 
+    `clave_idempotencia` (V1.1): un reenvío con la misma clave (doble clic,
+    doble submit) devuelve el ajuste ya registrado sin volver a aplicar el
+    delta. Se resuelve dentro de la misma transacción, antes de validar el
+    stock, así el reintento de un ajuste ya aplicado nunca falla por
+    "stock insuficiente".
+
     Raises:
         ProductoNoEncontradoError: si no existe un producto activo con ese id.
         StockInsuficienteError: si el ajuste dejaría el stock en negativo.
@@ -312,6 +321,20 @@ def ajustar_stock(
             (ver `domain.ajuste_stock.AjusteStock`).
     """
     with obtener_conexion(inmediata=True) as conexion:
+        if clave_idempotencia is not None:
+            existente = repositorio_ajustes_stock.obtener_por_clave_idempotencia_en_conexion(
+                conexion, clave_idempotencia
+            )
+            if existente is not None:
+                if (existente.producto_id, existente.delta, existente.motivo, existente.observaciones) != (
+                    producto_id,
+                    delta,
+                    motivo,
+                    observaciones,
+                ):
+                    raise ClaveIdempotenciaReutilizadaError(MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS)
+                return existente
+
         producto = repositorio_productos.obtener_por_id_en_conexion(conexion, producto_id)
         if producto is None:
             raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
@@ -336,7 +359,9 @@ def ajustar_stock(
             stock_resultante=nuevo_stock,
             observaciones=observaciones,
         )
-        ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(conexion, ajuste)
+        ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(
+            conexion, ajuste, clave_idempotencia=clave_idempotencia
+        )
 
     logger.info(
         "Ajuste de stock registrado: producto_id=%s motivo=%s delta=%s usuario_id=%s",

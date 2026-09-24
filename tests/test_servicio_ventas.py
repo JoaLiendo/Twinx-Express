@@ -16,6 +16,7 @@ from db.repositorios import ventas as repositorio_ventas
 from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from excepciones import (
+    CajaCerradaError,
     ClaveIdempotenciaReutilizadaError,
     DatosInvalidosError,
     PrecioVentaNoConfiguradoError,
@@ -26,6 +27,8 @@ from excepciones import (
     VentaYaAnuladaError,
 )
 from services import servicio_caja, servicio_stock, servicio_ventas
+
+pytestmark = pytest.mark.usefixtures("caja_abierta")
 
 
 def _contar_filas(ruta_base_datos, tabla: str) -> int:
@@ -511,6 +514,7 @@ class TestListarHistorial:
         assert len(ventas) == 1
         assert ventas[0].id == venta.id
 
+    @pytest.mark.sin_caja_abierta
     def test_delega_el_filtro_de_estado_al_repositorio(self, base_datos_temporal):
         """Visibilidad de Anulaciones: `estado` se enhebra directo hacia
         `repositorio_ventas.listar_resumen`, sin lógica propia."""
@@ -554,6 +558,7 @@ class TestAnularVenta:
     sesión de caja actualmente abierta -- nunca genera movimientos de
     caja nuevos."""
 
+    @pytest.mark.sin_caja_abierta
     def test_caso_feliz_restaura_stock_y_marca_anulada(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -565,6 +570,7 @@ class TestAnularVenta:
         assert anulada.estado == "ANULADA"
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
 
+    @pytest.mark.sin_caja_abierta
     def test_multiples_lineas_restaura_cada_producto(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         p1 = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -577,6 +583,7 @@ class TestAnularVenta:
         assert servicio_stock.obtener_por_id(p1.id).stock_actual == 10
         assert servicio_stock.obtener_por_id(p2.id).stock_actual == 5
 
+    @pytest.mark.sin_caja_abierta
     def test_producto_repetido_en_la_venta_restaura_la_cantidad_total(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -589,6 +596,7 @@ class TestAnularVenta:
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
 
+    @pytest.mark.sin_caja_abierta
     def test_producto_inactivo_despues_de_la_venta_restaura_stock_igual(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -605,6 +613,7 @@ class TestAnularVenta:
         assert fila["stock_actual"] == 10
         assert fila["activo"] == 0  # sigue inactivo: anular no reactiva el catálogo
 
+    @pytest.mark.sin_caja_abierta
     def test_no_persiste_ninguna_venta_ni_ajuste_si_producto_no_existe(self, base_datos_temporal, monkeypatch):
         """No debería poder pasar en el flujo real (`ON DELETE RESTRICT`),
         pero si el producto de una línea desapareciera, la anulación
@@ -635,6 +644,7 @@ class TestAnularVenta:
             estado = conexion.execute("SELECT estado FROM ventas WHERE id = ?", (venta.id,)).fetchone()["estado"]
         assert estado == "ACTIVA"
 
+    @pytest.mark.sin_caja_abierta
     def test_venta_inexistente_falla(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         owner = _owner()
@@ -642,6 +652,7 @@ class TestAnularVenta:
         with pytest.raises(VentaNoEncontradaError):
             servicio_ventas.anular_venta(9999, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
 
+    @pytest.mark.sin_caja_abierta
     def test_venta_ya_anulada_falla(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -655,6 +666,7 @@ class TestAnularVenta:
         # el stock no se restauró una segunda vez.
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
 
+    @pytest.mark.sin_caja_abierta
     def test_motivo_invalido_no_toca_nada(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -666,6 +678,7 @@ class TestAnularVenta:
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
 
+    @pytest.mark.sin_caja_abierta
     def test_otro_sin_observaciones_no_toca_nada(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -677,9 +690,12 @@ class TestAnularVenta:
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
 
+    @pytest.mark.sin_caja_abierta
     def test_sin_caja_abierta_falla(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
         venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        servicio_caja.cerrar_caja(100_200)
         owner = _owner()
 
         with pytest.raises(VentaDeCajaCerradaError):
@@ -687,6 +703,7 @@ class TestAnularVenta:
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
 
+    @pytest.mark.sin_caja_abierta
     def test_venta_de_sesion_de_caja_ya_cerrada_falla(self, base_datos_temporal):
         """Caso obligatorio de la auditoría de diseño: 10:00 venta / 18:00
         cierre / 20:00 apertura -- la venta pertenece a la sesión ya
@@ -722,10 +739,11 @@ class TestAnularVenta:
             ).fetchone()["n"]
         assert cierres == 1
 
+    @pytest.mark.sin_caja_abierta
     def test_venta_dentro_de_la_sesion_vigente_con_movimientos_manuales_de_por_medio(self, base_datos_temporal):
         """Ingresos/egresos manuales entre la apertura y la venta no
         cambian cuál es la sesión vigente (ver
-        `db.repositorios.caja.obtener_fecha_ultima_apertura_en_conexion`)."""
+        `db.repositorios.caja.obtener_sesion_abierta_en_conexion`)."""
         servicio_caja.abrir_caja(100_000)
         servicio_caja.registrar_ingreso(5_000, "cambio extra")
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -737,6 +755,7 @@ class TestAnularVenta:
         assert anulada.estado == "ANULADA"
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
 
+    @pytest.mark.sin_caja_abierta
     def test_persiste_motivo_observaciones_usuario_y_fecha(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -753,6 +772,7 @@ class TestAnularVenta:
         assert resumen.anulado_por_nombre == "Test"
         assert resumen.fecha_anulacion is not None
 
+    @pytest.mark.sin_caja_abierta
     def test_no_altera_precio_costo_ni_vendedor_original(self, base_datos_temporal):
         """El detalle histórico (precio, costo, vendedor) queda intacto:
         anular solo agrega estado + auditoría a la cabecera."""
@@ -771,6 +791,7 @@ class TestAnularVenta:
         _, costos = _leer_ventas_y_costos(base_datos_temporal, venta.id)
         assert costos == [100]
 
+    @pytest.mark.sin_caja_abierta
     def test_no_inserta_ninguna_fila_en_caja_movimientos(self, base_datos_temporal):
         """No hay reembolso financiero modelado: anular nunca genera un
         movimiento de caja, ni INGRESO, EGRESO, ni ningún otro tipo."""
@@ -783,22 +804,24 @@ class TestAnularVenta:
 
         assert _contar_filas(base_datos_temporal, "caja_movimientos") == 1  # solo la APERTURA original
 
+    @pytest.mark.sin_caja_abierta
     def test_venta_efectivo_anulada_no_suma_al_efectivo_estimado(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
         venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 2)], "EFECTIVO")  # 400 centavos
         owner = _owner()
 
-        arqueo_antes = servicio_caja.calcular_arqueo_del_dia()
+        arqueo_antes = servicio_caja.calcular_arqueo_de_sesion()
         assert arqueo_antes.total_efectivo_ventas_centavos == 400
 
         servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
 
-        arqueo_despues = servicio_caja.calcular_arqueo_del_dia()
+        arqueo_despues = servicio_caja.calcular_arqueo_de_sesion()
         assert arqueo_despues.total_efectivo_ventas_centavos == 0
         assert arqueo_despues.efectivo_estimado_centavos == 100_000  # solo la apertura
         assert arqueo_despues.cantidad_ventas == 0
 
+    @pytest.mark.sin_caja_abierta
     def test_fallo_al_persistir_la_anulacion_no_deja_stock_restaurado(self, base_datos_temporal, monkeypatch):
         """Atomicidad: si la transición final de estado falla (simulada
         acá después de que el stock ya se restauró en memoria de la
@@ -822,6 +845,7 @@ class TestAnularVenta:
             estado = conexion.execute("SELECT estado FROM ventas WHERE id = ?", (venta.id,)).fetchone()["estado"]
         assert estado == "ACTIVA"
 
+    @pytest.mark.sin_caja_abierta
     def test_dos_anulaciones_concurrentes_de_la_misma_venta_una_sola_gana(self, base_datos_temporal):
         """Mismo patrón que `TestAjustarStock.test_dos_ajustes_concurrentes_no_generan_lost_update`:
         dos hilos reales, dos conexiones SQLite reales."""
@@ -859,6 +883,7 @@ class TestAnularVenta:
         # veces) ni 7 (nunca restaurado).
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
 
+    @pytest.mark.sin_caja_abierta
     def test_anulacion_concurrente_con_ajuste_de_stock_del_mismo_producto_no_genera_lost_update(
         self, base_datos_temporal
     ):
@@ -904,6 +929,7 @@ class TestAnularVenta:
 
 
 class TestListarHistorialIncluyeAnuladas:
+    @pytest.mark.sin_caja_abierta
     def test_venta_anulada_sigue_apareciendo_en_el_historial(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -917,6 +943,7 @@ class TestListarHistorialIncluyeAnuladas:
         assert ventas[0].id == venta.id
         assert ventas[0].estado == "ANULADA"
 
+    @pytest.mark.sin_caja_abierta
     def test_venta_anulada_sigue_accesible_por_detalle(self, base_datos_temporal):
         servicio_caja.abrir_caja(100_000)
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -956,6 +983,7 @@ def test_venta_con_precio_cero_se_rechaza_con_un_mensaje_claro(base_datos_tempor
     assert "precio" in str(error.value).lower()
 
 
+@pytest.mark.sin_caja_abierta
 def test_venta_con_precio_cero_no_descuenta_stock_ni_registra_venta_ni_movimiento_de_caja(base_datos_temporal):
     servicio_caja.abrir_caja(100_000)
     movimientos_antes = _contar_filas(base_datos_temporal, "caja_movimientos")
@@ -988,3 +1016,57 @@ def test_el_precio_cero_se_informa_antes_que_la_falta_de_stock(base_datos_tempor
 
     with pytest.raises(PrecioVentaNoConfiguradoError):
         servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+
+
+class TestVentaSinCajaAbierta:
+    """C2 (V1.1): toda venta pertenece a una caja abierta. Sin caja abierta
+    se rechaza antes de tocar stock, ventas o caja, y no consume la clave
+    de idempotencia."""
+
+    @pytest.mark.sin_caja_abierta
+    def test_sin_caja_abierta_se_rechaza_y_no_persiste_nada(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+
+        with pytest.raises(CajaCerradaError):
+            servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO", clave_idempotencia="k1")
+
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+        assert _contar_filas(base_datos_temporal, "ventas") == 0
+        assert _contar_filas(base_datos_temporal, "detalle_venta") == 0
+        assert _contar_filas(base_datos_temporal, "caja_movimientos") == 0
+
+    @pytest.mark.sin_caja_abierta
+    def test_la_clave_rechazada_por_caja_cerrada_sirve_al_abrir_la_caja(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        with pytest.raises(CajaCerradaError):
+            servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO", clave_idempotencia="k1")
+
+        servicio_caja.abrir_caja(100_000)
+        venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO", clave_idempotencia="k1")
+
+        assert venta.id is not None
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
+
+    @pytest.mark.sin_caja_abierta
+    def test_despues_de_cerrar_la_caja_no_se_puede_vender(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        servicio_caja.abrir_caja(100_000)
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+        servicio_caja.cerrar_caja(100_200)
+
+        with pytest.raises(CajaCerradaError):
+            servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
+
+    @pytest.mark.sin_caja_abierta
+    def test_reintento_de_venta_ya_registrada_devuelve_la_misma_aunque_se_cerro_la_caja(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        servicio_caja.abrir_caja(100_000)
+        original = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO", clave_idempotencia="k1")
+        servicio_caja.cerrar_caja(100_200)
+
+        reintento = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO", clave_idempotencia="k1")
+
+        assert reintento.id == original.id
+        assert _contar_filas(base_datos_temporal, "ventas") == 1

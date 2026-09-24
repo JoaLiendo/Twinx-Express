@@ -33,6 +33,7 @@ from domain.venta import (
     validar_motivo_anulacion,
 )
 from excepciones import (
+    CajaCerradaError,
     ClaveIdempotenciaReutilizadaError,
     DatosInvalidosError,
     ErrorBaseDatos,
@@ -116,6 +117,8 @@ def registrar_venta(
 
     Raises:
         DatosInvalidosError: si `items` está vacío o `tipo_pago` no es válido.
+        CajaCerradaError: si no hay una caja abierta (y no es el reintento
+            de una venta ya registrada con la misma `clave_idempotencia`).
         ProductoNoEncontradoError: si algún `producto_id` no existe.
         PrecioVentaNoConfiguradoError: si algún producto tiene precio de
             venta 0 (se rechaza la venta completa, antes de tocar stock).
@@ -155,6 +158,14 @@ def registrar_venta(
                 if existente is not None:
                     venta_existente, hash_existente = existente
                     return _resolver_clave_reutilizada(venta_existente, hash_existente, contenido_hash)
+
+            # Después del chequeo de idempotencia: un reintento legítimo de una
+            # venta ya registrada sigue devolviéndola aunque la caja se haya
+            # cerrado entretanto. Una venta nueva sin caja abierta se rechaza
+            # antes de tocar stock, y como la transacción se revierte, la clave
+            # de idempotencia no queda consumida.
+            if repositorio_caja.obtener_sesion_abierta_en_conexion(conexion) is None:
+                raise CajaCerradaError("No hay una caja abierta: abrí la caja antes de registrar ventas.")
 
             productos_por_id: dict[int, Producto] = {}
             for producto_id, cantidad_total in cantidad_pedida_por_producto.items():
@@ -286,16 +297,16 @@ def anular_venta(
 
     Es exclusivamente una corrección de registro + stock -- **no** hay
     reembolso financiero modelado ni se genera ningún movimiento de
-    caja: `EFECTIVO` del día se corrige solo porque
-    `db.repositorios.ventas.listar_ventas_del_dia` excluye `ANULADA`
-    (ver `services.servicio_caja.calcular_arqueo_del_dia`);
+    caja: `EFECTIVO` de la sesión se corrige solo porque
+    `db.repositorios.ventas.listar_ventas_de_sesion` excluye `ANULADA`
+    (ver `services.servicio_caja.calcular_arqueo_de_sesion`);
     `TARJETA`/`TRANSFERENCIA`/`OTRO` nunca movieron caja, así que
     anularlas tampoco la toca.
 
     Solo se puede anular una venta `ACTIVA` que pertenezca a la sesión
-    de caja actualmente abierta -- `venta.fecha >= fecha_apertura_vigente`,
-    con `fecha_apertura_vigente` resuelta dentro de esta misma
-    transacción (`repositorio_caja.obtener_fecha_ultima_apertura_en_conexion`).
+    de caja actualmente abierta -- `venta.fecha >= sesion_vigente.fecha_apertura`,
+    con `sesion_vigente` resuelta dentro de esta misma
+    transacción (`repositorio_caja.obtener_sesion_abierta_en_conexion`).
     El modelo no tiene `caja_id` en `ventas`; esta es la regla mínima
     verificable con los datos existentes. Una venta de una sesión ya
     cerrada, o sin ninguna caja abierta ahora mismo, se rechaza: el MVP
@@ -321,12 +332,12 @@ def anular_venta(
         if venta.estado != "ACTIVA":
             raise VentaYaAnuladaError(f"La venta {venta_id} ya fue anulada anteriormente.")
 
-        fecha_apertura_vigente = repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion)
-        if fecha_apertura_vigente is None:
+        sesion_vigente = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion)
+        if sesion_vigente is None:
             raise VentaDeCajaCerradaError(
                 "No hay ninguna caja abierta en este momento: no se puede anular la venta."
             )
-        if venta.fecha < fecha_apertura_vigente:
+        if venta.fecha < sesion_vigente.fecha_apertura:
             raise VentaDeCajaCerradaError(
                 f"La venta {venta_id} pertenece a una sesión de caja ya cerrada: "
                 "anularla implicaría modificar un cierre histórico, fuera de alcance."

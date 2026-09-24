@@ -62,6 +62,23 @@ class MovimientoCaja:
             )
 
 
+@dataclass(frozen=True)
+class SesionCaja:
+    """Una sesión de caja: desde una APERTURA hasta su CIERRE (o hasta
+    ahora, si todavía no se cerró). Es la unidad sobre la que se calcula el
+    arqueo: no depende del día calendario, así una caja que cruza
+    medianoche o dos cajas el mismo día no se mezclan entre sí."""
+
+    apertura_id: int
+    fecha_apertura: str
+    cierre_id: int | None = None
+    fecha_cierre: str | None = None
+
+    @property
+    def abierta(self) -> bool:
+        return self.cierre_id is None
+
+
 def clasificar_diferencia(diferencia_centavos: int) -> str:
     """Clasifica el resultado de un cierre de caja: 'SOBRANTE' si el
     efectivo contado superó al esperado, 'FALTANTE' si fue menor,

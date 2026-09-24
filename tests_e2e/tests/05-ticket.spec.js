@@ -30,8 +30,8 @@ test('ticket: datos persistidos, estructura de impresión, sin auto-print', asyn
   await expect(page.getByText(`Ticket #${ventaId}`)).toBeVisible();
   const filaTicket = page.locator('table tbody tr');
   await expect(filaTicket).toContainText(PRODUCTO_2.nombre);
-  await expect(filaTicket).toContainText('5.00'); // precio unitario y subtotal (cantidad 1)
-  await expect(page.locator('.total')).toContainText('5.00');
+  await expect(filaTicket).toContainText("5,00"); // precio unitario y subtotal (cantidad 1)
+  await expect(page.locator('.total')).toContainText("5,00");
   await expect(page.getByText('Medio de pago: TARJETA')).toBeVisible();
 
   // Estructura preparada para impresión de ~80mm (Fase 5D): presente en

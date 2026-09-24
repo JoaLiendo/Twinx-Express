@@ -220,13 +220,13 @@ class TestObtenerFechaUltimaAperturaEnConexion:
 
     def test_sin_ningun_movimiento_devuelve_none(self, base_datos_temporal):
         with obtener_conexion() as conexion:
-            assert repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion) is None
+            assert repositorio_caja.obtener_sesion_abierta_en_conexion(conexion) is None
 
     def test_con_caja_abierta_devuelve_la_fecha_de_la_apertura(self, base_datos_temporal):
         apertura = repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=100000))
 
         with obtener_conexion() as conexion:
-            fecha = repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion)
+            fecha = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion).fecha_apertura
 
         assert fecha == apertura.fecha
 
@@ -235,7 +235,7 @@ class TestObtenerFechaUltimaAperturaEnConexion:
         repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="CIERRE", monto_centavos=100000, diferencia_centavos=0))
 
         with obtener_conexion() as conexion:
-            assert repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion) is None
+            assert repositorio_caja.obtener_sesion_abierta_en_conexion(conexion) is None
 
     def test_ingresos_y_egresos_no_ocultan_la_apertura_vigente(self, base_datos_temporal):
         """La APERTURA sigue siendo el inicio de la sesión aunque haya
@@ -245,7 +245,7 @@ class TestObtenerFechaUltimaAperturaEnConexion:
         repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="EGRESO", monto_centavos=2000, descripcion="y"))
 
         with obtener_conexion() as conexion:
-            fecha = repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion)
+            fecha = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion).fecha_apertura
 
         assert fecha == apertura.fecha
 
@@ -258,6 +258,6 @@ class TestObtenerFechaUltimaAperturaEnConexion:
         segunda_apertura = repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=50000))
 
         with obtener_conexion() as conexion:
-            fecha = repositorio_caja.obtener_fecha_ultima_apertura_en_conexion(conexion)
+            fecha = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion).fecha_apertura
 
         assert fecha == segunda_apertura.fecha

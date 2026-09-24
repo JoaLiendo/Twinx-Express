@@ -19,6 +19,8 @@ from db.repositorios import productos as repositorio_productos
 from db.repositorios import proveedores as repositorio_proveedores
 from domain.compra import Compra, DetalleCompra, ItemCompra, LineaDetalleCompra, ResumenCompra
 from excepciones import (
+    MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
+    ClaveIdempotenciaReutilizadaError,
     DatosInvalidosError,
     ProductoDuplicadoEnCompraError,
     ProductoNoEncontradoError,
@@ -33,6 +35,7 @@ def registrar_compra(
     usuario_id: int,
     items: list[ItemCompra],
     observaciones: str | None = None,
+    clave_idempotencia: str | None = None,
 ) -> Compra:
     """Registra un ingreso de mercadería con sus líneas de detalle,
     incrementa el stock de cada producto y actualiza su costo vigente.
@@ -57,6 +60,10 @@ def registrar_compra(
         items: líneas de compra (producto_id + cantidad + costo unitario).
             No puede estar vacío ni repetir un mismo `producto_id`.
         observaciones: texto libre opcional.
+        clave_idempotencia: identificador que el formulario genera una vez
+            y reenvía igual ante cualquier reintento (V1.1): un reenvío
+            devuelve la compra ya registrada sin duplicar compra, stock ni
+            costo.
 
     Raises:
         DatosInvalidosError: si `items` está vacío.
@@ -76,6 +83,23 @@ def registrar_compra(
     # lectura; sin el lock tomado desde el inicio, dos compras concurrentes
     # del mismo producto podrían perder un incremento de stock.
     with obtener_conexion(inmediata=True) as conexion:
+        if clave_idempotencia is not None:
+            existente = repositorio_compras.obtener_por_clave_idempotencia_en_conexion(
+                conexion, clave_idempotencia
+            )
+            if existente is not None:
+                lineas_originales = repositorio_compras.listar_lineas_en_conexion(conexion, existente.id)
+                lineas_pedidas = sorted(
+                    (item.producto_id, item.cantidad, item.costo_unitario_centavos) for item in items
+                )
+                if (existente.proveedor_id, existente.observaciones, lineas_originales) != (
+                    proveedor_id,
+                    observaciones,
+                    lineas_pedidas,
+                ):
+                    raise ClaveIdempotenciaReutilizadaError(MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS)
+                return existente
+
         proveedor = repositorio_proveedores.obtener_por_id_en_conexion(conexion, proveedor_id)
         if proveedor is None:
             raise ProveedorNoEncontradoError(f"No existe un proveedor activo con id {proveedor_id}.")
@@ -100,7 +124,13 @@ def registrar_compra(
         total_centavos = sum(subtotal for _, subtotal in items_con_subtotal)
 
         compra = repositorio_compras.registrar_compra_con_detalle(
-            conexion, proveedor_id, usuario_id, observaciones, total_centavos, items_con_subtotal
+            conexion,
+            proveedor_id,
+            usuario_id,
+            observaciones,
+            total_centavos,
+            items_con_subtotal,
+            clave_idempotencia=clave_idempotencia,
         )
 
         for item in items:

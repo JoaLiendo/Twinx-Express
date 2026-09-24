@@ -17,7 +17,7 @@ from domain.usuario import Usuario
 from excepciones import ArchivoImagenInvalidoError, DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
+from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
 from services import servicio_categorias, servicio_exportacion, servicio_importacion, servicio_stock
 
 router = APIRouter()
@@ -320,7 +320,12 @@ def formulario_ajustar_stock(request: Request, producto_id: int):
     if producto is None:
         return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
 
-    contexto = {**contexto_base(request), "producto": producto, "motivos": sorted(MOTIVOS_AJUSTE_VALIDOS)}
+    contexto = {
+        **contexto_base(request),
+        "producto": producto,
+        "motivos": sorted(MOTIVOS_AJUSTE_VALIDOS),
+        "clave_idempotencia": nueva_clave_idempotencia(),
+    }
     return templates.TemplateResponse(request, "productos/ajustar.html", contexto)
 
 
@@ -331,6 +336,7 @@ def ajustar_stock(
     direccion: str = Form(...),
     cantidad: int = Form(...),
     observaciones: str = Form(""),
+    clave_idempotencia: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     # El usuario no ingresa el signo: la interfaz solo ofrece "sumar" o
@@ -349,6 +355,7 @@ def ajustar_stock(
         motivo=motivo,
         usuario_id=usuario_actual.id,
         observaciones=observaciones.strip() or None,
+        clave_idempotencia=clave_idempotencia or None,
     )
     return redireccionar_con_mensaje(
         f"/productos/{producto_id}/editar", "success", "Ajuste de stock registrado correctamente."

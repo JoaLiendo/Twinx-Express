@@ -82,3 +82,16 @@ def base_datos_temporal(tmp_path, monkeypatch):
     monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", ruta_bd_prueba)
     modulo_conexion.inicializar_base_datos()
     return ruta_bd_prueba
+
+
+@pytest.fixture
+def caja_abierta(request, base_datos_temporal):
+    """Deja una caja abierta antes del test: desde V1.1 no se puede
+    registrar una venta sin caja abierta. Los tests que abren/cierran la
+    caja por su cuenta se marcan con `@pytest.mark.sin_caja_abierta`."""
+    if request.node.get_closest_marker("sin_caja_abierta"):
+        return
+    from db.repositorios import caja as repositorio_caja
+    from domain.caja import MovimientoCaja
+
+    repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=0))

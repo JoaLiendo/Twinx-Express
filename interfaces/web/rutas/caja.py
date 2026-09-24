@@ -9,7 +9,7 @@ from domain.dinero import centavos_a_texto_localizado, texto_a_centavos
 from domain.usuario import Usuario
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
+from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
 from services import servicio_caja
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
@@ -33,13 +33,15 @@ def panel_caja(request: Request):
     contexto = {
         **contexto_base(request),
         "movimientos": list(reversed(servicio_caja.listar_movimientos())),
+        "clave_ingreso": nueva_clave_idempotencia(),
+        "clave_egreso": nueva_clave_idempotencia(),
     }
     return templates.TemplateResponse(request, "caja/panel.html", contexto)
 
 
 @router.get("/caja/arqueo")
 def ver_arqueo(request: Request):
-    contexto = {**contexto_base(request), "arqueo": servicio_caja.calcular_arqueo_del_dia()}
+    contexto = {**contexto_base(request), "arqueo": servicio_caja.calcular_arqueo_de_sesion()}
     return templates.TemplateResponse(request, "caja/arqueo.html", contexto)
 
 
@@ -67,9 +69,15 @@ def cerrar_caja(
 def registrar_ingreso(
     monto: str = Form(...),
     descripcion: str = Form(...),
+    clave_idempotencia: str = Form(""),
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
-    servicio_caja.registrar_ingreso(texto_a_centavos(monto), descripcion, usuario_id=usuario_actual.id)
+    servicio_caja.registrar_ingreso(
+        texto_a_centavos(monto),
+        descripcion,
+        usuario_id=usuario_actual.id,
+        clave_idempotencia=clave_idempotencia or None,
+    )
     return redireccionar_con_mensaje("/caja", "success", "Ingreso registrado correctamente.")
 
 
@@ -77,7 +85,13 @@ def registrar_ingreso(
 def registrar_egreso(
     monto: str = Form(...),
     descripcion: str = Form(...),
+    clave_idempotencia: str = Form(""),
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
-    servicio_caja.registrar_egreso(texto_a_centavos(monto), descripcion, usuario_id=usuario_actual.id)
+    servicio_caja.registrar_egreso(
+        texto_a_centavos(monto),
+        descripcion,
+        usuario_id=usuario_actual.id,
+        clave_idempotencia=clave_idempotencia or None,
+    )
     return redireccionar_con_mensaje("/caja", "success", "Egreso registrado correctamente.")

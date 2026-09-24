@@ -14,6 +14,7 @@
       {{ ui.estado_vacio("Todavía no hay proveedores activos.", "Cargá uno en Proveedores antes de registrar una compra.") }}
     {% else %}
       <form method="post" action="/compras/nueva" id="form-compra" class="space-y-6">
+        <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia }}" />
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>

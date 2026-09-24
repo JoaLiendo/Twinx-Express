@@ -88,6 +88,27 @@ def _fila_a_detalle(fila: sqlite3.Row) -> DetalleCompra:
     )
 
 
+def obtener_por_clave_idempotencia_en_conexion(
+    conexion: sqlite3.Connection, clave_idempotencia: str
+) -> Compra | None:
+    """Compra ya registrada con esa clave de idempotencia (migración 014), o `None`."""
+    fila = conexion.execute(
+        f"SELECT {_COLUMNAS_COMPRA} FROM compras WHERE clave_idempotencia = ?", (clave_idempotencia,)
+    ).fetchone()
+    return _fila_a_compra(fila) if fila is not None else None
+
+
+def listar_lineas_en_conexion(conexion: sqlite3.Connection, compra_id: int) -> list[tuple[int, int, int]]:
+    """Líneas de una compra como `(producto_id, cantidad, costo_unitario_centavos)`,
+    ordenadas, dentro de la conexión recibida (sin abrir otra)."""
+    filas = conexion.execute(
+        "SELECT producto_id, cantidad, costo_unitario_centavos FROM detalle_compra "
+        "WHERE compra_id = ? ORDER BY producto_id",
+        (compra_id,),
+    ).fetchall()
+    return [(fila["producto_id"], fila["cantidad"], fila["costo_unitario_centavos"]) for fila in filas]
+
+
 def registrar_compra_con_detalle(
     conexion: sqlite3.Connection,
     proveedor_id: int,
@@ -95,6 +116,7 @@ def registrar_compra_con_detalle(
     observaciones: str | None,
     total_centavos: int,
     items_con_subtotal: list[tuple[ItemCompra, int]],
+    clave_idempotencia: str | None = None,
 ) -> Compra:
     """Inserta la compra y su detalle dentro de la conexión recibida.
 
@@ -108,11 +130,11 @@ def registrar_compra_con_detalle(
     """
     fila_compra = conexion.execute(
         f"""
-        INSERT INTO compras (proveedor_id, usuario_id, observaciones, total_centavos)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO compras (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia)
+        VALUES (?, ?, ?, ?, ?)
         RETURNING {_COLUMNAS_COMPRA}
         """,
-        (proveedor_id, usuario_id, observaciones, total_centavos),
+        (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia),
     ).fetchone()
 
     compra_id = fila_compra["id"]

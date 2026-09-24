@@ -16,7 +16,7 @@ from domain.usuario import Usuario
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
+from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
 from services import servicio_compras, servicio_proveedores, servicio_stock
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
@@ -49,6 +49,7 @@ def formulario_nueva_compra(request: Request):
         **contexto_base(request),
         "proveedores": servicio_proveedores.listar_activos(),
         "productos": servicio_stock.listar_todos(),
+        "clave_idempotencia": nueva_clave_idempotencia(),
     }
     return templates.TemplateResponse(request, "compras/nueva.html", contexto)
 
@@ -60,6 +61,7 @@ def crear_compra(
     producto_id: list[int] = Form(...),
     cantidad: list[int] = Form(...),
     costo_unitario: list[str] = Form(...),
+    clave_idempotencia: str = Form(""),
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
     if not (len(producto_id) == len(cantidad) == len(costo_unitario)):
@@ -74,6 +76,7 @@ def crear_compra(
         usuario_id=usuario_actual.id,
         items=items,
         observaciones=observaciones or None,
+        clave_idempotencia=clave_idempotencia or None,
     )
     return redireccionar_con_mensaje(
         f"/compras/{compra.id}", "success", f"Compra #{compra.id} registrada correctamente."

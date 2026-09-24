@@ -14,7 +14,7 @@ import pytest
 import services.servicio_backup as modulo_backup
 from services.control_escrituras import ControlEscrituras
 
-_PATRON_NOMBRE = re.compile(r"^KioscoApp_backup_\d{4}-\d{2}-\d{2}_\d{4}\.zip$")
+_PATRON_NOMBRE = re.compile(r"^KioscoApp_backup_\d{4}-\d{2}-\d{2}_\d{6}\.zip$")
 
 
 @pytest.fixture
@@ -295,3 +295,180 @@ def test_automatico_no_ejecuta_si_ya_hay_un_backup_manual_en_curso(datos_de_prue
     assert resultado is None
     assert caplog.records
     assert not list(destino.glob("*.zip")) if destino.exists() else True
+
+
+# ---------------------------------------------------------------------------
+# V1.1 -- B1: nombre con segundos y sin colisiones
+# ---------------------------------------------------------------------------
+
+
+def test_b1_el_nombre_lleva_segundos(datos_de_prueba, tmp_path):
+    ruta_zip = modulo_backup.crear_backup(tmp_path / "backups", ControlEscrituras())
+
+    assert re.match(r"^KioscoApp_backup_\d{4}-\d{2}-\d{2}_\d{6}\.zip$", ruta_zip.name)
+
+
+def test_b1_dos_backups_con_el_mismo_nombre_no_se_pisan(datos_de_prueba, tmp_path):
+    destino = tmp_path / "backups"
+    nombre = "KioscoApp_backup_2026-01-10_101010.zip"
+
+    primero = modulo_backup.crear_backup(destino, ControlEscrituras(), nombre_archivo=nombre)
+    contenido_primero = primero.read_bytes()
+    segundo = modulo_backup.crear_backup(destino, ControlEscrituras(), nombre_archivo=nombre)
+
+    assert primero.name == nombre
+    assert segundo.name == "KioscoApp_backup_2026-01-10_101010_2.zip"
+    assert primero.read_bytes() == contenido_primero
+    assert sorted(p.name for p in destino.glob("*.zip")) == [primero.name, segundo.name]
+
+
+def test_b1_un_backup_manual_y_uno_automatico_en_el_mismo_segundo_coexisten(datos_de_prueba, tmp_path, monkeypatch):
+    destino = tmp_path / "backups"
+
+    class RelojCongelado(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 3, 5, 12, 0, 0)
+
+    monkeypatch.setattr(modulo_backup, "datetime", RelojCongelado)
+
+    manual = modulo_backup.crear_backup(destino, ControlEscrituras())
+    automatico = modulo_backup.crear_backup(destino, ControlEscrituras())
+
+    assert manual != automatico
+    assert manual.exists() and automatico.exists()
+
+
+def test_b1_los_nombres_anteriores_de_minutos_siguen_reconociendose_y_no_se_borran(datos_de_prueba, tmp_path):
+    destino = tmp_path / "backups"
+    viejo = _crear_archivo_backup_con_fecha(destino, datetime.now() - timedelta(hours=1))
+
+    resultado = modulo_backup.ejecutar_backup_automatico_si_corresponde(
+        destino, ControlEscrituras(), antiguedad_minima_horas=24
+    )
+
+    assert resultado is None  # el de minutos cuenta como "último backup"
+    assert viejo.exists()
+
+
+# ---------------------------------------------------------------------------
+# V1.1 -- B2: retención
+# ---------------------------------------------------------------------------
+
+
+def _backup_falso(directorio: Path, nombre: str) -> Path:
+    directorio.mkdir(parents=True, exist_ok=True)
+    ruta = directorio / nombre
+    ruta.write_bytes(b"zip-falso")
+    return ruta
+
+
+def _nombre_regular(dia: int) -> str:
+    return f"KioscoApp_backup_2026-01-{dia:02d}_100000.zip"
+
+
+def _nombre_preventivo(dia: int) -> str:
+    return f"KioscoApp_backup_pre_migracion_2026-01-{dia:02d}_100000.zip"
+
+
+def test_b2_conserva_los_mas_recientes_y_borra_los_anteriores(tmp_path):
+    destino = tmp_path / "backups"
+    rutas = [_backup_falso(destino, _nombre_regular(dia)) for dia in range(1, 11)]
+
+    borrados = modulo_backup.aplicar_retencion(destino, rutas[-1], conservar=3)
+
+    assert sorted(p.name for p in destino.glob("*.zip")) == [_nombre_regular(8), _nombre_regular(9), _nombre_regular(10)]
+    assert len(borrados) == 7
+
+
+def test_b2_nunca_borra_el_backup_recien_creado_aunque_no_sea_de_los_mas_nuevos(tmp_path):
+    destino = tmp_path / "backups"
+    for dia in range(2, 8):
+        _backup_falso(destino, _nombre_regular(dia))
+    recien_creado = _backup_falso(destino, _nombre_regular(1))  # el reloj retrocedió: parece el más viejo
+
+    modulo_backup.aplicar_retencion(destino, recien_creado, conservar=2)
+
+    assert recien_creado.exists()
+
+
+def test_b2_un_limite_invalido_no_borra_todo(tmp_path):
+    destino = tmp_path / "backups"
+    rutas = [_backup_falso(destino, _nombre_regular(dia)) for dia in range(1, 5)]
+
+    modulo_backup.aplicar_retencion(destino, rutas[-1], conservar=0, conservar_preventivos=0)
+
+    assert rutas[-1].exists()
+    assert len(list(destino.glob("*.zip"))) >= 1
+
+
+def test_b2_no_toca_archivos_que_no_son_backups_reconocibles(tmp_path):
+    destino = tmp_path / "backups"
+    rutas = [_backup_falso(destino, _nombre_regular(dia)) for dia in range(1, 5)]
+    ajenos = [
+        _backup_falso(destino, "notas.txt"),
+        _backup_falso(destino, "KioscoApp_backup_manual_importante.zip"),
+        _backup_falso(destino, "otro_programa_2026-01-01.zip"),
+    ]
+
+    modulo_backup.aplicar_retencion(destino, rutas[-1], conservar=1)
+
+    assert all(ajeno.exists() for ajeno in ajenos)
+
+
+def test_b2_los_preventivos_tienen_su_propio_limite_y_no_compiten_con_los_regulares(tmp_path):
+    destino = tmp_path / "backups"
+    regulares = [_backup_falso(destino, _nombre_regular(dia)) for dia in range(1, 4)]
+    preventivos = [_backup_falso(destino, _nombre_preventivo(dia)) for dia in range(1, 6)]
+
+    modulo_backup.aplicar_retencion(destino, regulares[-1], conservar=3, conservar_preventivos=2)
+
+    assert all(r.exists() for r in regulares)
+    assert sorted(p.name for p in destino.glob("KioscoApp_backup_pre_*.zip")) == [
+        _nombre_preventivo(4),
+        _nombre_preventivo(5),
+    ]
+
+
+def test_b2_mezcla_nombres_de_minutos_y_de_segundos_ordenando_por_fecha(tmp_path):
+    destino = tmp_path / "backups"
+    viejo_minutos = _backup_falso(destino, "KioscoApp_backup_2026-01-01_1000.zip")
+    medio_segundos = _backup_falso(destino, "KioscoApp_backup_2026-01-02_100000.zip")
+    nuevo = _backup_falso(destino, "KioscoApp_backup_2026-01-03_100000.zip")
+
+    modulo_backup.aplicar_retencion(destino, nuevo, conservar=2)
+
+    assert not viejo_minutos.exists()
+    assert medio_segundos.exists() and nuevo.exists()
+
+
+def test_b2_un_fallo_al_borrar_no_interrumpe_ni_propaga(tmp_path, monkeypatch):
+    destino = tmp_path / "backups"
+    rutas = [_backup_falso(destino, _nombre_regular(dia)) for dia in range(1, 4)]
+
+    def unlink_que_falla(self, *a, **k):
+        raise PermissionError("archivo en uso")
+
+    monkeypatch.setattr(Path, "unlink", unlink_que_falla)
+
+    borrados = modulo_backup.aplicar_retencion(destino, rutas[-1], conservar=1)
+
+    assert borrados == []
+    assert all(r.exists() for r in rutas)
+
+
+def test_b2_crear_backup_aplica_la_retencion_y_conserva_el_nuevo(datos_de_prueba, tmp_path, monkeypatch):
+    destino = tmp_path / "backups"
+    for dia in range(1, 6):
+        _backup_falso(destino, _nombre_regular(dia))
+    monkeypatch.setattr(modulo_backup, "BACKUPS_A_CONSERVAR", 3)
+    # `aplicar_retencion` toma sus límites por defecto al definirse: se le pasan explícitos.
+    original = modulo_backup.aplicar_retencion
+    monkeypatch.setattr(
+        modulo_backup, "aplicar_retencion", lambda d, r: original(d, r, conservar=3, conservar_preventivos=5)
+    )
+
+    nuevo = modulo_backup.crear_backup(destino, ControlEscrituras())
+
+    assert nuevo.exists()
+    assert len(list(destino.glob("KioscoApp_backup_2*.zip"))) == 3

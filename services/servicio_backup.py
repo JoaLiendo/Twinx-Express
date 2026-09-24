@@ -20,6 +20,8 @@ from pathlib import Path
 
 from config import (
     ANTIGUEDAD_MINIMA_BACKUP_AUTOMATICO_HORAS,
+    BACKUPS_A_CONSERVAR,
+    BACKUPS_PREMIGRACION_A_CONSERVAR,
     DIRECTORIO_IMAGENES_PRODUCTOS,
     RUTA_BASE_DATOS,
 )
@@ -30,12 +32,13 @@ logger = logging.getLogger(__name__)
 
 _NOMBRE_DB_EN_ZIP = "kiosco.db"
 _NOMBRE_CARPETA_IMAGENES_EN_ZIP = "imagenes_productos"
-_PATRON_NOMBRE_BACKUP = re.compile(r"^KioscoApp_backup_(\d{4}-\d{2}-\d{2}_\d{4})\.zip$")
-_FORMATO_FECHA_EN_NOMBRE = "%Y-%m-%d_%H%M"
-# El backup preventivo lleva segundos y un marcador propio, y a propósito NO
-# coincide con `_PATRON_NOMBRE_BACKUP`: así no cuenta como "último backup"
-# para el backup automático de arranque, que sigue su propio calendario.
-_FORMATO_FECHA_EN_NOMBRE_PREVENTIVO = "%Y-%m-%d_%H%M%S"
+# El nombre lleva segundos (V1.1): con minutos, un backup manual y uno automático
+# del mismo minuto se pisaban. Los backups anteriores, con nombre de minutos, siguen
+# siendo válidos y se reconocen igual. Ante una colisión de nombre se agrega `_2`, `_3`...
+_PATRON_NOMBRE_BACKUP = re.compile(r"^KioscoApp_backup_(\d{4}-\d{2}-\d{2}_\d{4}(?:\d{2})?)(?:_(\d+))?\.zip$")
+_PATRON_NOMBRE_PREVENTIVO = re.compile(r"^KioscoApp_backup_pre_migracion_(\d{4}-\d{2}-\d{2}_\d{6})(?:_(\d+))?\.zip$")
+_FORMATO_FECHA_EN_NOMBRE = "%Y-%m-%d_%H%M%S"
+_FORMATO_FECHA_EN_NOMBRE_ANTIGUO = "%Y-%m-%d_%H%M"
 
 
 def _snapshot_base_datos(ruta_origen: Path, ruta_destino: Path) -> None:
@@ -51,6 +54,18 @@ def _snapshot_base_datos(ruta_origen: Path, ruta_destino: Path) -> None:
             conexion_destino.close()
     finally:
         conexion_origen.close()
+
+
+def _ruta_sin_colision(directorio: Path, nombre: str) -> Path:
+    """`directorio/nombre`, o con sufijo `_2`, `_3`... si ya existe: publicar un
+    backup nunca debe pisar uno anterior."""
+    ruta = directorio / nombre
+    base = ruta.stem
+    contador = 2
+    while ruta.exists():
+        ruta = directorio / f"{base}_{contador}{ruta.suffix}"
+        contador += 1
+    return ruta
 
 
 def _construir_zip(directorio_datos: Path, ruta_zip: Path) -> None:
@@ -83,8 +98,8 @@ def crear_backup(directorio_destino: Path, control_escrituras, *, nombre_archivo
     las imágenes a un directorio temporal (ver docstring del módulo).
     """
     directorio_destino.mkdir(parents=True, exist_ok=True)
-    nombre_final = nombre_archivo or f"KioscoApp_backup_{datetime.now().strftime('%Y-%m-%d_%H%M')}.zip"
-    ruta_final = directorio_destino / nombre_final
+    nombre_final = nombre_archivo or f"KioscoApp_backup_{datetime.now().strftime(_FORMATO_FECHA_EN_NOMBRE)}.zip"
+    ruta_final = _ruta_sin_colision(directorio_destino, nombre_final)
 
     with tempfile.TemporaryDirectory(dir=directorio_destino, prefix=".kioscoapp_backup_tmp_") as tmp:
         tmp_path = Path(tmp)
@@ -108,7 +123,71 @@ def crear_backup(directorio_destino: Path, control_escrituras, *, nombre_archivo
 
         zip_temporal.replace(ruta_final)
 
+    aplicar_retencion(directorio_destino, ruta_final)
     return ruta_final
+
+
+def _clave_de_orden(patron: re.Pattern[str], nombre: str, formato: str) -> tuple[datetime, int] | None:
+    coincidencia = patron.match(nombre)
+    if coincidencia is None:
+        return None
+    return datetime.strptime(coincidencia.group(1), formato), int(coincidencia.group(2) or 1)
+
+
+def _clave_de_backup_regular(nombre: str) -> tuple[datetime, int] | None:
+    """Orden cronológico de un backup manual/automático, con nombre de segundos
+    o con el nombre de minutos anterior a V1.1; `None` si no es uno de ellos."""
+    coincidencia = _PATRON_NOMBRE_BACKUP.match(nombre)
+    if coincidencia is None:
+        return None
+    formato = _FORMATO_FECHA_EN_NOMBRE if len(coincidencia.group(1)) == 17 else _FORMATO_FECHA_EN_NOMBRE_ANTIGUO
+    return datetime.strptime(coincidencia.group(1), formato), int(coincidencia.group(2) or 1)
+
+
+def aplicar_retencion(
+    directorio_backups: Path,
+    recien_creado: Path,
+    conservar: int = BACKUPS_A_CONSERVAR,
+    conservar_preventivos: int = BACKUPS_PREMIGRACION_A_CONSERVAR,
+) -> list[Path]:
+    """Borra los backups más antiguos que superan el límite de retención y
+    devuelve los que borró.
+
+    Política: se conservan los `conservar` backups manuales/automáticos más
+    recientes y, aparte, los `conservar_preventivos` más recientes de
+    migración. Solo se consideran archivos que siguen exactamente los
+    nombres que produce `crear_backup` (cualquier otro archivo de la carpeta
+    no se toca) y `recien_creado` nunca se borra, ni siquiera con un límite
+    inválido. El orden sale del nombre, no de `mtime`: no depende de que el
+    archivo haya sido copiado o restaurado. Un fallo al borrar se registra y
+    no interrumpe el backup ya creado.
+    """
+    borrados: list[Path] = []
+    familias = (
+        (_clave_de_backup_regular, max(conservar, 1)),
+        (
+            lambda nombre: _clave_de_orden(_PATRON_NOMBRE_PREVENTIVO, nombre, _FORMATO_FECHA_EN_NOMBRE),
+            max(conservar_preventivos, 1),
+        ),
+    )
+    for clave_de_orden, limite in familias:
+        candidatos = []
+        for ruta in directorio_backups.glob("KioscoApp_backup_*.zip"):
+            clave = clave_de_orden(ruta.name)
+            if clave is not None:
+                candidatos.append((clave, ruta))
+        candidatos.sort(key=lambda par: par[0], reverse=True)
+        for _, ruta in candidatos[limite:]:
+            if ruta == recien_creado:
+                continue
+            try:
+                ruta.unlink()
+            except OSError as error:
+                logger.warning("No se pudo borrar el backup antiguo %s: %s", ruta.name, error)
+                continue
+            borrados.append(ruta)
+            logger.info("Backup antiguo eliminado por retención: %s", ruta.name)
+    return borrados
 
 
 def _fecha_ultimo_backup(directorio_backups: Path) -> datetime | None:
@@ -122,10 +201,9 @@ def _fecha_ultimo_backup(directorio_backups: Path) -> datetime | None:
     """
     fechas = []
     for ruta in directorio_backups.glob("KioscoApp_backup_*.zip"):
-        coincidencia = _PATRON_NOMBRE_BACKUP.match(ruta.name)
-        if coincidencia is None:
-            continue
-        fechas.append(datetime.strptime(coincidencia.group(1), _FORMATO_FECHA_EN_NOMBRE))
+        clave = _clave_de_backup_regular(ruta.name)
+        if clave is not None:
+            fechas.append(clave[0])
     return max(fechas) if fechas else None
 
 
@@ -192,7 +270,7 @@ def migrar_base_datos_con_backup_preventivo(directorio_backups: Path, control_es
     """
     ruta_backup = None
     if hay_migraciones_pendientes_en_base_existente():
-        nombre = f"KioscoApp_backup_pre_migracion_{datetime.now().strftime(_FORMATO_FECHA_EN_NOMBRE_PREVENTIVO)}.zip"
+        nombre = f"KioscoApp_backup_pre_migracion_{datetime.now().strftime(_FORMATO_FECHA_EN_NOMBRE)}.zip"
         ruta_backup = crear_backup(directorio_backups, control_escrituras, nombre_archivo=nombre)
         logger.info("Backup preventivo previo a la migración creado: %s", ruta_backup.name)
 

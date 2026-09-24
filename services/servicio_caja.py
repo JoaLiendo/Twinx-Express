@@ -16,14 +16,18 @@ from db.repositorios import caja as repositorio_caja
 from db.repositorios import ventas as repositorio_ventas
 from domain.caja import MovimientoCaja, clasificar_diferencia
 from domain.venta import Venta
-from excepciones import CajaError
+from excepciones import MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS, CajaError, ClaveIdempotenciaReutilizadaError
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class ArqueoCaja:
-    """Resumen de caja del día: total vendido, efectivo estimado y detalle.
+    """Resumen de una sesión de caja: total vendido, efectivo estimado y detalle.
+
+    `sesion_abierta` indica si el resumen es de la caja actualmente abierta
+    (`True`) o de la última sesión ya cerrada (`False`; con todo en cero
+    si nunca se abrió una caja).
 
     `efectivo_estimado_centavos` es una estimación, no un conteo real:
     solo refleja los movimientos y ventas registrados en el sistema
@@ -34,6 +38,7 @@ class ArqueoCaja:
     total_efectivo_ventas_centavos: int
     efectivo_estimado_centavos: int
     cantidad_ventas: int
+    sesion_abierta: bool = False
     ventas: list[Venta] = field(default_factory=list)
 
 
@@ -53,24 +58,36 @@ def listar_movimientos() -> list[MovimientoCaja]:
     return repositorio_caja.listar_movimientos()
 
 
-def calcular_arqueo_del_dia() -> ArqueoCaja:
-    """Calcula el arqueo del día: ventas de hoy más movimientos de caja de hoy.
+def calcular_arqueo_de_sesion() -> ArqueoCaja:
+    """Calcula el arqueo de la sesión de caja vigente (o de la última, si
+    ya está cerrada): ventas y movimientos entre su APERTURA y su CIERRE.
 
-    El efectivo estimado suma el efectivo físico que entró (montos de
-    apertura e ingresos manuales, más ventas cobradas en efectivo) y
-    resta los egresos manuales; las ventas con otros medios de pago
-    (tarjeta, transferencia) no mueven el efectivo de la caja.
+    Es por sesión y no por día calendario: una caja que cruza medianoche
+    o dos aperturas el mismo día no se mezclan. El efectivo estimado suma
+    el efectivo físico que entró (montos de apertura e ingresos manuales,
+    más ventas cobradas en efectivo) y resta los egresos manuales; las
+    ventas con otros medios de pago (tarjeta, transferencia) no mueven el
+    efectivo de la caja.
     """
-    ventas_del_dia = repositorio_ventas.listar_ventas_del_dia()
-    movimientos_del_dia = repositorio_caja.listar_movimientos_del_dia()
+    sesion = repositorio_caja.obtener_ultima_sesion()
+    if sesion is None:
+        return ArqueoCaja(
+            total_vendido_centavos=0,
+            total_efectivo_ventas_centavos=0,
+            efectivo_estimado_centavos=0,
+            cantidad_ventas=0,
+        )
 
-    total_vendido_centavos = sum(venta.total_centavos for venta in ventas_del_dia)
+    ventas_de_sesion = repositorio_ventas.listar_ventas_de_sesion(sesion)
+    movimientos_de_sesion = repositorio_caja.listar_movimientos_de_sesion(sesion)
+
+    total_vendido_centavos = sum(venta.total_centavos for venta in ventas_de_sesion)
     total_efectivo_ventas_centavos = sum(
-        venta.total_centavos for venta in ventas_del_dia if venta.tipo_pago == "EFECTIVO"
+        venta.total_centavos for venta in ventas_de_sesion if venta.tipo_pago == "EFECTIVO"
     )
 
     efectivo_estimado_centavos = total_efectivo_ventas_centavos
-    for movimiento in movimientos_del_dia:
+    for movimiento in movimientos_de_sesion:
         if movimiento.tipo in ("APERTURA", "INGRESO"):
             efectivo_estimado_centavos += movimiento.monto_centavos
         elif movimiento.tipo == "EGRESO":
@@ -81,8 +98,9 @@ def calcular_arqueo_del_dia() -> ArqueoCaja:
         total_vendido_centavos=total_vendido_centavos,
         total_efectivo_ventas_centavos=total_efectivo_ventas_centavos,
         efectivo_estimado_centavos=efectivo_estimado_centavos,
-        cantidad_ventas=len(ventas_del_dia),
-        ventas=ventas_del_dia,
+        cantidad_ventas=len(ventas_de_sesion),
+        sesion_abierta=sesion.abierta,
+        ventas=ventas_de_sesion,
     )
 
 
@@ -122,7 +140,7 @@ def cerrar_caja(
 
     `diferencia_centavos = monto_final_centavos - efectivo_estimado_centavos`,
     con `efectivo_estimado_centavos` resuelto acá mismo, en el momento del
-    cierre, con `calcular_arqueo_del_dia()` -- la misma función que ya
+    cierre, con `calcular_arqueo_de_sesion()` -- la misma función que ya
     usa `/caja/arqueo`, sin duplicar esa lógica. Se calcula recién
     después de confirmar que la caja está abierta y justo antes de
     persistir, para no depender de un valor que el usuario haya visto
@@ -133,7 +151,7 @@ def cerrar_caja(
     if not _caja_esta_abierta():
         raise CajaError("No hay una caja abierta para cerrar.")
 
-    efectivo_estimado_centavos = calcular_arqueo_del_dia().efectivo_estimado_centavos
+    efectivo_estimado_centavos = calcular_arqueo_de_sesion().efectivo_estimado_centavos
     diferencia_centavos = monto_final_centavos - efectivo_estimado_centavos
 
     movimiento = MovimientoCaja(
@@ -152,7 +170,45 @@ def cerrar_caja(
     return movimiento_creado
 
 
-def registrar_ingreso(monto_centavos: int, descripcion: str, usuario_id: int | None = None) -> MovimientoCaja:
+def _resolver_reintento(existente: MovimientoCaja, solicitado: MovimientoCaja) -> MovimientoCaja:
+    """Una clave ya usada devuelve el movimiento original solo si el pedido
+    es el mismo; con otros datos (ej. "atrás" en el navegador y reenviar un
+    monto distinto) se rechaza en vez de dar por registrado algo que no lo está."""
+    if (existente.tipo, existente.monto_centavos, existente.descripcion) != (
+        solicitado.tipo,
+        solicitado.monto_centavos,
+        solicitado.descripcion,
+    ):
+        raise ClaveIdempotenciaReutilizadaError(MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS)
+    return existente
+
+
+def _registrar_movimiento_manual(
+    movimiento: MovimientoCaja, mensaje_sin_caja: str, usuario_id: int | None, clave_idempotencia: str | None
+) -> MovimientoCaja:
+    # El reintento de un movimiento ya registrado se resuelve antes de exigir la
+    # caja abierta: si la caja se cerró entre el envío original y el reintento,
+    # el reintento sigue devolviendo el resultado original (mismo criterio que ventas).
+    if clave_idempotencia is not None:
+        existente = repositorio_caja.obtener_por_clave_idempotencia(clave_idempotencia)
+        if existente is not None:
+            return _resolver_reintento(existente, movimiento)
+    if not _caja_esta_abierta():
+        raise CajaError(mensaje_sin_caja)
+    creado = repositorio_caja.registrar_movimiento(
+        movimiento, usuario_id=usuario_id, clave_idempotencia=clave_idempotencia
+    )
+    # Si otra request con la misma clave ganó la carrera, `registrar_movimiento`
+    # devuelve la suya: se valida igual que un reintento.
+    return _resolver_reintento(creado, movimiento)
+
+
+def registrar_ingreso(
+    monto_centavos: int,
+    descripcion: str,
+    usuario_id: int | None = None,
+    clave_idempotencia: str | None = None,
+) -> MovimientoCaja:
     """Registra un ingreso manual de dinero (ej. cambio inicial, un aporte).
 
     Raises:
@@ -160,12 +216,14 @@ def registrar_ingreso(monto_centavos: int, descripcion: str, usuario_id: int | N
         DatosInvalidosError: si `monto_centavos` es negativo o `descripcion` está vacía.
 
     `usuario_id` (migración 010): ver `abrir_caja`.
-    """
-    if not _caja_esta_abierta():
-        raise CajaError("No se pueden registrar ingresos sin una caja abierta.")
 
+    `clave_idempotencia` (V1.1): un reenvío con la misma clave devuelve el
+    movimiento ya registrado en vez de duplicarlo.
+    """
     movimiento = MovimientoCaja(tipo="INGRESO", monto_centavos=monto_centavos, descripcion=descripcion)
-    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento, usuario_id=usuario_id)
+    movimiento_creado = _registrar_movimiento_manual(
+        movimiento, "No se pueden registrar ingresos sin una caja abierta.", usuario_id, clave_idempotencia
+    )
     logger.info(
         "Ingreso de caja registrado: %s centavos (%s)",
         movimiento_creado.monto_centavos,
@@ -174,7 +232,12 @@ def registrar_ingreso(monto_centavos: int, descripcion: str, usuario_id: int | N
     return movimiento_creado
 
 
-def registrar_egreso(monto_centavos: int, descripcion: str, usuario_id: int | None = None) -> MovimientoCaja:
+def registrar_egreso(
+    monto_centavos: int,
+    descripcion: str,
+    usuario_id: int | None = None,
+    clave_idempotencia: str | None = None,
+) -> MovimientoCaja:
     """Registra un egreso manual de dinero (ej. pago a proveedor, retiro de efectivo).
 
     Raises:
@@ -182,12 +245,14 @@ def registrar_egreso(monto_centavos: int, descripcion: str, usuario_id: int | No
         DatosInvalidosError: si `monto_centavos` es negativo o `descripcion` está vacía.
 
     `usuario_id` (migración 010): ver `abrir_caja`.
-    """
-    if not _caja_esta_abierta():
-        raise CajaError("No se pueden registrar egresos sin una caja abierta.")
 
+    `clave_idempotencia` (V1.1): un reenvío con la misma clave devuelve el
+    movimiento ya registrado en vez de duplicarlo.
+    """
     movimiento = MovimientoCaja(tipo="EGRESO", monto_centavos=monto_centavos, descripcion=descripcion)
-    movimiento_creado = repositorio_caja.registrar_movimiento(movimiento, usuario_id=usuario_id)
+    movimiento_creado = _registrar_movimiento_manual(
+        movimiento, "No se pueden registrar egresos sin una caja abierta.", usuario_id, clave_idempotencia
+    )
     logger.info(
         "Egreso de caja registrado: %s centavos (%s)",
         movimiento_creado.monto_centavos,

@@ -11,6 +11,7 @@
     </p>
 
     <form method="post" action="/productos/{{ producto.id }}/ajustar" class="space-y-5" id="form-ajustar-stock">
+      <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia }}" />
 
       <div>
         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Motivo</label>

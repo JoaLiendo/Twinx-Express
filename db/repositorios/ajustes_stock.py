@@ -29,7 +29,19 @@ def _fila_a_ajuste(fila: sqlite3.Row) -> AjusteStock:
     )
 
 
-def registrar_ajuste_en_conexion(conexion: sqlite3.Connection, ajuste: AjusteStock) -> AjusteStock:
+def obtener_por_clave_idempotencia_en_conexion(
+    conexion: sqlite3.Connection, clave_idempotencia: str
+) -> AjusteStock | None:
+    """Ajuste ya registrado con esa clave de idempotencia (migración 014), o `None`."""
+    fila = conexion.execute(
+        f"SELECT {_COLUMNAS} FROM ajustes_stock WHERE clave_idempotencia = ?", (clave_idempotencia,)
+    ).fetchone()
+    return _fila_a_ajuste(fila) if fila is not None else None
+
+
+def registrar_ajuste_en_conexion(
+    conexion: sqlite3.Connection, ajuste: AjusteStock, clave_idempotencia: str | None = None
+) -> AjusteStock:
     """Inserta un nuevo ajuste de stock usando la conexión recibida y
     devuelve la entidad persistida.
 
@@ -45,8 +57,9 @@ def registrar_ajuste_en_conexion(conexion: sqlite3.Connection, ajuste: AjusteSto
     """
     consulta = f"""
         INSERT INTO ajustes_stock
-            (producto_id, usuario_id, motivo, delta, stock_anterior, stock_resultante, observaciones)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (producto_id, usuario_id, motivo, delta, stock_anterior, stock_resultante, observaciones,
+             clave_idempotencia)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING {_COLUMNAS}
     """
     parametros = (
@@ -57,6 +70,7 @@ def registrar_ajuste_en_conexion(conexion: sqlite3.Connection, ajuste: AjusteSto
         ajuste.stock_anterior,
         ajuste.stock_resultante,
         ajuste.observaciones,
+        clave_idempotencia,
     )
     fila = conexion.execute(consulta, parametros).fetchone()
     return _fila_a_ajuste(fila)

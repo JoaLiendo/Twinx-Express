@@ -64,6 +64,26 @@
       <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-.8 12.2A2 2 0 0 1 14.2 21H9.8a2 2 0 0 1-2-1.8L7 7"></path>
     </svg>`;
 
+  // V1.1 (P5): una respuesta que no es JSON (p. ej. un 500 con texto plano)
+  // ya no se confunde con un error de conexión. Devuelve el JSON parseado o
+  // `null` si el cuerpo no es JSON.
+  async function leerJsonSiLoHay(respuesta) {
+    try {
+      return JSON.parse(await respuesta.text());
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function mensajeDeError(respuesta, datos, mensajePorDefecto) {
+    if (datos && datos.error) return datos.error;
+    if (respuesta.status === 401) return 'Tu sesión venció: iniciá sesión de nuevo.';
+    if (respuesta.status >= 500) {
+      return `El servidor tuvo un error interno (código ${respuesta.status}). Revisá el registro de la aplicación.`;
+    }
+    return `${mensajePorDefecto} (código ${respuesta.status})`;
+  }
+
   function formatearCentavos(centavos) {
     const signo = centavos < 0 ? '-' : '';
     const absoluto = Math.abs(Math.round(centavos));
@@ -97,7 +117,18 @@
     if (window.matchMedia('(min-width: 1024px)').matches) refocarCodigoBarras();
   }
 
+  // V1.1: mientras hay un cobro en vuelo el carrito no se puede modificar. El
+  // cobro ya viajó con una copia de los ítems y, al confirmarse, el carrito se
+  // vacía: un producto agregado en ese lapso se perdería sin aviso. Bloquear es
+  // más simple y más seguro que reconciliar dos estados.
+  function cobroBloqueaElCarrito() {
+    if (!cobroEnCurso) return false;
+    mostrarToast('Hay una venta procesándose: esperá a que termine para modificar el carrito.', 'warning');
+    return true;
+  }
+
   function agregarAlCarrito(producto) {
+    if (cobroBloqueaElCarrito()) return;
     // Fase 5D: si el cajero escanea/toca un producto estando todavía a
     // la vista el panel de "Imprimir ticket"/"Nueva venta" de la venta
     // anterior, eso ya es el arranque de una venta nueva -- se descarta
@@ -105,6 +136,13 @@
     mostrandoAccionesPostVenta = false;
     if (producto.stock <= 0) {
       mostrarToast(`'${producto.nombre}' no tiene stock disponible.`, 'warning');
+      refocarCodigoBarras();
+      return;
+    }
+    // El servidor sigue rechazando la venta de un producto sin precio (esa regla
+    // no cambia): acá solo se evita que llegue al carrito y falle recién al cobrar.
+    if (!(producto.precio > 0)) {
+      mostrarToast(`'${producto.nombre}' no tiene precio configurado: cargalo desde Stock antes de venderlo.`, 'warning');
       refocarCodigoBarras();
       return;
     }
@@ -126,6 +164,7 @@
   }
 
   function cambiarCantidad(productoId, delta) {
+    if (cobroBloqueaElCarrito()) return;
     const item = carrito.get(productoId);
     if (!item) return;
     const nuevaCantidad = item.cantidad + delta;
@@ -143,6 +182,7 @@
   }
 
   function quitarDelCarrito(productoId) {
+    if (cobroBloqueaElCarrito()) return;
     carrito.delete(productoId);
     renderizarCarrito();
     refocarCodigoBarrasTrasControlDelCarrito();
@@ -323,6 +363,15 @@
 
   radiosTipoPago.forEach((radio) => radio.addEventListener('change', actualizarEstadoCobrar));
   if (inputMontoRecibido) inputMontoRecibido.addEventListener('input', actualizarEstadoCobrar);
+  if (inputMontoRecibido) {
+    inputMontoRecibido.addEventListener('keydown', (evento) => {
+      if (evento.key !== 'Enter') return;
+      evento.preventDefault();
+      // Mismo criterio que el botón: solo cobra si "Cobrar" está habilitado
+      // (monto suficiente, carrito no vacío) y no hay un cobro en curso.
+      if (botonCobrar && !botonCobrar.disabled) cobrar();
+    });
+  }
 
   listaCarritoEl.addEventListener('click', (evento) => {
     const boton = evento.target.closest('button[data-accion]');
@@ -352,12 +401,13 @@
       const codigo = inputCodigo.value.trim();
       inputCodigo.value = '';
       if (!codigo) return;
+      if (cobroBloqueaElCarrito()) return;
 
       try {
         const respuesta = await fetch(`/api/productos/buscar-codigo/${encodeURIComponent(codigo)}`);
-        const datos = await respuesta.json();
-        if (!respuesta.ok) {
-          mostrarToast(datos.error || 'No se encontró el producto.', 'error');
+        const datos = await leerJsonSiLoHay(respuesta);
+        if (!respuesta.ok || !datos) {
+          mostrarToast(mensajeDeError(respuesta, datos, 'No se encontró el producto.'), 'error');
           return;
         }
         agregarAlCarrito({
@@ -367,7 +417,7 @@
           stock: datos.stock_actual,
         });
       } catch (error) {
-        mostrarToast('No se pudo consultar el producto. Revisá tu conexión.', 'error');
+        mostrarToast('No se pudo conectar con el servidor para consultar el producto.', 'error');
       }
     });
   }
@@ -429,8 +479,27 @@
     for (const boton of botonesCobrar) boton.disabled = procesando;
   }
 
+  // Tras un cobro confirmado se descuenta lo vendido de las cards de la grilla
+  // (data-stock y texto) para que no muestren stock viejo hasta la próxima venta.
+  // Es solo visual: el servidor sigue siendo quien valida el stock real.
+  function actualizarStockDeGrilla(itemsVendidos) {
+    const vendidoPorId = new Map(itemsVendidos.map((item) => [item.producto_id, item.cantidad]));
+    document.querySelectorAll('[data-producto-card]').forEach((tarjeta) => {
+      const vendido = vendidoPorId.get(Number(tarjeta.dataset.id));
+      if (!vendido) return;
+      const nuevoStock = Math.max(0, Number(tarjeta.dataset.stock) - vendido);
+      tarjeta.dataset.stock = String(nuevoStock);
+      const texto = tarjeta.querySelector('[data-stock-texto]');
+      if (texto) texto.textContent = nuevoStock <= 0 ? 'Sin stock' : `Stock: ${nuevoStock}`;
+      if (nuevoStock <= 0) {
+        tarjeta.disabled = true;
+        tarjeta.classList.add('opacity-50', 'cursor-not-allowed');
+      }
+    });
+  }
+
   async function cobrar() {
-    if (carrito.size === 0) return;
+    if (cobroEnCurso || carrito.size === 0) return;
     const tipoPagoInput = document.querySelector('input[name="tipo_pago"]:checked');
     if (!tipoPagoInput) {
       mostrarToast('Elegí un tipo de pago.', 'warning');
@@ -465,10 +534,20 @@
           clave_idempotencia: claveIdempotenciaActual,
         }),
       });
-      const datos = await respuesta.json();
+      const datos = await leerJsonSiLoHay(respuesta);
+
+      if (respuesta.ok && !datos) {
+        // El servidor respondió 2xx pero sin el JSON esperado: la venta pudo
+        // haberse registrado. Se conserva la clave para que un reintento sea seguro.
+        mostrarToast('Respuesta inesperada del servidor: revisá el historial antes de reintentar la venta.', 'warning');
+        cobroEnCurso = false;
+        establecerEstadoProcesando(false);
+        actualizarEstadoCobrar();
+        return;
+      }
 
       if (!respuesta.ok) {
-        mostrarToast(datos.error || 'No se pudo registrar la venta.', 'error');
+        mostrarToast(mensajeDeError(respuesta, datos, 'No se pudo registrar la venta'), 'error');
         cobroEnCurso = false;
         establecerEstadoProcesando(false);
         // No alcanza con "reactivar" -- hay que recalcular el estado REAL
@@ -484,6 +563,7 @@
       claveIdempotenciaActual = null; // el intento terminó bien: el próximo cobro arranca uno nuevo
       cobroEnCurso = false;
       carrito.clear();
+      actualizarStockDeGrilla(items);
       // Fase 5D: en vez de recargar solo tras 1.3s, se le da al cajero
       // una acción explícita ("Imprimir ticket"/"Nueva venta") y el
       // tiempo que necesite para elegirla antes de que la página se
@@ -494,7 +574,7 @@
       if (postVentaImprimirEl) postVentaImprimirEl.href = `/ventas/${datos.id}/ticket`;
       renderizarCarrito();
     } catch (error) {
-      mostrarToast('No se pudo registrar la venta. Revisá tu conexión.', 'error');
+      mostrarToast('No se pudo conectar con el servidor: la venta puede no haberse registrado, revisá el historial antes de reintentar.', 'error');
       cobroEnCurso = false;
       establecerEstadoProcesando(false);
       actualizarEstadoCobrar();
@@ -527,6 +607,16 @@
       window.location.reload();
     });
   }
+
+  // V1.1 (P2): el carrito vive solo en esta pestaña. Recargar o navegar con
+  // productos cargados -- o con un cobro en vuelo, cuya clave de idempotencia
+  // se perdería -- pide confirmación en vez de descartar todo en silencio.
+  window.addEventListener('beforeunload', (evento) => {
+    if (cobroEnCurso || carrito.size > 0) {
+      evento.preventDefault();
+      evento.returnValue = '';
+    }
+  });
 
   renderizarCarrito();
   if (inputCodigo) inputCodigo.focus();

@@ -14,6 +14,9 @@ from services import servicio_auth, servicio_stock, servicio_ventas
 from domain.venta import ItemVenta
 
 from ._asgi_cliente import solicitud
+import pytest
+
+pytestmark = pytest.mark.usefixtures("caja_abierta")
 
 
 def _cookies(rol: str = "OWNER", nombre_usuario: str = "ana") -> dict[str, str]:

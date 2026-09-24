@@ -7,6 +7,9 @@ ENV/
 # Datos de la aplicación (base de datos local, nunca se versiona)
 data/
 
+# Logs generados por la app (modo desarrollo)
+logs/
+
 # Backups generados por la app (ZIP con la base de datos y las imágenes)
 backups/
 

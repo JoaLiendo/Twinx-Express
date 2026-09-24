@@ -13,6 +13,9 @@ from interfaces.web.auth import NOMBRE_COOKIE_SESION
 from services import servicio_auth, servicio_stock, servicio_ventas
 
 from ._asgi_cliente import solicitud
+import pytest
+
+pytestmark = pytest.mark.usefixtures("caja_abierta")
 
 
 def _crear_usuario_y_loguearse(rol: str, nombre_usuario: str) -> str:
@@ -198,6 +201,39 @@ class TestIdempotenciaHttp:
         # las dos respuestas dio un error transitorio de lock.
         assert _contar_ventas() == 1
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 8
+
+
+class TestVentaSinCajaAbierta:
+    """C2 (V1.1): sin caja abierta la API rechaza la venta con un mensaje
+    claro y no persiste nada."""
+
+    @pytest.mark.sin_caja_abierta
+    def test_sin_caja_abierta_da_422_con_mensaje_claro_y_no_persiste(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=5)
+        cookies = _cookies("CASHIER", "cajera")
+
+        respuesta = solicitud("POST", "/api/ventas", cookies=cookies, json_body=_cuerpo(producto.id, 1))
+
+        assert respuesta.status == 422
+        assert "abrí la caja" in respuesta.json()["error"]
+        assert _contar_ventas() == 0
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 5
+
+    @pytest.mark.sin_caja_abierta
+    def test_el_pos_avisa_que_la_caja_esta_cerrada(self, base_datos_temporal):
+        cookies = _cookies("CASHIER", "cajera")
+
+        respuesta = solicitud("GET", "/ventas", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "id=\"aviso-caja-cerrada\"" in respuesta.texto
+
+    def test_el_pos_no_avisa_con_la_caja_abierta(self, base_datos_temporal):
+        cookies = _cookies("CASHIER", "cajera")
+
+        respuesta = solicitud("GET", "/ventas", cookies=cookies)
+
+        assert "aviso-caja-cerrada" not in respuesta.texto
 
 
 class TestValidacionesDeNegocio:

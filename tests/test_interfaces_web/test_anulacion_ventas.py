@@ -211,8 +211,10 @@ class TestSubmitAnular:
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10  # sin restaurar dos veces
 
     def test_sin_caja_abierta_es_rechazada(self, base_datos_temporal):
+        servicio_caja.abrir_caja(100_000)
         producto = _crear_producto(stock_actual=10)
         venta = _crear_venta(producto.id, cantidad=3)
+        servicio_caja.cerrar_caja(100_000)
         _, cookies = _crear_usuario_logueado("OWNER", "duenio")
 
         respuesta = solicitud(

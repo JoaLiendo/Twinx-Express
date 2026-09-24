@@ -1,12 +1,23 @@
 """Utilidades compartidas por los routers de la interfaz web."""
 
 from urllib.parse import quote
+from uuid import uuid4
 
 from fastapi import Request
 from starlette.responses import RedirectResponse
 
 from interfaces.web.auth import obtener_usuario_actual
 from interfaces.web.navegacion import navegacion_visible_para
+
+
+def nueva_clave_idempotencia() -> str:
+    """Clave única para un formulario que mueve dinero o stock (V1.1).
+
+    Se genera al mostrar el formulario (GET) y viaja en un campo oculto: un
+    doble clic o un reenvío del mismo formulario llega con la misma clave y
+    el servicio lo trata como un reintento, nunca como una operación nueva.
+    """
+    return uuid4().hex
 
 
 def redireccionar_con_mensaje(url: str, tipo: str, mensaje: str) -> RedirectResponse:

@@ -16,7 +16,7 @@ router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
 @router.get("/")
 def ver_dashboard(request: Request):
     productos_criticos = servicio_stock.listar_stock_critico()
-    arqueo = servicio_caja.calcular_arqueo_del_dia()
+    arqueo = servicio_caja.calcular_arqueo_de_sesion()
     movimientos_recientes = list(reversed(servicio_caja.listar_movimientos()))[:5]
     contexto = {
         **contexto_base(request),

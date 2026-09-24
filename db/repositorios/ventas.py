@@ -14,6 +14,7 @@ Los montos se manejan en centavos (`int`): ver `domain.dinero`.
 import sqlite3
 
 from db.conexion import obtener_conexion
+from domain.caja import SesionCaja
 from domain.venta import ItemVenta, LineaVenta, ProductoMasVendido, ResumenVenta, Venta, VentaConDetalle
 from excepciones import VentaYaAnuladaError
 
@@ -242,25 +243,31 @@ def obtener_venta_con_detalle(venta_id: int) -> VentaConDetalle | None:
     return VentaConDetalle(venta=venta, lineas=lineas)
 
 
-def listar_ventas_del_dia() -> list[Venta]:
-    """Devuelve las ventas registradas hoy (hora local), más recientes primero.
+def listar_ventas_de_sesion(sesion: SesionCaja) -> list[Venta]:
+    """Devuelve las ventas `ACTIVA` de una sesión de caja (desde su
+    apertura hasta su cierre, o hasta ahora si sigue abierta), más
+    recientes primero.
 
     Usada por el arqueo de caja para calcular el total vendido y el
-    efectivo estimado del día (ver `services.servicio_caja.calcular_arqueo_del_dia`).
+    efectivo estimado de la sesión (ver `services.servicio_caja.calcular_arqueo_de_sesion`).
+    No depende del día calendario: una sesión que cruza medianoche
+    incluye las ventas posteriores a las 00:00, y dos sesiones del mismo
+    día no se mezclan.
 
     Excluye `estado = 'ANULADA'` (migración 013): una venta anulada no
     cobró nada real, así que no puede seguir sumando al efectivo
-    estimado ni al total vendido del día -- es justamente el mecanismo
+    estimado ni al total vendido -- es justamente el mecanismo
     que corrige el arqueo sin generar ningún movimiento de caja nuevo
     (ver `services.servicio_ventas.anular_venta`).
     """
     consulta = """
         SELECT id, fecha, total_centavos, tipo_pago, estado FROM ventas
-        WHERE date(fecha) = date('now', 'localtime') AND estado = 'ACTIVA'
+        WHERE fecha >= ? AND (? IS NULL OR fecha <= ?) AND estado = 'ACTIVA'
         ORDER BY id DESC
     """
+    parametros = (sesion.fecha_apertura, sesion.fecha_cierre, sesion.fecha_cierre)
     with obtener_conexion() as conexion:
-        filas = conexion.execute(consulta).fetchall()
+        filas = conexion.execute(consulta, parametros).fetchall()
     return [_fila_a_venta(fila) for fila in filas]
 
 

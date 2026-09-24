@@ -8,13 +8,13 @@
 <div class="max-w-5xl mx-auto space-y-8">
 
   <div class="flex items-center justify-between">
-    <p class="text-sm text-slate-500 dark:text-slate-400">Resumen del día de hoy.</p>
+    <p class="text-sm text-slate-500 dark:text-slate-400">{{ 'Resumen de la caja abierta.' if arqueo.sesion_abierta else 'La caja está cerrada: resumen de la última sesión.' }}</p>
     <a href="/caja" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver a caja</a>
   </div>
 
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
     <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Total vendido hoy</p>
+      <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Total vendido en la sesión</p>
       <p class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">${{ arqueo.total_vendido_centavos | dinero_ar }}</p>
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ arqueo.cantidad_ventas }} venta{{ 's' if arqueo.cantidad_ventas != 1 else '' }}</p>
     </div>
@@ -25,13 +25,13 @@
     <div class="rounded-2xl border border-success/20 bg-success/5 p-6 shadow-sm">
       <p class="text-sm font-medium text-success">Efectivo estimado en caja</p>
       <p class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-success">${{ arqueo.efectivo_estimado_centavos | dinero_ar }}</p>
-      <p class="mt-1 text-xs text-success/80">Apertura + ingresos + ventas en efectivo − egresos de hoy</p>
+      <p class="mt-1 text-xs text-success/80">Apertura + ingresos + ventas en efectivo − egresos de la sesión</p>
     </div>
   </div>
 
   <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
     <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
-      <p class="font-semibold text-slate-900 dark:text-slate-100">Ventas de hoy</p>
+      <p class="font-semibold text-slate-900 dark:text-slate-100">Ventas de la sesión</p>
     </div>
     {% if arqueo.ventas %}
       <div class="overflow-x-auto">
@@ -57,7 +57,7 @@
         </table>
       </div>
     {% else %}
-      {{ ui.estado_vacio("Todavía no se registraron ventas hoy.") }}
+      {{ ui.estado_vacio("Todavía no se registraron ventas en esta sesión.") }}
     {% endif %}
   </div>
 

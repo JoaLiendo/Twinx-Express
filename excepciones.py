@@ -49,8 +49,30 @@ class ErrorCatalogoInicial(ErrorAplicacion):
     """El catálogo inicial de distribución es inválido o no pudo cargarse."""
 
 
+class PuertoOcupadoError(ErrorAplicacion):
+    """El puerto local de la aplicación ya está en uso: otra instancia de
+    Twinx Express, u otro programa."""
+
+
+class ErrorInicioServidor(ErrorAplicacion):
+    """El servidor no pudo iniciar por un fallo real de arranque (base de
+    datos inaccesible o corrupta, migración, seed o backup fallidos), no
+    por un puerto ocupado."""
+
+
 class CajaError(ErrorAplicacion):
     """Error en una operación de caja (apertura, cierre o movimiento)."""
+
+
+MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS = (
+    "Este formulario ya se había enviado con otros datos y no se registró de nuevo. "
+    "Recargá la página y cargá la operación otra vez."
+)
+
+
+class CajaCerradaError(CajaError):
+    """Se intentó registrar una venta sin ninguna caja abierta: toda venta
+    debe pertenecer a una sesión de caja (decisión de negocio de V1.1)."""
 
 
 class ArchivoImportacionInvalidoError(DatosInvalidosError):

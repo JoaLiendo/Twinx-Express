@@ -16,10 +16,20 @@ def _hrefs(items):
     return {item["href"] for item in items}
 
 
-def test_owner_ve_toda_la_navegacion_existente():
+_PROXIMAMENTE = {"/pedidos", "/precios"}
+
+
+def test_owner_ve_toda_la_navegacion_con_funcionalidad_real():
     visibles = navegacion_visible_para("OWNER")
 
-    assert _hrefs(visibles) == _hrefs(NAV_ITEMS)
+    assert _hrefs(visibles) == _hrefs(NAV_ITEMS) - _PROXIMAMENTE
+
+
+def test_las_secciones_proximamente_no_aparecen_en_ningun_menu():
+    """V1.1: Pedidos y Precios son cascarones sin funcionalidad."""
+    for rol in ("OWNER", "CASHIER", None):
+        assert _hrefs(navegacion_visible_para(rol)).isdisjoint(_PROXIMAMENTE)
+    assert _PROXIMAMENTE <= _hrefs(NAV_ITEMS)  # siguen definidas, solo ocultas
 
 
 def test_cashier_ve_las_secciones_definidas_para_ese_rol():
@@ -51,7 +61,7 @@ def test_none_es_una_decision_temporal_de_2d_no_una_regla_de_autorizacion():
     """
     visibles = navegacion_visible_para(None)
 
-    assert _hrefs(visibles) == _hrefs(NAV_ITEMS)
+    assert _hrefs(visibles) == _hrefs(NAV_ITEMS) - _PROXIMAMENTE
 
 
 def test_rol_desconocido_no_ve_secciones_restringidas_a_owner():

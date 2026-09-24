@@ -60,6 +60,10 @@ def navegacion_visible_para(rol: str | None) -> list[dict[str, object]]:
     en `tests/test_interfaces_web/test_navegacion.py`, que deja esto
     registrado para que no se vuelva una regla permanente por inercia.
     """
+    # V1.1: una sección marcada `proximamente` todavía no tiene funcionalidad
+    # real (sus rutas siguen existiendo, pero son un cascarón): no se ofrece en
+    # ningún menú para que nadie la confunda con algo utilizable.
+    disponibles = [item for item in NAV_ITEMS if not item.get("proximamente")]
     if rol is None:
-        return NAV_ITEMS
-    return [item for item in NAV_ITEMS if item["roles"] is None or rol in item["roles"]]
+        return disponibles
+    return [item for item in disponibles if item["roles"] is None or rol in item["roles"]]

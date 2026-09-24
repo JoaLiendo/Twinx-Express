@@ -114,6 +114,14 @@ def _sembrar_usuario_de_prueba() -> None:
     )
 
 
+def _abrir_caja_de_prueba() -> None:
+    """Deja la caja abierta: desde V1.1 el POS rechaza cualquier venta sin
+    una caja abierta, y los flujos de cobro de los tests la necesitan."""
+    from services import servicio_caja
+
+    servicio_caja.abrir_caja(0)
+
+
 def _sembrar_productos_de_prueba() -> None:
     """Dos productos mínimos para los flujos de carrito/cobro de Fase
     5E.2, reutilizando `services.servicio_stock.registrar_producto` tal
@@ -136,6 +144,15 @@ def _sembrar_productos_de_prueba() -> None:
         precio_costo_centavos=300,
         precio_venta_centavos=PRODUCTO_2_PRECIO_VENTA_CENTAVOS,
         stock_actual=PRODUCTO_2_STOCK,
+    )
+    # V1.1: producto con precio 0 (como los del catálogo inicial), para el test
+    # de "Precio no configurado" del POS.
+    servicio_stock.registrar_producto(
+        "7790000000088",
+        "Sin Precio E2E",
+        precio_costo_centavos=0,
+        precio_venta_centavos=0,
+        stock_actual=10,
     )
     servicio_stock.registrar_producto(
         PRODUCTO_XSS_CODIGO_BARRAS,
@@ -192,6 +209,7 @@ def main() -> None:
     inicializar_base_datos()
     _sembrar_usuario_de_prueba()
     _sembrar_productos_de_prueba()
+    _abrir_caja_de_prueba()
 
     print(f"[servidor_pruebas] DB temporal: {ruta_db}")
     print(f"[servidor_pruebas] Sirviendo en http://127.0.0.1:{puerto}")

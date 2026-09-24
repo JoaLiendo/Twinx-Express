@@ -13,6 +13,7 @@ Para desarrollo con recarga automática ante cambios de código:
     uvicorn interfaces.web.app:app --reload
 """
 
+import logging
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -47,6 +48,8 @@ from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
 from services import servicio_backup, servicio_catalogo_inicial
 from services.control_escrituras import control_escrituras
 
+logger = logging.getLogger(__name__)
+
 _METODOS_DE_LECTURA = {"GET", "HEAD", "OPTIONS"}
 
 DIRECTORIO_WEB = Path(__file__).resolve().parent
@@ -71,11 +74,19 @@ async def lifespan(app: FastAPI):
     del mismo proceso -- suficiente para el ejecutable single-process real
     de Twinx Express, que es el único caso que este bloque necesita cubrir.
     """
-    servicio_backup.migrar_base_datos_con_backup_preventivo(DIRECTORIO_BACKUPS, control_escrituras)
-    if SEMBRAR_CATALOGO_INICIAL:
-        # Si falla, el error se propaga: el arranque se aborta y el operador ve el
-        # error en la consola (`lanzador.py`), en vez de seguir con un catálogo a medias.
-        servicio_catalogo_inicial.sembrar_si_corresponde()
+    try:
+        servicio_backup.migrar_base_datos_con_backup_preventivo(DIRECTORIO_BACKUPS, control_escrituras)
+        if SEMBRAR_CATALOGO_INICIAL:
+            # Si falla, el error se propaga: el arranque se aborta y el operador ve el
+            # error en la consola (`lanzador.py`), en vez de seguir con un catálogo a medias.
+            servicio_catalogo_inicial.sembrar_si_corresponde()
+    except Exception as error:
+        # Uvicorn convierte cualquier fallo de lifespan en `SystemExit`, igual
+        # que un puerto ocupado: se deja la causa real en `app.state` para que
+        # el lanzador pueda distinguirlos (ver `lanzador.py`).
+        logger.critical("No se pudo iniciar la aplicación: %s", error, exc_info=True)
+        app.state.error_de_inicio = error
+        raise
     threading.Thread(
         target=servicio_backup.ejecutar_backup_automatico_si_corresponde,
         args=(DIRECTORIO_BACKUPS, control_escrituras),

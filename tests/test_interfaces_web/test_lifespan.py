@@ -15,7 +15,7 @@ import pytest
 import interfaces.web.app as modulo_app
 import services.servicio_backup as modulo_servicio_backup
 import services.servicio_catalogo_inicial as modulo_catalogo
-from excepciones import ErrorCatalogoInicial
+from excepciones import ErrorBaseDatos, ErrorCatalogoInicial
 
 
 def _entrar_y_salir_del_lifespan() -> None:
@@ -139,3 +139,33 @@ def test_lifespan_aborta_el_arranque_si_el_catalogo_no_se_puede_cargar(base_dato
 
     time.sleep(0.2)
     assert not arranco_el_backup.is_set(), "el arranque siguió como si nada tras el fallo del catálogo"
+
+
+def test_lifespan_registra_la_causa_real_cuando_el_arranque_falla(base_datos_temporal, monkeypatch):
+    """A1 (V1.1): el lanzador distingue un fallo de arranque de un puerto
+    ocupado leyendo la causa que el lifespan deja en `app.state`."""
+
+    def migrar_que_falla(*_a, **_k):
+        raise ErrorBaseDatos("file is not a database")
+
+    monkeypatch.setattr(modulo_servicio_backup, "migrar_base_datos_con_backup_preventivo", migrar_que_falla)
+    monkeypatch.delattr(modulo_app.app.state, "error_de_inicio", raising=False)
+
+    with pytest.raises(ErrorBaseDatos):
+        _entrar_y_salir_del_lifespan()
+
+    assert isinstance(modulo_app.app.state.error_de_inicio, ErrorBaseDatos)
+
+
+def test_lifespan_con_una_base_corrupta_real_falla_y_registra_la_causa(tmp_path, monkeypatch):
+    import db.conexion as modulo_conexion
+
+    ruta_corrupta = tmp_path / "kiosco.db"
+    ruta_corrupta.write_bytes(b"esto no es una base de datos sqlite" * 50)
+    monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", ruta_corrupta)
+    monkeypatch.delattr(modulo_app.app.state, "error_de_inicio", raising=False)
+
+    with pytest.raises(ErrorBaseDatos):
+        _entrar_y_salir_del_lifespan()
+
+    assert isinstance(modulo_app.app.state.error_de_inicio, ErrorBaseDatos)

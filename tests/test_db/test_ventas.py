@@ -13,6 +13,7 @@ from db.conexion import obtener_conexion
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
 from db.repositorios import ventas as repositorio_ventas
+from domain.caja import SesionCaja
 from domain.producto import Producto
 from domain.usuario import Usuario
 from domain.venta import ItemVenta
@@ -1093,7 +1094,7 @@ class TestAnulacionDeVentas:
                     conexion, 9999, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
                 )
 
-    def test_listar_ventas_del_dia_excluye_anulada(self, base_datos_temporal):
+    def test_listar_ventas_de_sesion_excluye_anulada(self, base_datos_temporal):
         venta = _crear_venta_activa()
         usuario = _crear_usuario()
         with obtener_conexion() as conexion:
@@ -1101,7 +1102,9 @@ class TestAnulacionDeVentas:
                 conexion, venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=usuario.id
             )
 
-        assert repositorio_ventas.listar_ventas_del_dia() == []
+        sesion = SesionCaja(apertura_id=1, fecha_apertura="2000-01-01 00:00:00")
+
+        assert repositorio_ventas.listar_ventas_de_sesion(sesion) == []
 
     def test_listar_en_rango_excluye_anulada(self, base_datos_temporal):
         venta = _crear_venta_activa()

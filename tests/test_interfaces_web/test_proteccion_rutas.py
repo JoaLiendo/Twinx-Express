@@ -15,6 +15,9 @@ from interfaces.web.auth import NOMBRE_COOKIE_SESION
 from services import servicio_auth, servicio_categorias, servicio_stock, servicio_ventas
 
 from ._asgi_cliente import solicitud
+import pytest
+
+pytestmark = pytest.mark.usefixtures("caja_abierta")
 
 _RUTAS_OWNER_Y_CASHIER = ["/", "/ventas", "/caja", "/caja/arqueo", "/productos", "/ventas/historial", "/ventas/1"]
 _RUTAS_SOLO_OWNER = ["/pedidos", "/precios", "/proveedores", "/compras", "/reportes", "/empleados"]
