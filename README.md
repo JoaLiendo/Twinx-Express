@@ -1,4 +1,4 @@
-# Kiosco Stock App
+# Twinx Express App
 
 Sistema de control de stock para un kiosco. Fase Beta local: Python + SQLite,
 con soporte para lector de código de barras y búsqueda manual, y control
