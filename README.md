@@ -6,6 +6,8 @@ básico de caja.
 
 Ver `CLAUDE.md` para las directrices de desarrollo del proyecto.
 
+La versión vigente de la aplicación (Twinx Express) está definida en `version.py`.
+
 Los precios y montos de dinero se manejan como **enteros en centavos**
 (`int`), nunca `float`, para evitar errores de precisión binaria en
 cálculos financieros. Ver `domain/dinero.py`.

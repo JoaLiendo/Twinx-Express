@@ -1,5 +1,10 @@
 KioscoApp - Guia rapida
 =======================
+Twinx Express 1.0.0
+
+La version se ve al pie del menu lateral y de la pantalla de inicio de
+sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
+indica ese numero.
 
 Esta carpeta contiene todo lo necesario para usar KioscoApp. No hace
 falta instalar nada mas.
