@@ -45,6 +45,13 @@ else:
 RUTA_BASE_DATOS = DIRECTORIO_DATA / "kiosco.db"
 DIRECTORIO_MIGRACIONES = RAIZ_PROYECTO / "db" / "migraciones"
 
+# Catálogo inicial de distribución (ver `services.servicio_catalogo_inicial`).
+# Se siembra una sola vez, solo en una instalación nueva del ejecutable
+# congelado: nunca en desarrollo, en tests ni en E2E. El marcador de "ya
+# sembrado" es `PRAGMA user_version` (versión del catálogo, NO del esquema).
+RUTA_CATALOGO_INICIAL = RAIZ_PROYECTO / "db" / "seed" / "catalogo_inicial.json"
+SEMBRAR_CATALOGO_INICIAL = getattr(sys, "frozen", False)
+
 # Imágenes de producto (Fase 3D): archivos en disco, no BLOB en SQLite (ver
 # auditoría de Fase 3D). Vive bajo DIRECTORIO_DATA -- igual que kiosco.db --
 # para que ambos viajen siempre juntos, sea cual sea su ubicación real.

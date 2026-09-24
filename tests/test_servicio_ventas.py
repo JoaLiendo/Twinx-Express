@@ -18,6 +18,7 @@ from domain.venta import ItemVenta
 from excepciones import (
     ClaveIdempotenciaReutilizadaError,
     DatosInvalidosError,
+    PrecioVentaNoConfiguradoError,
     ProductoNoEncontradoError,
     StockInsuficienteError,
     VentaDeCajaCerradaError,
@@ -929,3 +930,61 @@ class TestListarHistorialIncluyeAnuladas:
         assert resumen is not None
         assert detalle is not None
         assert len(detalle.lineas) == 1
+
+
+# ---------------------------------------------------------------------------
+# Guardia contra precio de venta 0
+# ---------------------------------------------------------------------------
+
+
+def test_venta_con_precio_mayor_a_cero_funciona_normalmente(base_datos_temporal):
+    producto = servicio_stock.registrar_producto("TX-P-001", "Con precio", 100, 250, stock_actual=5)
+
+    venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 2)], "EFECTIVO")
+
+    assert venta.total_centavos == 500
+    assert servicio_stock.buscar_por_codigo_barras("TX-P-001").stock_actual == 3
+
+
+def test_venta_con_precio_cero_se_rechaza_con_un_mensaje_claro(base_datos_temporal):
+    producto = servicio_stock.registrar_producto("TX-P-002", "Sin precio", 0, 0, stock_actual=5)
+
+    with pytest.raises(PrecioVentaNoConfiguradoError) as error:
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
+
+    assert "Sin precio" in str(error.value)
+    assert "precio" in str(error.value).lower()
+
+
+def test_venta_con_precio_cero_no_descuenta_stock_ni_registra_venta_ni_movimiento_de_caja(base_datos_temporal):
+    servicio_caja.abrir_caja(100_000)
+    movimientos_antes = _contar_filas(base_datos_temporal, "caja_movimientos")
+    producto = servicio_stock.registrar_producto("TX-P-003", "Sin precio", 0, 0, stock_actual=5)
+
+    with pytest.raises(PrecioVentaNoConfiguradoError):
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 2)], "EFECTIVO")
+
+    assert servicio_stock.buscar_por_codigo_barras("TX-P-003").stock_actual == 5
+    assert _contar_filas(base_datos_temporal, "ventas") == 0
+    assert _contar_filas(base_datos_temporal, "detalle_venta") == 0
+    assert _contar_filas(base_datos_temporal, "caja_movimientos") == movimientos_antes
+
+
+def test_una_linea_con_precio_cero_rechaza_la_venta_completa(base_datos_temporal):
+    con_precio = servicio_stock.registrar_producto("TX-P-004", "Con precio", 100, 250, stock_actual=5)
+    sin_precio = servicio_stock.registrar_producto("TX-P-005", "Sin precio", 0, 0, stock_actual=5)
+
+    with pytest.raises(PrecioVentaNoConfiguradoError):
+        servicio_ventas.registrar_venta([ItemVenta(con_precio.id, 1), ItemVenta(sin_precio.id, 1)], "EFECTIVO")
+
+    assert servicio_stock.buscar_por_codigo_barras("TX-P-004").stock_actual == 5
+    assert servicio_stock.buscar_por_codigo_barras("TX-P-005").stock_actual == 5
+    assert _contar_filas(base_datos_temporal, "ventas") == 0
+
+
+def test_el_precio_cero_se_informa_antes_que_la_falta_de_stock(base_datos_temporal):
+    """Un producto recién sembrado (precio 0 y stock 0): lo accionable es el precio."""
+    producto = servicio_stock.registrar_producto("TX-P-006", "Recién sembrado", 0, 0)
+
+    with pytest.raises(PrecioVentaNoConfiguradoError):
+        servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")

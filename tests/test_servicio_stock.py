@@ -726,3 +726,33 @@ class TestCalcularValorizacionInventario:
         assert valores == sorted(valores, reverse=True)
         assert valorizacion.detalle[0].nombre == "Alto valor"  # 2 * 500 = 1000
         assert valorizacion.detalle[-1].nombre == "Bajo valor"  # 1 * 10 = 10
+
+
+# ---------------------------------------------------------------------------
+# Stock crítico: el stock 0 no es una alerta
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("stock_actual", "stock_minimo", "esperado"),
+    [(0, 0, False), (0, 5, False), (3, 5, True), (5, 5, True), (10, 5, False)],
+)
+def test_listar_stock_critico_aplica_stock_positivo_y_menor_o_igual_al_minimo(
+    base_datos_temporal, stock_actual, stock_minimo, esperado
+):
+    servicio_stock.registrar_producto(
+        "TX-C-001", "Producto", 100, 200, stock_actual=stock_actual, stock_minimo=stock_minimo
+    )
+
+    nombres = [producto.nombre for producto in servicio_stock.listar_stock_critico()]
+
+    assert (nombres == ["Producto"]) is esperado
+    assert (nombres == []) is (not esperado)
+
+
+def test_productos_sin_stock_no_aparecen_en_las_alertas_aunque_sean_muchos(base_datos_temporal):
+    for i in range(5):
+        servicio_stock.registrar_producto(f"TX-C-10{i}", f"Sin stock {i}", 0, 0)
+    servicio_stock.registrar_producto("TX-C-200", "Por agotarse", 100, 200, stock_actual=1, stock_minimo=2)
+
+    assert [p.nombre for p in servicio_stock.listar_stock_critico()] == ["Por agotarse"]

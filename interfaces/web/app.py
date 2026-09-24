@@ -25,7 +25,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from config import DIRECTORIO_BACKUPS, DIRECTORIO_IMAGENES_PRODUCTOS
+from config import DIRECTORIO_BACKUPS, DIRECTORIO_IMAGENES_PRODUCTOS, SEMBRAR_CATALOGO_INICIAL
 from excepciones import ErrorAplicacion, NoAutenticadoError, PermisoDenegadoError
 from interfaces.web.plantillas import templates
 from interfaces.web.rutas import (
@@ -44,7 +44,7 @@ from interfaces.web.rutas import (
     ventas,
 )
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
-from services import servicio_backup
+from services import servicio_backup, servicio_catalogo_inicial
 from services.control_escrituras import control_escrituras
 
 _METODOS_DE_LECTURA = {"GET", "HEAD", "OPTIONS"}
@@ -55,7 +55,8 @@ DIRECTORIO_WEB = Path(__file__).resolve().parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Migraciones con backup preventivo (solo si la base ya existía y tenía
-    migraciones pendientes: si el backup falla, no se migra) y luego backup
+    migraciones pendientes: si el backup falla, no se migra), catálogo inicial
+    (solo en una instalación nueva del ejecutable) y luego backup
     automático V1 (ver auditoría de distribución/backup): el chequeo corre
     en un hilo daemon de un solo uso, disparado y olvidado --
     nunca se espera (`.join()`) desde acá, así un backup lento (o que
@@ -71,6 +72,10 @@ async def lifespan(app: FastAPI):
     de Twinx Express, que es el único caso que este bloque necesita cubrir.
     """
     servicio_backup.migrar_base_datos_con_backup_preventivo(DIRECTORIO_BACKUPS, control_escrituras)
+    if SEMBRAR_CATALOGO_INICIAL:
+        # Si falla, el error se propaga: el arranque se aborta y el operador ve el
+        # error en la consola (`lanzador.py`), en vez de seguir con un catálogo a medias.
+        servicio_catalogo_inicial.sembrar_si_corresponde()
     threading.Thread(
         target=servicio_backup.ejecutar_backup_automatico_si_corresponde,
         args=(DIRECTORIO_BACKUPS, control_escrituras),

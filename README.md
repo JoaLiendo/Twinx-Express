@@ -215,6 +215,28 @@ En el ejecutable empaquetado (PyInstaller), los datos persisten fuera del
 bundle, en `%LOCALAPPDATA%\KioscoApp\data`, para sobrevivir a
 actualizaciones (ver `config.py` y la sección de Build más abajo).
 
+### Catálogo inicial de distribución
+
+Una instalación **nueva** del ejecutable arranca con ~41 productos genéricos de
+kiosco (10 categorías, sin marcas ni códigos EAN) y **sin usuarios**: el dueño se
+crea en `/configuracion-inicial`. El catálogo vive en `db/seed/catalogo_inicial.json`
+(versionado, independiente de `data/kiosco.db`) y se carga en una única
+transacción por `services/servicio_catalogo_inicial.py`.
+
+- Solo se siembra en el ejecutable congelado (`config.SEMBRAR_CATALOGO_INICIAL`):
+  nunca en desarrollo, en tests ni en E2E.
+- Se siembra una sola vez: si ya hay usuarios, productos o categorías, o el
+  marcador ya está puesto, no se toca nada. Una actualización del ejecutable
+  nunca vuelve a cargar el catálogo. El marcador es `PRAGMA user_version`
+  (versión del catálogo inicial; **no** es la versión del esquema, que se
+  lleva en `schema_migraciones`) y viaja dentro de `kiosco.db`, así que los
+  backups y restores lo conservan.
+- Todos los productos nacen con precio de venta, costo y stock en 0 y códigos
+  internos `TX-...`. Un producto sin precio de venta no se puede vender, y un
+  producto sin stock no aparece como alerta de stock crítico.
+- Si el catálogo distribuido es inválido, la carga se revierte por completo, el
+  error queda registrado y la aplicación no arranca.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base

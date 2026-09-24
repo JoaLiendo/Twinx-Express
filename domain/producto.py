@@ -69,8 +69,13 @@ class Producto:
 
     @property
     def tiene_stock_critico(self) -> bool:
-        """True si el stock actual llegó al mínimo o está por debajo."""
-        return self.stock_actual <= self.stock_minimo
+        """True si hay stock pero llegó al mínimo o está por debajo.
+
+        Un producto sin stock (0) no es una alerta: todavía no se cargó
+        nada (ej. el catálogo inicial de distribución) o ya se agotó, y
+        ambos casos se resuelven comprando/ajustando, no con esta alerta.
+        """
+        return 0 < self.stock_actual <= self.stock_minimo
 
     def actualizar_stock(self, nuevo_stock: int) -> None:
         """Cambia el stock actual, validando que no quede negativo."""

@@ -456,3 +456,43 @@ class TestDetalleDeVenta:
 
         assert respuesta.status == 303
         assert respuesta.header("location").startswith("/login")
+
+
+class TestVentaConPrecioCero:
+    def test_producto_sin_precio_da_422_con_mensaje_claro_y_no_persiste(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("TX-P-001", "Sin precio", 0, 0, stock_actual=10)
+        cookies = _cookies("OWNER", "ana")
+
+        respuesta = solicitud(
+            "POST", "/api/ventas", cookies=cookies, json_body=_cuerpo(producto.id, 1, clave="clave-precio-cero")
+        )
+
+        assert respuesta.status == 422
+        assert "precio" in respuesta.texto.lower()
+        assert _contar_ventas() == 0
+        assert servicio_stock.buscar_por_codigo_barras("TX-P-001").stock_actual == 10
+
+
+class TestAlertaVisualDeStockCritico:
+    """Un producto 0/0 (ej. recién sembrado) no es una alerta; uno con stock bajo el mínimo sí."""
+
+    def test_producto_sin_stock_ni_minimo_no_muestra_alerta_en_lista_ni_pos(self, base_datos_temporal):
+        servicio_stock.registrar_producto("TX-A-001", "Sembrado", 0, 0)
+        cookies = _cookies("OWNER", "ana")
+
+        lista = solicitud("GET", "/productos", cookies=cookies)
+        pos = solicitud("GET", "/ventas", cookies=cookies)
+
+        assert "Sembrado" in lista.texto and "Sembrado" in pos.texto
+        assert "tabular-nums text-error" not in lista.texto
+        assert "bg-error mt-1" not in pos.texto
+
+    def test_producto_con_stock_bajo_el_minimo_si_muestra_alerta_en_lista_y_pos(self, base_datos_temporal):
+        servicio_stock.registrar_producto("TX-A-002", "Escaso", 0, 100, stock_actual=2, stock_minimo=5)
+        cookies = _cookies("OWNER", "ana")
+
+        lista = solicitud("GET", "/productos", cookies=cookies)
+        pos = solicitud("GET", "/ventas", cookies=cookies)
+
+        assert "tabular-nums text-error" in lista.texto
+        assert "bg-error mt-1" in pos.texto

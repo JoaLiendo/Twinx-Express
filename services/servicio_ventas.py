@@ -36,6 +36,7 @@ from excepciones import (
     ClaveIdempotenciaReutilizadaError,
     DatosInvalidosError,
     ErrorBaseDatos,
+    PrecioVentaNoConfiguradoError,
     ProductoNoEncontradoError,
     StockInsuficienteError,
     VentaDeCajaCerradaError,
@@ -116,6 +117,8 @@ def registrar_venta(
     Raises:
         DatosInvalidosError: si `items` está vacío o `tipo_pago` no es válido.
         ProductoNoEncontradoError: si algún `producto_id` no existe.
+        PrecioVentaNoConfiguradoError: si algún producto tiene precio de
+            venta 0 (se rechaza la venta completa, antes de tocar stock).
         StockInsuficienteError: si algún producto no tiene stock
             suficiente para la cantidad total pedida.
         ClaveIdempotenciaReutilizadaError: si `clave_idempotencia` ya
@@ -158,6 +161,11 @@ def registrar_venta(
                 producto = repositorio_productos.obtener_por_id_en_conexion(conexion, producto_id)
                 if producto is None:
                     raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
+                if producto.precio_venta_centavos == 0:
+                    raise PrecioVentaNoConfiguradoError(
+                        f"El producto '{producto.nombre}' no tiene precio de venta: "
+                        "configurá su precio antes de venderlo."
+                    )
                 if producto.stock_actual < cantidad_total:
                     raise StockInsuficienteError(
                         f"Stock insuficiente para '{producto.nombre}': "

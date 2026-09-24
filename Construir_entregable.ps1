@@ -68,7 +68,7 @@ function Eliminar-ArtefactoDeBuild([string]$ruta) {
 Write-Host '[1/5] Validando el repositorio...'
 Set-Location -LiteralPath $raiz
 
-$requeridosEnRepo = @('KioscoApp.spec', 'lanzador.py', 'config.py', 'LEEME.txt', 'Restaurar_backup.bat')
+$requeridosEnRepo = @('KioscoApp.spec', 'lanzador.py', 'config.py', 'LEEME.txt', 'Restaurar_backup.bat', 'db\seed\catalogo_inicial.json')
 foreach ($nombre in $requeridosEnRepo) {
     if (-not (Test-Path -LiteralPath (Join-Path $raiz $nombre) -PathType Leaf)) {
         Fallar "Falta '$nombre' en $raiz. Este script debe vivir en la raiz del repositorio."
@@ -143,7 +143,8 @@ $requeridosEnEntregable = @(
     @{ Ruta = 'Restaurar_backup.bat'; Tipo = 'Leaf' },
     @{ Ruta = '_internal\interfaces\web\templates'; Tipo = 'Container' },
     @{ Ruta = '_internal\interfaces\web\static'; Tipo = 'Container' },
-    @{ Ruta = '_internal\db\migraciones'; Tipo = 'Container' }
+    @{ Ruta = '_internal\db\migraciones'; Tipo = 'Container' },
+    @{ Ruta = '_internal\db\seed\catalogo_inicial.json'; Tipo = 'Leaf' }
 )
 foreach ($requerido in $requeridosEnEntregable) {
     $ruta = Join-Path $dirEntregable $requerido.Ruta
@@ -159,6 +160,17 @@ if (Test-Path -LiteralPath $dirMigracionesBuild -PathType Container) {
     $diferencias = @(Compare-Object -ReferenceObject $migracionesFuente -DifferenceObject $migracionesBuild)
     if ($diferencias.Count -gt 0) {
         $problemas.Add("Las migraciones del build no coinciden con db\migraciones (repo: $($migracionesFuente.Count), build: $($migracionesBuild.Count)).")
+    }
+}
+
+# 5b-bis. Catalogo inicial: el archivo del bundle debe ser identico al del repo.
+$catalogoRepo = Join-Path $raiz 'db\seed\catalogo_inicial.json'
+$catalogoBuild = Join-Path $dirEntregable '_internal\db\seed\catalogo_inicial.json'
+if (Test-Path -LiteralPath $catalogoBuild -PathType Leaf) {
+    $hashRepo = (Get-FileHash -LiteralPath $catalogoRepo -Algorithm SHA256).Hash
+    $hashBuild = (Get-FileHash -LiteralPath $catalogoBuild -Algorithm SHA256).Hash
+    if ($hashRepo -ne $hashBuild) {
+        $problemas.Add('El catalogo inicial del build (_internal\db\seed\catalogo_inicial.json) no coincide con db\seed\catalogo_inicial.json del repo.')
     }
 }
 

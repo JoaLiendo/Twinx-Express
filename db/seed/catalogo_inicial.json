@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "categorias": [
+    "Gaseosas",
+    "Aguas y sodas",
+    "Jugos y energizantes",
+    "Golosinas",
+    "Chocolates y alfajores",
+    "Snacks",
+    "Galletitas",
+    "Almacén",
+    "Higiene y cuidado",
+    "Varios"
+  ],
+  "productos": [
+    {
+      "codigo": "TX-GAS-001",
+      "nombre": "Gaseosa cola 500 ml",
+      "categoria": "Gaseosas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GAS-002",
+      "nombre": "Gaseosa cola 1,5 L",
+      "categoria": "Gaseosas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GAS-003",
+      "nombre": "Gaseosa lima limón 500 ml",
+      "categoria": "Gaseosas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GAS-004",
+      "nombre": "Gaseosa naranja 500 ml",
+      "categoria": "Gaseosas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-AGU-001",
+      "nombre": "Agua mineral 500 ml",
+      "categoria": "Aguas y sodas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-AGU-002",
+      "nombre": "Agua mineral con gas 500 ml",
+      "categoria": "Aguas y sodas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-AGU-003",
+      "nombre": "Soda 1 L",
+      "categoria": "Aguas y sodas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-JUG-001",
+      "nombre": "Jugo en polvo",
+      "categoria": "Jugos y energizantes",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-JUG-002",
+      "nombre": "Jugo de fruta 200 ml",
+      "categoria": "Jugos y energizantes",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-JUG-003",
+      "nombre": "Bebida energizante 250 ml",
+      "categoria": "Jugos y energizantes",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-JUG-004",
+      "nombre": "Bebida isotónica 500 ml",
+      "categoria": "Jugos y energizantes",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GOL-001",
+      "nombre": "Caramelos surtidos",
+      "categoria": "Golosinas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GOL-002",
+      "nombre": "Chicles",
+      "categoria": "Golosinas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GOL-003",
+      "nombre": "Pastillas de menta",
+      "categoria": "Golosinas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GOL-004",
+      "nombre": "Gomitas",
+      "categoria": "Golosinas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GOL-005",
+      "nombre": "Chupetín",
+      "categoria": "Golosinas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-CHO-001",
+      "nombre": "Chocolate con leche",
+      "categoria": "Chocolates y alfajores",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-CHO-002",
+      "nombre": "Chocolate blanco",
+      "categoria": "Chocolates y alfajores",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-ALF-001",
+      "nombre": "Alfajor simple",
+      "categoria": "Chocolates y alfajores",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-ALF-002",
+      "nombre": "Alfajor triple",
+      "categoria": "Chocolates y alfajores",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-ALF-003",
+      "nombre": "Alfajor de maicena",
+      "categoria": "Chocolates y alfajores",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-SNA-001",
+      "nombre": "Papas fritas 100 g",
+      "categoria": "Snacks",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-SNA-002",
+      "nombre": "Palitos salados",
+      "categoria": "Snacks",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-SNA-003",
+      "nombre": "Maní salado",
+      "categoria": "Snacks",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-SNA-004",
+      "nombre": "Snack de maíz",
+      "categoria": "Snacks",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GAL-001",
+      "nombre": "Galletitas dulces",
+      "categoria": "Galletitas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GAL-002",
+      "nombre": "Galletitas de agua",
+      "categoria": "Galletitas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GAL-003",
+      "nombre": "Galletitas rellenas",
+      "categoria": "Galletitas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-GAL-004",
+      "nombre": "Galletitas saladas",
+      "categoria": "Galletitas",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-ALM-001",
+      "nombre": "Yerba mate 500 g",
+      "categoria": "Almacén",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-ALM-002",
+      "nombre": "Azúcar 1 kg",
+      "categoria": "Almacén",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-ALM-003",
+      "nombre": "Leche larga vida 1 L",
+      "categoria": "Almacén",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-ALM-004",
+      "nombre": "Fideos secos 500 g",
+      "categoria": "Almacén",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-ALM-005",
+      "nombre": "Pan lactal",
+      "categoria": "Almacén",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-HIG-001",
+      "nombre": "Pañuelos descartables",
+      "categoria": "Higiene y cuidado",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-HIG-002",
+      "nombre": "Papel higiénico",
+      "categoria": "Higiene y cuidado",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-HIG-003",
+      "nombre": "Alcohol en gel",
+      "categoria": "Higiene y cuidado",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-HIG-004",
+      "nombre": "Toallitas femeninas",
+      "categoria": "Higiene y cuidado",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-VAR-001",
+      "nombre": "Encendedor",
+      "categoria": "Varios",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-VAR-002",
+      "nombre": "Pilas AA",
+      "categoria": "Varios",
+      "unidad": "UNIDAD"
+    },
+    {
+      "codigo": "TX-VAR-003",
+      "nombre": "Lapicera",
+      "categoria": "Varios",
+      "unidad": "UNIDAD"
+    }
+  ]
+}

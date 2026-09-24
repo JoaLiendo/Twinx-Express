@@ -96,3 +96,37 @@ def test_config_ya_no_expone_la_migracion_de_data_embebido():
 
 def test_directorio_imagenes_deriva_del_directorio_data():
     assert config.DIRECTORIO_IMAGENES_PRODUCTOS == config.DIRECTORIO_DATA / "imagenes_productos"
+
+
+def _valor_de_config_en_modo(tmp_path, expresion: str, *, frozen: bool) -> str:
+    """Importa una copia de `config.py` en un proceso aparte, con o sin
+    `sys.frozen`, y devuelve el valor de `expresion` impreso."""
+    raiz = tmp_path / "bundle"
+    raiz.mkdir()
+    shutil.copy(config.RAIZ_PROYECTO / "config.py", raiz / "config.py")
+    local_appdata = tmp_path / "local"
+    local_appdata.mkdir()
+    marca = "sys.frozen = True; " if frozen else ""
+    resultado = subprocess.run(
+        [sys.executable, "-B", "-c", f"import sys; {marca}import config; print({expresion})"],
+        cwd=raiz,
+        env={**os.environ, "LOCALAPPDATA": str(local_appdata)},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return resultado.stdout.strip()
+
+
+def test_el_seed_del_catalogo_esta_deshabilitado_en_desarrollo(tmp_path):
+    assert config.SEMBRAR_CATALOGO_INICIAL is False  # también en este proceso de tests
+    assert _valor_de_config_en_modo(tmp_path, "config.SEMBRAR_CATALOGO_INICIAL", frozen=False) == "False"
+
+
+def test_el_seed_del_catalogo_esta_habilitado_en_frozen(tmp_path):
+    assert _valor_de_config_en_modo(tmp_path, "config.SEMBRAR_CATALOGO_INICIAL", frozen=True) == "True"
+
+
+def test_la_ruta_del_catalogo_inicial_esta_en_db_seed():
+    assert config.RUTA_CATALOGO_INICIAL == config.RAIZ_PROYECTO / "db" / "seed" / "catalogo_inicial.json"
+    assert config.RUTA_CATALOGO_INICIAL.is_file()

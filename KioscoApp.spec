@@ -5,7 +5,7 @@ a = Analysis(
     ['lanzador.py'],
     pathex=[],
     binaries=[],
-    datas=[('interfaces/web/templates', 'interfaces/web/templates'), ('interfaces/web/static', 'interfaces/web/static'), ('db/migraciones', 'db/migraciones')],
+    datas=[('interfaces/web/templates', 'interfaces/web/templates'), ('interfaces/web/static', 'interfaces/web/static'), ('db/migraciones', 'db/migraciones'), ('db/seed', 'db/seed')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

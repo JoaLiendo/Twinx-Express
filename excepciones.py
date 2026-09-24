@@ -37,6 +37,18 @@ class StockInsuficienteError(ErrorAplicacion):
     """La operación requiere más stock del disponible."""
 
 
+class PrecioVentaNoConfiguradoError(DatosInvalidosError):
+    """El producto tiene precio de venta 0: primero hay que configurarlo.
+
+    Es el estado en el que nace todo producto del catálogo inicial de
+    distribución (ver `services.servicio_catalogo_inicial`).
+    """
+
+
+class ErrorCatalogoInicial(ErrorAplicacion):
+    """El catálogo inicial de distribución es inválido o no pudo cargarse."""
+
+
 class CajaError(ErrorAplicacion):
     """Error en una operación de caja (apertura, cierre o movimiento)."""
 

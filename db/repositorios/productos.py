@@ -280,10 +280,12 @@ def listar_todos() -> list[Producto]:
 
 
 def listar_stock_critico() -> list[Producto]:
-    """Devuelve los productos activos cuyo stock actual llegó al mínimo o está por debajo (alertas)."""
+    """Devuelve los productos activos con stock que llegó al mínimo o está por debajo (alertas).
+
+    Excluye el stock 0 (ver `Producto.tiene_stock_critico`)."""
     consulta = f"""
         SELECT {_COLUMNAS} FROM productos
-        WHERE activo = 1 AND stock_actual <= stock_minimo
+        WHERE activo = 1 AND stock_actual > 0 AND stock_actual <= stock_minimo
         ORDER BY nombre
     """
     with obtener_conexion() as conexion:

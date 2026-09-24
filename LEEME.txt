@@ -112,3 +112,21 @@ paso de este proceso.
 
 Tus datos no se ven afectados por este paso, porque nunca estuvieron
 dentro de ninguna de las dos carpetas.
+
+
+8) CATALOGO INICIAL
+------------------------
+
+La primera vez que se abre KioscoApp viene con una lista de productos
+genericos de kiosco ya cargada (gaseosas, golosinas, snacks, etc.).
+Sirve como punto de partida: todos los productos tienen precio 0 y
+stock 0, y sus codigos empiezan con "TX-".
+
+Para poder vender un producto, primero tenes que ponerle su precio de
+venta (un producto con precio 0 no se puede vender). Tambien podes
+reemplazar el codigo "TX-..." por el codigo de barras real del producto,
+cambiar el nombre, o dar de baja los productos que no vendas. El stock se
+carga con una compra o un ajuste de stock.
+
+Esta lista se carga una unica vez. Al actualizar KioscoApp no se vuelve
+a cargar ni se modifica nada de lo que ya tenes.

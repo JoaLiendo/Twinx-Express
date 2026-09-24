@@ -59,6 +59,15 @@ class TestProducto:
         assert self._crear(stock_actual=1, stock_minimo=2).tiene_stock_critico
         assert not self._crear(stock_actual=3, stock_minimo=2).tiene_stock_critico
 
+    def test_stock_cero_nunca_es_critico(self):
+        assert not self._crear(stock_actual=0, stock_minimo=0).tiene_stock_critico
+        assert not self._crear(stock_actual=0, stock_minimo=5).tiene_stock_critico
+
+    def test_tiene_stock_critico_para_los_casos_de_borde_del_minimo(self):
+        assert self._crear(stock_actual=3, stock_minimo=5).tiene_stock_critico
+        assert self._crear(stock_actual=5, stock_minimo=5).tiene_stock_critico
+        assert not self._crear(stock_actual=10, stock_minimo=5).tiene_stock_critico
+
     def test_actualizar_stock_rechaza_valor_negativo(self):
         producto = self._crear()
         with pytest.raises(DatosInvalidosError):
