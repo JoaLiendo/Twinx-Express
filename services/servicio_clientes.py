@@ -20,6 +20,7 @@ from domain.cliente import (
     ESTADOS_LISTADO_CLIENTES,
     Cliente,
     ClienteConSaldo,
+    DeudaTotal,
     EstadoCuenta,
     MovimientoCuenta,
 )
@@ -199,6 +200,12 @@ def buscar_clientes_activos_para_venta(texto: str | None = None, limite: int = L
     """Buscador del POS: solo clientes ACTIVOS (los únicos que pueden recibir ventas nuevas), por
     nombre o teléfono, como máximo `limite` resultados."""
     return repositorio_clientes.listar_con_saldo(texto, "activos", min(limite, LIMITE_BUSQUEDA_VENTA))
+
+
+def obtener_deuda_total() -> DeudaTotal:
+    """Deuda total de la cuenta corriente (suma de saldos positivos, clientes activos o no) y cuántos
+    clientes deben, agregada en SQL: no depende de ningún filtro ni página del listado."""
+    return repositorio_clientes.obtener_deuda_total()
 
 
 def obtener_estado_de_cuenta(cliente_id: int) -> EstadoCuenta:

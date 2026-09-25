@@ -22,6 +22,7 @@ from domain.caja import MovimientoCaja
 from domain.cliente import (
     MEDIO_PAGO_COBRO,
     MovimientoCuenta,
+    SaldoTrasVenta,
     calcular_hash_cobro,
     validar_cobro,
     validar_descripcion_movimiento,
@@ -37,6 +38,12 @@ from excepciones import (
 logger = logging.getLogger(__name__)
 
 _ROLES_COBRO = frozenset({"OWNER", "CASHIER"})
+
+
+def obtener_saldo_tras_venta(venta_id: int) -> SaldoTrasVenta | None:
+    """Cliente y saldo de su cuenta justo después de una venta a cuenta (para el ticket); `None` si
+    la venta no fue a cuenta. Sale del libro (`movimientos_cuenta`), no se recalcula aparte."""
+    return repositorio_clientes.obtener_saldo_tras_cargo_de_venta(venta_id)
 
 
 def registrar_cobro(

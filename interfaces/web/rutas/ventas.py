@@ -21,11 +21,12 @@ from domain.venta import (
     TIPOS_PAGO_VALIDOS,
     ItemVenta,
 )
+from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.esquemas import VentaEntrada, VentaSalida
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
-from services import servicio_configuracion, servicio_stock, servicio_ventas
+from services import servicio_clientes, servicio_configuracion, servicio_cuenta_corriente, servicio_stock, servicio_ventas
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
 
@@ -78,6 +79,21 @@ def _pagina_o_primera(texto: str) -> int:
         return 1
 
 
+def _cliente_del_filtro(texto: str):
+    """Cliente pedido en el filtro del Historial (`None` si no se filtra). Un valor que no es un entero o
+    un cliente que no existe es un dato inválido (mensaje claro), no un error del servidor."""
+    texto = texto.strip()
+    if not texto:
+        return None
+    try:
+        cliente = servicio_clientes.obtener_cliente(int(texto))
+    except ValueError:
+        cliente = None
+    if cliente is None:
+        raise DatosInvalidosError("El cliente elegido no existe.")
+    return cliente
+
+
 @router.get("/ventas/historial")
 def historial_ventas(
     request: Request,
@@ -86,20 +102,32 @@ def historial_ventas(
     tipo_pago: str | None = None,
     estado: str | None = None,
     pagina: str = "1",
+    cliente_id: str = "",
 ):
-    # `estado or None`: el <select> de "Todas" envía `estado=""` (una
-    # request GET siempre manda el campo, aunque esté vacío) -- sin esta
-    # normalización, `listar_resumen` interpretaría la cadena vacía como
-    # un filtro real (`v.estado = ''`, cero resultados) en vez de "sin
-    # filtrar" (mismo recurso que ya usa `accion_anular_venta` para
-    # `observaciones`).
-    total_ventas = servicio_ventas.contar_historial(fecha_desde, fecha_hasta, tipo_pago, estado or None)
+    # `or None`: el <select> de "Todas" envía `estado=""` (una request GET
+    # siempre manda el campo, aunque esté vacío) -- sin esta normalización,
+    # `listar_resumen` interpretaría la cadena vacía como un filtro real
+    # (`v.estado = ''`, cero resultados) en vez de "sin filtrar" (mismo
+    # recurso que ya usa `accion_anular_venta` para `observaciones`). Vale
+    # igual para el medio de pago "Todos" y para una fecha borrada.
+    fecha_desde, fecha_hasta, tipo_pago, estado = (
+        valor or None for valor in (fecha_desde, fecha_hasta, tipo_pago, estado)
+    )
+    cliente = _cliente_del_filtro(cliente_id)
+    id_cliente = cliente.id if cliente is not None else None
+    total_ventas = servicio_ventas.contar_historial(fecha_desde, fecha_hasta, tipo_pago, estado, id_cliente)
     total_paginas = max(1, ceil(total_ventas / servicio_ventas.VENTAS_POR_PAGINA))
     pagina_efectiva = min(_pagina_o_primera(pagina), total_paginas)
     fecha_desde_efectiva, fecha_hasta_efectiva, ventas = servicio_ventas.listar_historial(
-        fecha_desde, fecha_hasta, tipo_pago, estado or None, pagina_efectiva
+        fecha_desde, fecha_hasta, tipo_pago, estado, pagina_efectiva, id_cliente
     )
-    filtros = {"fecha_desde": fecha_desde, "fecha_hasta": fecha_hasta, "tipo_pago": tipo_pago, "estado": estado}
+    filtros = {
+        "fecha_desde": fecha_desde,
+        "fecha_hasta": fecha_hasta,
+        "tipo_pago": tipo_pago,
+        "estado": estado,
+        "cliente_id": id_cliente,
+    }
     contexto = {
         **contexto_base(request),
         "ventas": ventas,
@@ -110,6 +138,7 @@ def historial_ventas(
         "tipos_pago": sorted(TIPOS_PAGO_ACEPTADOS),
         "estado": estado or "",
         "estados": sorted(ESTADOS_VENTA_VALIDOS),
+        "cliente": cliente,
         "pagina": pagina_efectiva,
         "total_paginas": total_paginas,
         "total_ventas": total_ventas,
@@ -154,6 +183,7 @@ def ticket_venta(request: Request, venta_id: int):
     contexto = {
         "venta": venta_con_detalle.venta,
         "lineas": venta_con_detalle.lineas,
+        "cuenta": servicio_cuenta_corriente.obtener_saldo_tras_venta(venta_id),
         "comercio": servicio_configuracion.obtener_datos_comercio(),
     }
     return templates.TemplateResponse(request, "ventas/ticket.html", contexto)

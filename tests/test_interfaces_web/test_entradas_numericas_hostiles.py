@@ -147,6 +147,7 @@ CASOS = [
     ("compras_listado", "GET", "/compras", {"proveedor_id": "{prov}"}, {"proveedor_id": "entero"}),
     ("productos_listado", "GET", "/productos", {"categoria_id": "1"}, {"categoria_id": "entero"}),
     ("auditoria_listado", "GET", "/auditoria", {"usuario_id": "1"}, {"usuario_id": "entero"}),
+    ("historial_cliente", "GET", "/ventas/historial", {"cliente_id": "1"}, {"cliente_id": "entero"}),
 ]
 
 # Estado previo que necesitan algunos casos (el escenario base tiene caja abierta e inventario abierto).

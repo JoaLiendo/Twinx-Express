@@ -39,6 +39,14 @@
     </a>
   </div>
 
+  <div id="resumen-deuda" class="rounded-2xl border border-slate-200 bg-white shadow-sm px-5 py-4 dark:border-slate-800 dark:bg-slate-900">
+    <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Deuda total de cuentas corrientes</p>
+    <p id="deuda-total" class="mt-1 text-2xl font-bold tracking-tight tabular-nums {{ 'text-error' if deuda.total_centavos > 0 else 'text-slate-900 dark:text-slate-100' }}">${{ deuda.total_centavos | dinero_ar }}</p>
+    <p id="deuda-clientes" class="text-xs text-slate-500 dark:text-slate-400">
+      {% if deuda.cantidad_clientes == 1 %}1 cliente con deuda{% else %}{{ deuda.cantidad_clientes }} clientes con deuda{% endif %}
+    </p>
+  </div>
+
   {% if clientes %}
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
       <div class="overflow-x-auto">

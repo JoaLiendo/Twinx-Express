@@ -329,11 +329,12 @@ def contar_historial(
     fecha_hasta: str | None = None,
     tipo_pago: str | None = None,
     estado: str | None = None,
+    cliente_id: int | None = None,
 ) -> int:
     """Total de ventas del período y filtros pedidos (mismo rango efectivo que `listar_historial`),
     sin paginar: base de la cantidad de páginas."""
     desde, hasta = _rango_efectivo_historial(fecha_desde, fecha_hasta)
-    return repositorio_ventas.contar_resumen(desde, hasta, tipo_pago, estado)
+    return repositorio_ventas.contar_resumen(desde, hasta, tipo_pago, estado, cliente_id)
 
 
 def listar_historial(
@@ -342,6 +343,7 @@ def listar_historial(
     tipo_pago: str | None = None,
     estado: str | None = None,
     pagina: int = 1,
+    cliente_id: int | None = None,
 ) -> tuple[str, str, list[ResumenVenta]]:
     """Una página (`VENTAS_POR_PAGINA`, desde 1) del Historial de Ventas del período pedido:
     devuelve `(fecha_desde_efectiva, fecha_hasta_efectiva, ventas)`. Una página fuera de rango
@@ -361,7 +363,7 @@ def listar_historial(
     """
     fecha_desde, fecha_hasta = _rango_efectivo_historial(fecha_desde, fecha_hasta)
     ventas = repositorio_ventas.listar_resumen_pagina(
-        fecha_desde, fecha_hasta, tipo_pago, estado, VENTAS_POR_PAGINA, (pagina - 1) * VENTAS_POR_PAGINA
+        fecha_desde, fecha_hasta, tipo_pago, estado, VENTAS_POR_PAGINA, (pagina - 1) * VENTAS_POR_PAGINA, cliente_id
     )
     return fecha_desde, fecha_hasta, ventas
 

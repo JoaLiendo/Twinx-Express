@@ -58,6 +58,7 @@ def listar_clientes(
     contexto = {
         **contexto_base(request),
         "clientes": servicio_clientes.listar_clientes_con_saldo(q or None, estado),
+        "deuda": servicio_clientes.obtener_deuda_total(),
         "q": q,
         "estado": estado,
     }

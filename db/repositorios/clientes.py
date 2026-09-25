@@ -10,7 +10,7 @@ triggers, FK `RESTRICT`) las garantiza como última defensa.
 import sqlite3
 
 from db.conexion import obtener_conexion
-from domain.cliente import Cliente, ClienteConSaldo, MovimientoCuenta, ResumenCuenta
+from domain.cliente import Cliente, ClienteConSaldo, DeudaTotal, MovimientoCuenta, ResumenCuenta, SaldoTrasVenta
 
 _COLUMNAS = "id, nombre, telefono, email, direccion, observaciones, activo, fecha_creacion"
 _COLUMNAS_MOVIMIENTO = (
@@ -117,6 +117,36 @@ def obtener_saldo(cliente_id: int) -> int:
     """Ver `obtener_saldo_en_conexion`."""
     with obtener_conexion() as conexion:
         return obtener_saldo_en_conexion(conexion, cliente_id)
+
+
+def obtener_saldo_tras_cargo_de_venta(venta_id: int) -> SaldoTrasVenta | None:
+    """Cliente y saldo de su cuenta justo después del CARGO de una venta a cuenta (el libro hasta ese
+    movimiento, sin contar lo posterior); `None` si la venta no generó un cargo. Usa `_SALDO`, la misma
+    expresión que el resto de los saldos."""
+    with obtener_conexion() as conexion:
+        fila = conexion.execute(
+            f"""
+            SELECT c.nombre AS nombre,
+                   (SELECT {_SALDO} FROM movimientos_cuenta s WHERE s.cliente_id = m.cliente_id AND s.id <= m.id) AS saldo
+            FROM movimientos_cuenta m JOIN clientes c ON c.id = m.cliente_id
+            WHERE m.venta_id = ? AND m.tipo = 'CARGO'
+            """,
+            (venta_id,),
+        ).fetchone()
+    return SaldoTrasVenta(cliente_nombre=fila["nombre"], saldo_centavos=fila["saldo"]) if fila is not None else None
+
+
+def obtener_deuda_total() -> DeudaTotal:
+    """Suma de los saldos positivos y cantidad de clientes en deuda (activos o inactivos), agregada en SQL."""
+    with obtener_conexion() as conexion:
+        fila = conexion.execute(
+            f"""
+            SELECT COALESCE(SUM(saldo), 0) AS total, COUNT(*) AS cantidad FROM (
+                SELECT {_SALDO} AS saldo FROM movimientos_cuenta GROUP BY cliente_id HAVING saldo > 0
+            )
+            """
+        ).fetchone()
+    return DeudaTotal(total_centavos=fila["total"], cantidad_clientes=fila["cantidad"])
 
 
 def obtener_resumen_cuenta_en_conexion(conexion: sqlite3.Connection, cliente_id: int) -> ResumenCuenta:

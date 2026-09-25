@@ -8,6 +8,7 @@
 <div class="max-w-6xl mx-auto space-y-6">
 
   <form method="get" action="/ventas/historial" class="flex flex-wrap items-end gap-2">
+    {% if cliente %}<input type="hidden" name="cliente_id" value="{{ cliente.id }}" />{% endif %}
     <div>
       <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Desde</label>
       <input type="date" name="fecha_desde" value="{{ fecha_desde }}"
@@ -51,6 +52,13 @@
       Filtrar
     </button>
   </form>
+
+  {% if cliente %}
+    <p id="filtro-cliente" class="text-sm text-slate-600 dark:text-slate-400">
+      Ventas de <a href="/clientes/{{ cliente.id }}" class="font-semibold text-primary hover:text-primary-hover">{{ cliente.nombre }}</a>
+      · <a href="/ventas/historial" class="font-medium text-primary hover:text-primary-hover">Quitar filtro de cliente</a>
+    </p>
+  {% endif %}
 
   {% if ventas %}
     {% set variantes_medio_pago = {'EFECTIVO': 'exito', 'TARJETA': 'info', 'TRANSFERENCIA': 'advertencia', 'OTRO': 'neutral', 'CUENTA_CORRIENTE': 'marca'} %}

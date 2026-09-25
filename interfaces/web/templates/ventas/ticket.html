@@ -147,6 +147,12 @@
       <span>${{ venta.total_centavos | dinero_ar }}</span>
     </div>
     <p class="medio-pago">Medio de pago: {{ venta.tipo_pago }}</p>
+    {% if cuenta %}
+      <div id="ticket-cuenta-corriente" class="medio-pago">
+        <p>Cliente: {{ cuenta.cliente_nombre }}</p>
+        <p>Saldo cuenta corriente: ${{ cuenta.saldo_centavos | dinero_ar }}</p>
+      </div>
+    {% endif %}
     {% if comercio.pie %}<p class="pie">{{ comercio.pie }}</p>{% endif %}
   </div>
   <div class="acciones">

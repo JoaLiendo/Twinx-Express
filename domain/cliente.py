@@ -91,6 +91,22 @@ class ClienteConSaldo:
 
 
 @dataclass(frozen=True)
+class SaldoTrasVenta:
+    """Cliente de una venta a cuenta y su saldo justo después de esa venta (para el ticket)."""
+
+    cliente_nombre: str
+    saldo_centavos: int
+
+
+@dataclass(frozen=True)
+class DeudaTotal:
+    """Deuda de todos los clientes con saldo positivo (activos o no) y cuántos son."""
+
+    total_centavos: int
+    cantidad_clientes: int
+
+
+@dataclass(frozen=True)
 class ResumenCuenta:
     """Totales de la cuenta corriente de un cliente, calculados juntos sobre el mismo libro.
 
