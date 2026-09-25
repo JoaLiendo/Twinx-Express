@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from config import DIRECTORIO_MIGRACIONES, RUTA_BASE_DATOS
-from excepciones import ErrorBaseDatos
+from excepciones import DatosInvalidosError, ErrorBaseDatos
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ _TABLA_MIGRACIONES = """
 
 
 _MENSAJE_BASE_DATOS_OCUPADA = "Hay otra operación en curso. Intentá nuevamente en unos segundos."
+_MENSAJE_VALOR_FUERA_DE_RANGO = "Hay un valor numérico fuera del rango admitido."
 
 
 ConexionBD = sqlite3.Connection
@@ -102,6 +103,12 @@ def obtener_conexion(*, inmediata: bool = False) -> Generator[sqlite3.Connection
         conexion.rollback()
         logger.error("Error de base de datos, se revirtió la transacción: %s", error)
         raise ErrorBaseDatos(f"Error al operar sobre la base de datos: {error}") from error
+    except OverflowError as error:
+        # Un entero de Python que SQLite no puede representar (más de 64 bits) al enlazar un
+        # parámetro: dato inválido del usuario, no un fallo de la base. Se revierte y se informa.
+        conexion.rollback()
+        logger.warning("Valor numérico fuera de rango al operar sobre la base de datos: %s", error)
+        raise DatosInvalidosError(_MENSAJE_VALOR_FUERA_DE_RANGO) from error
     except Exception:
         conexion.rollback()
         raise

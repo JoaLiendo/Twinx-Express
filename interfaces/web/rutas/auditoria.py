@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, Request
 
 from domain.auditoria import ACCIONES_VALIDAS
+from excepciones import DatosInvalidosError
 from interfaces.web.auth import requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base
@@ -20,7 +21,11 @@ def ver_auditoria(
     fecha_hasta: str = "",
 ):
     # Los <select>/<input> vacíos de un GET llegan como "": significan "sin filtro".
-    filtro_usuario = int(usuario_id) if usuario_id.isdigit() else None
+    # `isdigit` acepta "²", que `int` no parsea; `int` además rechaza más de 4300 dígitos (`ValueError`).
+    try:
+        filtro_usuario = int(usuario_id) if usuario_id.isdecimal() else None
+    except ValueError:
+        raise DatosInvalidosError("El usuario elegido no es válido.") from None
     contexto = {
         **contexto_base(request),
         "entradas": servicio_auditoria.listar(

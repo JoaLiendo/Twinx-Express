@@ -30,6 +30,18 @@ _CONSULTA = Depends(requiere_rol("OWNER", "CASHIER"))
 _SOLO_OWNER = Depends(requiere_rol("OWNER"))
 
 
+def _categoria_id_o_none(texto: str) -> int | None:
+    """El `<select>` de categoría manda el id como texto (vacío = sin categoría); un valor que no es un
+    entero es un dato inválido, no un error del servidor."""
+    texto = texto.strip()
+    if not texto:
+        return None
+    try:
+        return int(texto)
+    except ValueError:
+        raise DatosInvalidosError("La categoría elegida no es válida.") from None
+
+
 @router.get("/productos", dependencies=[_CONSULTA])
 def listar_productos(
     request: Request,
@@ -162,7 +174,7 @@ async def crear_producto(
         precio_venta_centavos=texto_a_centavos(precio_venta),
         stock_actual=stock_actual,
         stock_minimo=stock_minimo,
-        categoria_id=int(categoria_id) if categoria_id else None,
+        categoria_id=_categoria_id_o_none(categoria_id),
         unidad_medida=unidad_medida,
         usuario_id=usuario_actual.id,
     )
@@ -279,7 +291,7 @@ async def editar_producto(
         precio_costo_centavos=texto_a_centavos(precio_costo),
         precio_venta_centavos=texto_a_centavos(precio_venta),
         stock_minimo=stock_minimo,
-        categoria_id=int(categoria_id) if categoria_id else None,
+        categoria_id=_categoria_id_o_none(categoria_id),
         unidad_medida=unidad_medida,
         usuario_id=usuario_actual.id,
     )

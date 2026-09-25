@@ -12,6 +12,7 @@ no arrastrar errores de precisión binaria en cálculos financieros (ver
 
 from dataclasses import dataclass
 
+from domain.dinero import MAXIMO_ENTERO
 from excepciones import DatosInvalidosError
 
 # Unidad de medida: por ahora es un dato puramente descriptivo (Fase 3C).
@@ -21,9 +22,8 @@ from excepciones import DatosInvalidosError
 # decide soportar venta fraccionaria). Único lugar del proyecto donde se
 # define este conjunto: cualquier otro módulo que necesite validar o listar
 # unidades válidas debe importarlo de acá, no repetirlo.
-# Cota técnica, no comercial: SQLite guarda enteros de 64 bits. Un valor mayor no se puede
-# persistir (`OverflowError`), así que se rechaza como dato inválido antes de llegar a la base.
-MAXIMO_ENTERO = 2**63 - 1
+# `MAXIMO_ENTERO` (cota técnica de SQLite, no comercial) se define en `domain.dinero`, único lugar
+# del proyecto; se reexporta acá porque otros módulos ya lo importan desde `domain.producto`.
 
 UNIDADES_VALIDAS = frozenset({"UNIDAD", "KG", "G", "LITRO", "ML"})
 

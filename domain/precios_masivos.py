@@ -53,9 +53,14 @@ def porcentaje_a_basis_points(texto: str) -> int:
         raise DatosInvalidosError(f"Porcentaje inválido: {texto!r}.") from None
     if not valor.is_finite() or valor <= 0:
         raise DatosInvalidosError("El porcentaje debe ser un número mayor a cero.")
+    # Antes de operar: con un exponente enorme (`1E+9999999`) la multiplicación desborda `Decimal`.
+    if valor > Decimal(PORCENTAJE_MAXIMO_BASIS_POINTS) / 100:
+        raise DatosInvalidosError("El porcentaje no puede superar 1000 %.")
     basis_points = valor * 100
     if basis_points != basis_points.to_integral_value():
         raise DatosInvalidosError("El porcentaje admite hasta 2 decimales.")
+    if basis_points < 1:  # un exponente negativo enorme (`1E-9999999`) se redondea a 0 al multiplicar
+        raise DatosInvalidosError("El porcentaje debe ser un número mayor a cero.")
     if basis_points > PORCENTAJE_MAXIMO_BASIS_POINTS:
         raise DatosInvalidosError("El porcentaje no puede superar 1000 %.")
     return int(basis_points)

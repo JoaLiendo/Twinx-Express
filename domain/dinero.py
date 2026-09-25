@@ -11,11 +11,21 @@ usuario (ej. "150.50"). Se usa `Decimal` para esa conversión puntual,
 nunca `float`.
 """
 
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
 
 from excepciones import DatosInvalidosError
 
 CENTAVOS_POR_UNIDAD = 100
+
+# Cota técnica, no comercial: SQLite guarda enteros de 64 bits. Un valor mayor no se puede
+# persistir (`OverflowError`), así que se rechaza como dato inválido antes de llegar a la base.
+# Rige para montos en centavos (en valor absoluto), cantidades y stock.
+MAXIMO_ENTERO = 2**63 - 1
+
+# Un monto con más de 20 dígitos enteros (`adjusted() > 19`) supera `MAXIMO_ENTERO` centavos con
+# holgura: se descarta sin operar con él, porque un exponente enorme (`1E+9999999`) haría fallar
+# la cuantización. Los montos menores se validan de forma exacta, después de redondear.
+_EXPONENTE_MAXIMO_PREVIO = 19
 
 
 def texto_a_centavos(texto: str) -> int:
@@ -24,15 +34,29 @@ def texto_a_centavos(texto: str) -> int:
     Redondea al centavo más cercano (mitad hacia arriba) de forma
     explícita con `Decimal`, en vez de heredar el redondeo implícito
     de un `float`.
+
+    Raises:
+        DatosInvalidosError: si el texto no es un número, no es finito (`NaN`, `sNaN`, `Infinity`)
+            o el resultado en centavos supera `MAXIMO_ENTERO` en valor absoluto. El signo no se
+            valida acá: cada campo decide si admite negativos.
     """
     texto_normalizado = texto.strip().replace(",", ".")
     try:
         valor = Decimal(texto_normalizado)
     except InvalidOperation as error:
-        raise DatosInvalidosError(f"Monto inválido: {texto!r}.") from error
+        raise DatosInvalidosError(f"Monto inválido: {texto[:40]!r}.") from error
+    if not valor.is_finite():
+        raise DatosInvalidosError(f"Monto inválido: {texto[:40]!r}.")
+    if valor != 0 and valor.adjusted() > _EXPONENTE_MAXIMO_PREVIO:
+        raise DatosInvalidosError(f"El monto {texto[:40]!r} está fuera del rango admitido.")
 
-    centavos = (valor * CENTAVOS_POR_UNIDAD).to_integral_value(rounding=ROUND_HALF_UP)
-    return int(centavos)
+    # Precisión suficiente para que `scaleb` y el redondeo sean exactos con cualquier cantidad de dígitos.
+    with localcontext() as contexto:
+        contexto.prec = len(valor.as_tuple().digits) + 8
+        centavos = int(valor.scaleb(2).to_integral_value(rounding=ROUND_HALF_UP))
+    if abs(centavos) > MAXIMO_ENTERO:
+        raise DatosInvalidosError(f"El monto {texto[:40]!r} está fuera del rango admitido.")
+    return centavos
 
 
 def centavos_a_texto(centavos: int) -> str:
