@@ -468,6 +468,23 @@ inventario.
 | `021_producto_proveedor.sql` | Tabla `producto_proveedor` (un principal por producto) y vínculos históricos a partir de las compras. |
 | `022_inventario_fisico.sql` | `productos.version_stock` con su trigger, tablas `inventarios` e `inventario_lineas` y `ajustes_stock.inventario_id`, con triggers que impiden estados inválidos. |
 
+## Robustez y escala (V1.5)
+
+Sin funcionalidad nueva ni migraciones: endurece lo existente.
+
+- **Robustez numérica.** Montos, cantidades, stock y porcentajes se validan contra el rango que soporta
+  SQLite (enteros de 64 bits): `NaN`, `Infinity`, exponentes gigantes y valores fuera de rango se rechazan como
+  dato inválido (mensaje claro, nada se guarda) en vez de producir un error del servidor. Un identificador de
+  categoría o de usuario no numérico también se resuelve de forma controlada.
+- **Escala acotada.** El Historial de ventas se pagina en SQL (`LIMIT/OFFSET`, 100 por página) conservando los
+  filtros; la pantalla de Caja lista solo los movimientos de la sesión relevante (la abierta o, si no hay, la
+  última cerrada) y el dashboard consulta únicamente los últimos 5 movimientos. Arqueo y cierre de caja no cambian.
+- **Cobertura E2E del rol CASHIER.** El servidor de pruebas E2E siembra un CASHIER y se verifica en el navegador
+  que cuenta el inventario a ciegas pero no crea, revisa, confirma ni cancela, y que las rutas solo-OWNER
+  responden 403 también por acceso directo (URL y POST).
+
+**Actualizar desde V1.4.** Sin migraciones: los datos quedan intactos.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -485,5 +502,6 @@ inventario.
 - [x] Reportes de ventas, precios (historial y actualización masiva), auditoría, importación, configuración del ticket y reposición (V1.2, ver la sección «Control comercial y trazabilidad (V1.2)»)
 - [x] Caja por sesiones, clientes y cuenta corriente (ventas a cuenta y cobros en efectivo) (V1.3, ver sección anterior)
 - [x] Proveedores (búsqueda, ficha, relación producto-proveedor) e inventario físico con conteo a ciegas (V1.4, ver sección anterior)
+- [x] Robustez numérica, historial/caja/dashboard acotados y cobertura E2E del rol CASHIER (V1.5, ver «Robustez y escala (V1.5)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

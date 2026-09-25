@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.4.0
+Twinx Express 1.5.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -462,3 +462,30 @@ c) AL ACTUALIZAR DESDE LA VERSION 1.3
    vinculados a sus productos (el principal de cada producto es el de su
    compra mas reciente) y los inventarios empiezan vacios. Si algo sale
    mal, segui el punto 7.
+
+
+14) NOVEDADES DE LA VERSION 1.5: ROBUSTEZ Y ESCALA
+----------------------------------------------------------------------------------
+
+Esta version no agrega pantallas nuevas: hace la aplicacion mas robusta y
+mas rapida cuando hay muchos datos.
+
+a) VALORES NUMERICOS INVALIDOS O ABSURDOS
+   Un monto, cantidad o porcentaje imposible (por ejemplo un numero
+   enorme, "NaN" o "Infinity") ahora se rechaza con un mensaje claro en
+   lugar de producir un error. El dato no se guarda.
+
+b) HISTORIAL DE VENTAS PAGINADO
+   El Historial muestra 100 ventas por pagina, con "Anterior" y
+   "Siguiente". Los filtros (fechas, medio de pago, estado) se mantienen
+   al cambiar de pagina.
+
+c) CAJA Y PANEL DE INICIO MAS LIVIANOS
+   - La pantalla de Caja lista los movimientos de la sesion actual (la
+     abierta o, si no hay, la ultima cerrada), no todo el historial. El
+     arqueo y el cierre no cambian.
+   - El panel de inicio muestra los 5 ultimos movimientos de caja.
+
+d) AL ACTUALIZAR DESDE LA VERSION 1.4
+   No hay cambios en la base de datos ni migraciones nuevas: tus datos
+   quedan tal cual. Si algo sale mal, segui el punto 7.
