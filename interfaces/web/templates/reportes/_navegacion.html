@@ -1,0 +1,9 @@
+{# Navegación entre los reportes; `seccion` indica el activo. #}
+{% set secciones = [('ventas', '/reportes', 'Ventas'), ('caja', '/reportes/caja', 'Caja por sesión'), ('compras', '/reportes/compras', 'Compras por proveedor'), ('cuenta-corriente', '/reportes/cuenta-corriente', 'Cuenta corriente')] %}
+<nav id="navegacion-reportes" class="flex flex-wrap gap-2" aria-label="Reportes">
+  {% for clave, href, etiqueta in secciones %}
+    <a href="{{ href }}" {{ 'aria-current="page"' | safe if clave == seccion else '' }}
+       class="rounded-lg px-3.5 py-2 text-sm font-medium transition
+              {{ 'bg-primary text-white shadow-sm' if clave == seccion else 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700' }}">{{ etiqueta }}</a>
+  {% endfor %}
+</nav>

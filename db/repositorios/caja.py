@@ -14,6 +14,7 @@ from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from domain.caja import MovimientoCaja, SesionCaja
 from domain.dinero import centavos_a_texto
+from domain.reportes_operativos import ResumenSesionCaja, VentasDeSesionPorMedio
 from excepciones import CajaError
 
 _COLUMNAS = "id, fecha, tipo, monto_centavos, descripcion, diferencia_centavos, origen"
@@ -218,6 +219,76 @@ def listar_movimientos() -> list[MovimientoCaja]:
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta).fetchall()
     return [_fila_a_movimiento(fila) for fila in filas]
+
+
+def resumir_sesiones(desde_inicio: str, hasta_exclusivo: str) -> list[ResumenSesionCaja]:
+    """Resumen de las sesiones abiertas en `[desde_inicio, hasta_exclusivo)` (texto de fecha/hora), la más
+    reciente primero, con movimientos y ventas agregados en SQL por sesión. Excluye la sesión `LEGADO`
+    (no es una caja real). Los límites se comparan como texto, sin `date(columna)`."""
+    rango = "s.origen <> 'LEGADO' AND s.fecha_apertura >= ? AND s.fecha_apertura < ?"
+    en_rango = f"(SELECT s.id FROM sesiones_caja s WHERE {rango})"
+    parametros = (desde_inicio, hasta_exclusivo)
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            f"""
+            SELECT s.id, s.estado, s.origen, s.fecha_apertura, s.fecha_cierre,
+                   ua.nombre_completo AS usuario_apertura, uc.nombre_completo AS usuario_cierre,
+                   s.fondo_centavos, s.contado_centavos, s.diferencia_centavos,
+                   COALESCE(m.apertura, 0) AS apertura, COALESCE(m.ingresos, 0) AS ingresos,
+                   COALESCE(m.cobranzas, 0) AS cobranzas, COALESCE(m.egresos, 0) AS egresos
+            FROM sesiones_caja s
+            LEFT JOIN usuarios ua ON ua.id = s.usuario_apertura_id
+            LEFT JOIN usuarios uc ON uc.id = s.usuario_cierre_id
+            LEFT JOIN (
+                SELECT sesion_caja_id,
+                       SUM(CASE WHEN tipo = 'APERTURA' THEN monto_centavos END) AS apertura,
+                       SUM(CASE WHEN tipo = 'INGRESO' AND origen = 'MANUAL' THEN monto_centavos END) AS ingresos,
+                       SUM(CASE WHEN tipo = 'INGRESO' AND origen = 'COBRO_CUENTA' THEN monto_centavos END) AS cobranzas,
+                       SUM(CASE WHEN tipo = 'EGRESO' THEN monto_centavos END) AS egresos
+                FROM caja_movimientos
+                WHERE sesion_caja_id IN {en_rango}
+                GROUP BY sesion_caja_id
+            ) m ON m.sesion_caja_id = s.id
+            WHERE {rango}
+            ORDER BY s.id DESC
+            """,
+            parametros + parametros,
+        ).fetchall()
+        ventas = conexion.execute(
+            f"""
+            SELECT sesion_caja_id, tipo_pago, COUNT(*) AS cantidad, SUM(total_centavos) AS total
+            FROM ventas
+            WHERE estado = 'ACTIVA' AND sesion_caja_id IN {en_rango}
+            GROUP BY sesion_caja_id, tipo_pago
+            ORDER BY tipo_pago
+            """,
+            parametros,
+        ).fetchall()
+    ventas_por_sesion: dict[int, list[VentasDeSesionPorMedio]] = {}
+    for fila in ventas:
+        ventas_por_sesion.setdefault(fila["sesion_caja_id"], []).append(
+            VentasDeSesionPorMedio(fila["tipo_pago"], fila["cantidad"], fila["total"])
+        )
+    return [
+        ResumenSesionCaja(
+            sesion_id=fila["id"],
+            estado=fila["estado"],
+            origen=fila["origen"],
+            fecha_apertura=fila["fecha_apertura"],
+            fecha_cierre=fila["fecha_cierre"],
+            usuario_apertura=fila["usuario_apertura"],
+            usuario_cierre=fila["usuario_cierre"],
+            fondo_centavos=fila["fondo_centavos"],
+            apertura_centavos=fila["apertura"],
+            ingresos_centavos=fila["ingresos"],
+            cobranzas_centavos=fila["cobranzas"],
+            egresos_centavos=fila["egresos"],
+            contado_centavos=fila["contado_centavos"],
+            diferencia_centavos=fila["diferencia_centavos"],
+            ventas_por_medio=ventas_por_sesion.get(fila["id"], []),
+        )
+        for fila in filas
+    ]
 
 
 def listar_movimientos_recientes(limite: int) -> list[MovimientoCaja]:

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "reportes/_periodo.html" as periodo %}
+
+{% block titulo %}Reporte de caja{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Reportes · Caja por sesión</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+  {% include "reportes/_navegacion.html" %}
+  {% call periodo.formulario("/reportes/caja", reporte.fecha_desde, reporte.fecha_hasta) %}{% endcall %}
+  <p class="text-xs text-slate-500 dark:text-slate-400">Sesiones abiertas en el período. El efectivo esperado se calcula igual que en el arqueo y el cierre: apertura + ingresos + cobranzas + ventas en efectivo − egresos. Solo consulta.</p>
+
+  {% if reporte.sesiones %}
+    <div class="space-y-4" id="sesiones-caja">
+      {% for s in reporte.sesiones %}
+        <div data-sesion="{{ s.sesion_id }}" class="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-3 dark:border-slate-800 dark:bg-slate-900">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="font-semibold text-slate-900 dark:text-slate-100">Sesión #{{ s.sesion_id }}
+              {% if s.estado == 'ABIERTA' %}{{ ui.badge('Abierta', 'exito') }}{% else %}{{ ui.badge('Cerrada', 'neutral') }}{% endif %}
+            </p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              Apertura {{ s.fecha_apertura }}{% if s.usuario_apertura %} · {{ s.usuario_apertura }}{% endif %}
+              {% if s.fecha_cierre %} — Cierre {{ s.fecha_cierre }}{% if s.usuario_cierre %} · {{ s.usuario_cierre }}{% endif %}{% endif %}
+            </p>
+          </div>
+          <dl class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+            <div><dt class="text-xs text-slate-500 dark:text-slate-400">Monto inicial</dt><dd data-campo="inicial" class="font-semibold tabular-nums">${{ s.apertura_centavos | dinero_ar }}</dd></div>
+            <div><dt class="text-xs text-slate-500 dark:text-slate-400">Ingresos manuales</dt><dd data-campo="ingresos" class="font-semibold tabular-nums">${{ s.ingresos_centavos | dinero_ar }}</dd></div>
+            <div><dt class="text-xs text-slate-500 dark:text-slate-400">Cobranzas cta. cte.</dt><dd data-campo="cobranzas" class="font-semibold tabular-nums">${{ s.cobranzas_centavos | dinero_ar }}</dd></div>
+            <div><dt class="text-xs text-slate-500 dark:text-slate-400">Egresos</dt><dd data-campo="egresos" class="font-semibold tabular-nums">${{ s.egresos_centavos | dinero_ar }}</dd></div>
+            <div><dt class="text-xs text-slate-500 dark:text-slate-400">Ventas</dt><dd data-campo="ventas" class="font-semibold tabular-nums">${{ s.total_ventas_centavos | dinero_ar }}</dd></div>
+            <div><dt class="text-xs text-slate-500 dark:text-slate-400">Efectivo esperado</dt><dd data-campo="esperado" class="font-semibold tabular-nums">${{ s.efectivo_esperado_centavos | dinero_ar }}</dd></div>
+            <div><dt class="text-xs text-slate-500 dark:text-slate-400">Monto declarado</dt><dd data-campo="declarado" class="font-semibold tabular-nums">{% if s.contado_centavos is not none %}${{ s.contado_centavos | dinero_ar }}{% else %}—{% endif %}</dd></div>
+            <div><dt class="text-xs text-slate-500 dark:text-slate-400">Diferencia</dt><dd data-campo="diferencia" class="font-semibold tabular-nums">
+              {% if s.diferencia_centavos is none %}—{% elif s.diferencia_centavos > 0 %}+${{ s.diferencia_centavos | dinero_ar }}{% elif s.diferencia_centavos < 0 %}-${{ (-s.diferencia_centavos) | dinero_ar }}{% else %}$0,00{% endif %}
+            </dd></div>
+          </dl>
+          {% if s.ventas_por_medio %}
+            <p class="text-xs text-slate-500 dark:text-slate-400" data-campo="medios">Ventas por medio de pago:
+              {% for v in s.ventas_por_medio %}<span class="ml-2">{{ v.tipo_pago }} ${{ v.total_centavos | dinero_ar }} ({{ v.cantidad_ventas }})</span>{% endfor %}
+            </p>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    {{ ui.estado_vacio("Sin sesiones de caja en el período", "No se abrió ninguna caja entre las fechas elegidas.") }}
+  {% endif %}
+</div>
+{% endblock %}

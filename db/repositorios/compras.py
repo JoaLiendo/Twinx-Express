@@ -16,6 +16,7 @@ import sqlite3
 
 from db.conexion import obtener_conexion
 from domain.compra import Compra, DetalleCompra, ItemCompra, LineaDetalleCompra, ResumenCompra
+from domain.reportes_operativos import ComprasDeProveedor
 
 _COLUMNAS_COMPRA = "id, proveedor_id, usuario_id, fecha, observaciones, total_centavos"
 _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centavos, subtotal_centavos"
@@ -175,6 +176,43 @@ def listar_detalle(compra_id: int) -> list[DetalleCompra]:
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta, (compra_id,)).fetchall()
     return [_fila_a_detalle(fila) for fila in filas]
+
+
+def resumir_por_proveedor(
+    desde_inicio: str, hasta_exclusivo: str, proveedor_id: int | None = None
+) -> list[ComprasDeProveedor]:
+    """Compras del período `[desde_inicio, hasta_exclusivo)` (texto de fecha/hora) agrupadas por proveedor
+    en SQL: cantidad de compras, unidades y total; el mayor total primero. Un proveedor sin compras en el
+    período no aparece. `proveedor_id` limita el resultado a un proveedor."""
+    condiciones = "c.fecha >= ? AND c.fecha < ?"
+    parametros: list[object] = [desde_inicio, hasta_exclusivo]
+    if proveedor_id is not None:
+        condiciones += " AND c.proveedor_id = ?"
+        parametros.append(proveedor_id)
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            f"""
+            SELECT p.id AS proveedor_id, p.nombre AS proveedor_nombre, c.compras, c.total, u.unidades
+            FROM (SELECT c.proveedor_id, COUNT(*) AS compras, SUM(c.total_centavos) AS total
+                  FROM compras c WHERE {condiciones} GROUP BY c.proveedor_id) c
+            JOIN (SELECT c.proveedor_id, SUM(d.cantidad) AS unidades
+                  FROM compras c JOIN detalle_compra d ON d.compra_id = c.id
+                  WHERE {condiciones} GROUP BY c.proveedor_id) u ON u.proveedor_id = c.proveedor_id
+            JOIN proveedores p ON p.id = c.proveedor_id
+            ORDER BY c.total DESC, p.nombre COLLATE NOCASE, p.id
+            """,
+            parametros + parametros,
+        ).fetchall()
+    return [
+        ComprasDeProveedor(
+            proveedor_id=fila["proveedor_id"],
+            proveedor_nombre=fila["proveedor_nombre"],
+            cantidad_compras=fila["compras"],
+            unidades=fila["unidades"],
+            total_centavos=fila["total"],
+        )
+        for fila in filas
+    ]
 
 
 def listar_resumen(

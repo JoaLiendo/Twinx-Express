@@ -7,6 +7,8 @@
 {% block content %}
 <div class="max-w-6xl mx-auto space-y-6">
 
+  {% set seccion = "ventas" %}{% include "reportes/_navegacion.html" %}
+
   <!-- Valorización de inventario: a HOY, independiente del filtro de
        fecha de abajo -- por eso va antes del formulario, con un acento
        visual distinto (border-primary), para que quede claro que no es

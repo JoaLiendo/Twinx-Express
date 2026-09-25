@@ -11,6 +11,7 @@ import sqlite3
 
 from db.conexion import obtener_conexion
 from domain.cliente import Cliente, ClienteConSaldo, DeudaTotal, MovimientoCuenta, ResumenCuenta, SaldoTrasVenta
+from domain.reportes_operativos import CobranzaDeCliente, DeudorCuenta
 
 _COLUMNAS = "id, nombre, telefono, email, direccion, observaciones, activo, fecha_creacion"
 _COLUMNAS_MOVIMIENTO = (
@@ -147,6 +148,39 @@ def obtener_deuda_total() -> DeudaTotal:
             """
         ).fetchone()
     return DeudaTotal(total_centavos=fila["total"], cantidad_clientes=fila["cantidad"])
+
+
+def listar_deudores() -> list[DeudorCuenta]:
+    """Clientes con saldo positivo (activos o no), el que más debe primero; el saldo se agrega en SQL con
+    `_SALDO`, la misma expresión que `obtener_deuda_total` y el resto de los saldos."""
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            f"""
+            SELECT c.id, c.nombre, c.activo, m.saldo
+            FROM clientes c
+            JOIN (SELECT cliente_id, {_SALDO} AS saldo FROM movimientos_cuenta
+                  GROUP BY cliente_id HAVING saldo > 0) m ON m.cliente_id = c.id
+            ORDER BY m.saldo DESC, c.nombre COLLATE NOCASE, c.id
+            """
+        ).fetchall()
+    return [DeudorCuenta(fila["id"], fila["nombre"], bool(fila["activo"]), fila["saldo"]) for fila in filas]
+
+
+def resumir_cobranzas(desde_inicio: str, hasta_exclusivo: str) -> list[CobranzaDeCliente]:
+    """Cobros (solo `COBRO`, nunca cargos) del período `[desde_inicio, hasta_exclusivo)` agrupados por
+    cliente en SQL: cantidad y monto; el mayor monto primero."""
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            """
+            SELECT c.id, c.nombre, COUNT(*) AS cobros, SUM(m.monto_centavos) AS total
+            FROM movimientos_cuenta m JOIN clientes c ON c.id = m.cliente_id
+            WHERE m.tipo = 'COBRO' AND m.fecha >= ? AND m.fecha < ?
+            GROUP BY c.id
+            ORDER BY total DESC, c.nombre COLLATE NOCASE, c.id
+            """,
+            (desde_inicio, hasta_exclusivo),
+        ).fetchall()
+    return [CobranzaDeCliente(fila["id"], fila["nombre"], fila["cobros"], fila["total"]) for fila in filas]
 
 
 def obtener_resumen_cuenta_en_conexion(conexion: sqlite3.Connection, cliente_id: int) -> ResumenCuenta:

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "reportes/_periodo.html" as periodo %}
+
+{% block titulo %}Reporte de compras{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Reportes · Compras por proveedor</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+  {% include "reportes/_navegacion.html" %}
+  {% call periodo.formulario("/reportes/compras", reporte.fecha_desde, reporte.fecha_hasta) %}
+    <div>
+      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Proveedor</label>
+      <select name="proveedor_id" class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+        <option value="">Todos</option>
+        {% for proveedor in proveedores %}
+          <option value="{{ proveedor.id }}" {{ 'selected' if reporte.proveedor_id == proveedor.id else '' }}>{{ proveedor.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  {% endcall %}
+
+  {% if reporte.filas %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto">
+        <table id="tabla-compras-proveedor" class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-3">Proveedor</th>
+              <th class="px-5 py-3 text-right">Compras</th>
+              <th class="px-5 py-3 text-right">Unidades</th>
+              <th class="px-5 py-3 text-right">Total comprado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for fila in reporte.filas %}
+              <tr data-proveedor="{{ fila.proveedor_id }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                <td class="px-5 py-3 font-medium text-slate-900 dark:text-slate-100">{{ fila.proveedor_nombre }}</td>
+                <td class="px-5 py-3 text-right tabular-nums">{{ fila.cantidad_compras }}</td>
+                <td class="px-5 py-3 text-right tabular-nums">{{ fila.unidades }}</td>
+                <td class="px-5 py-3 text-right font-semibold tabular-nums">${{ fila.total_centavos | dinero_ar }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="border-t border-slate-200 dark:border-slate-700 font-semibold">
+              <td class="px-5 py-3">Total</td>
+              <td class="px-5 py-3 text-right tabular-nums" id="total-compras-cantidad">{{ reporte.total_compras }}</td>
+              <td class="px-5 py-3 text-right tabular-nums" id="total-compras-unidades">{{ reporte.total_unidades }}</td>
+              <td class="px-5 py-3 text-right tabular-nums" id="total-compras-monto">${{ reporte.total_centavos | dinero_ar }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    {{ ui.estado_vacio("Sin compras en el período", "No hay compras registradas entre las fechas y el proveedor elegidos.") }}
+  {% endif %}
+</div>
+{% endblock %}

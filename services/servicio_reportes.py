@@ -12,11 +12,17 @@ generales del reporte (`cantidad_ventas`/`total_facturado_centavos`),
 que no dependen de ninguno de los dos campos.
 """
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
+from db.repositorios import caja as repositorio_caja
+from db.repositorios import clientes as repositorio_clientes
+from db.repositorios import compras as repositorio_compras
 from db.repositorios import ventas as repositorio_ventas
+from domain.reportes_operativos import CobranzaDeCliente, ComprasDeProveedor, DeudorCuenta, ResumenSesionCaja
 from domain.venta import ProductoMasVendido, ResumenVenta, Venta
+from excepciones import DatosInvalidosError
 
 LIMITE_PRODUCTOS_MAS_VENDIDOS = 10
 
@@ -300,3 +306,116 @@ def _listar_ventas_por_usuario(fecha_desde: str, fecha_hasta: str) -> list[Venta
         )
         for usuario_id, nombre_completo, activo, cantidad_ventas, total_vendido_centavos in filas
     ]
+
+
+# --- Reportes operativos (V1.6-C): caja por sesión, compras por proveedor y cuenta corriente -------------
+# Todos agregan en SQL (ver `db/repositorios`) y son de solo lectura.
+
+# Ventana por defecto de los reportes operativos con período: últimos 30 días (incluye hoy).
+DIAS_RANGO_POR_DEFECTO_OPERATIVO = 30
+
+_FECHA_ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+@dataclass
+class ReporteCaja:
+    fecha_desde: str
+    fecha_hasta: str
+    sesiones: list[ResumenSesionCaja]
+
+
+@dataclass
+class ReporteCompras:
+    fecha_desde: str
+    fecha_hasta: str
+    proveedor_id: int | None
+    filas: list[ComprasDeProveedor]
+
+    @property
+    def total_compras(self) -> int:
+        return sum(fila.cantidad_compras for fila in self.filas)
+
+    @property
+    def total_unidades(self) -> int:
+        return sum(fila.unidades for fila in self.filas)
+
+    @property
+    def total_centavos(self) -> int:
+        return sum(fila.total_centavos for fila in self.filas)
+
+
+@dataclass
+class ReporteDeuda:
+    filas: list[DeudorCuenta]
+
+    @property
+    def total_centavos(self) -> int:
+        return sum(fila.saldo_centavos for fila in self.filas)
+
+
+@dataclass
+class ReporteCobranzas:
+    fecha_desde: str
+    fecha_hasta: str
+    filas: list[CobranzaDeCliente]
+
+    @property
+    def total_cobros(self) -> int:
+        return sum(fila.cantidad_cobros for fila in self.filas)
+
+    @property
+    def total_centavos(self) -> int:
+        return sum(fila.total_centavos for fila in self.filas)
+
+
+def _limites_del_periodo(fecha_desde: str | None, fecha_hasta: str | None) -> tuple[str, str, str, str]:
+    """`(desde_efectivo, hasta_efectivo, inicio, fin_exclusivo)` de un período de días completos.
+
+    Sin alguno de los dos límites usa el rango por defecto para ambos (misma convención que los demás
+    reportes). `inicio` y `fin_exclusivo` (el día siguiente a `hasta`) son texto comparable con las
+    columnas de fecha/hora, así el filtro no aplica `date()` a la columna.
+
+    Raises:
+        DatosInvalidosError: si una fecha no es `AAAA-MM-DD` válida o `desde` es posterior a `hasta`.
+    """
+    if not fecha_desde or not fecha_hasta:
+        hoy = date.today()
+        fecha_desde = (hoy - timedelta(days=DIAS_RANGO_POR_DEFECTO_OPERATIVO - 1)).isoformat()
+        fecha_hasta = hoy.isoformat()
+    try:
+        if not (_FECHA_ISO.fullmatch(fecha_desde) and _FECHA_ISO.fullmatch(fecha_hasta)):
+            raise ValueError
+        desde, hasta = date.fromisoformat(fecha_desde), date.fromisoformat(fecha_hasta)
+        fin_exclusivo = (hasta + timedelta(days=1)).isoformat()
+    except (ValueError, OverflowError):
+        raise DatosInvalidosError("Las fechas del reporte deben tener el formato AAAA-MM-DD y ser válidas.") from None
+    if desde > hasta:
+        raise DatosInvalidosError("La fecha desde no puede ser posterior a la fecha hasta.")
+    return fecha_desde, fecha_hasta, fecha_desde, fin_exclusivo
+
+
+def generar_reporte_caja(fecha_desde: str | None = None, fecha_hasta: str | None = None) -> ReporteCaja:
+    """Resumen por sesión de caja (abiertas en el período), con la misma fórmula de efectivo esperado
+    que el arqueo y el cierre. No modifica ninguna caja."""
+    desde, hasta, inicio, fin = _limites_del_periodo(fecha_desde, fecha_hasta)
+    return ReporteCaja(desde, hasta, repositorio_caja.resumir_sesiones(inicio, fin))
+
+
+def generar_reporte_compras(
+    fecha_desde: str | None = None, fecha_hasta: str | None = None, proveedor_id: int | None = None
+) -> ReporteCompras:
+    """Compras del período agrupadas por proveedor (cantidad, unidades y total), opcionalmente de un solo
+    proveedor."""
+    desde, hasta, inicio, fin = _limites_del_periodo(fecha_desde, fecha_hasta)
+    return ReporteCompras(desde, hasta, proveedor_id, repositorio_compras.resumir_por_proveedor(inicio, fin, proveedor_id))
+
+
+def generar_reporte_deuda() -> ReporteDeuda:
+    """Deuda actual de cuenta corriente por cliente (solo saldos positivos, activos o inactivos)."""
+    return ReporteDeuda(repositorio_clientes.listar_deudores())
+
+
+def generar_reporte_cobranzas(fecha_desde: str | None = None, fecha_hasta: str | None = None) -> ReporteCobranzas:
+    """Cobros de cuenta corriente del período agrupados por cliente (solo `COBRO`)."""
+    desde, hasta, inicio, fin = _limites_del_periodo(fecha_desde, fecha_hasta)
+    return ReporteCobranzas(desde, hasta, repositorio_clientes.resumir_cobranzas(inicio, fin))
