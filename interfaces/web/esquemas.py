@@ -5,7 +5,7 @@ dominio: la validación de negocio real vive en `domain/` y corre recién
 cuando estos datos se pasan a `services/`.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 
 class ItemVentaEntrada(BaseModel):
@@ -32,3 +32,18 @@ class VentaSalida(BaseModel):
     fecha: str
     total_centavos: int
     tipo_pago: str
+
+
+class ConteoEntrada(BaseModel):
+    """Conteo de un producto del inventario físico (V1.4). `StrictInt`: solo un entero JSON, sin
+    coerción de texto, decimales ni booleanos; el servicio valida que no sea negativo."""
+
+    cantidad: StrictInt
+
+
+class ConteoSalida(BaseModel):
+    """Lo único que vuelve al contador: el producto y lo que contó. Nunca el stock esperado ni la
+    diferencia (conteo a ciegas)."""
+
+    producto_id: int
+    cantidad_contada: int

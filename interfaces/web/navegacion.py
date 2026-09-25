@@ -11,6 +11,8 @@ CASHIER ve Dashboard, Ventas, Caja y Stock (Stock en modo consulta,
 algo que decide la ruta en una fase posterior, no la navegación).
 V1.3 (021) agrega Clientes para ambos roles: los dos pueden ver clientes,
 crearlos y cobrar; editar/desactivar/reactivar lo restringe cada ruta.
+V1.4 agrega Inventario para ambos roles: el CASHIER solo cuenta (la ruta lo lleva a la pantalla de
+conteo); crear, revisar, confirmar y cancelar son del OWNER.
 """
 
 _SOLO_OWNER = ("OWNER",)
@@ -23,6 +25,7 @@ NAV_ITEMS: list[dict[str, object]] = [
     {"href": "/caja", "etiqueta": "Caja", "icono": "caja", "roles": None},
     {"href": "/clientes", "etiqueta": "Clientes", "icono": "clientes", "roles": None},
     {"href": "/productos", "etiqueta": "Stock", "icono": "productos", "roles": None},
+    {"href": "/inventario", "etiqueta": "Inventario", "icono": "productos", "roles": None},
     {"href": "/proveedores", "etiqueta": "Proveedores", "icono": "proveedores", "roles": _SOLO_OWNER},
     {"href": "/compras", "etiqueta": "Compras", "icono": "compras", "roles": _SOLO_OWNER},
     {"href": "/reposicion", "etiqueta": "Reposición", "icono": "pedidos", "roles": _SOLO_OWNER},

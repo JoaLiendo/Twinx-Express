@@ -459,12 +459,14 @@ _CONSULTAS_DE_MOTIVOS = (
     ("compras", "SELECT 1 FROM detalle_compra WHERE producto_id = ? LIMIT 1"),
     ("ajustes de stock", "SELECT 1 FROM ajustes_stock WHERE producto_id = ? LIMIT 1"),
     ("cambios de precio", "SELECT 1 FROM historial_precios WHERE producto_id = ? LIMIT 1"),
+    ("proveedores vinculados", "SELECT 1 FROM producto_proveedor WHERE producto_id = ? LIMIT 1"),
+    ("inventarios", "SELECT 1 FROM inventario_lineas WHERE producto_id = ? LIMIT 1"),
 )
 
 
 def listar_motivos_de_conservacion_en_conexion(conexion: sqlite3.Connection, producto_id: int) -> list[str]:
     """Qué registros asociados impiden borrar físicamente un producto (ventas,
-    compras, ajustes de stock, cambios de precio)."""
+    compras, ajustes de stock, cambios de precio, proveedores vinculados, inventarios)."""
     return [
         motivo
         for motivo, consulta in _CONSULTAS_DE_MOTIVOS

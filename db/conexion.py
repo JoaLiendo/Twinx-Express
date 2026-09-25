@@ -28,6 +28,11 @@ _TABLA_MIGRACIONES = """
 _MENSAJE_BASE_DATOS_OCUPADA = "Hay otra operación en curso. Intentá nuevamente en unos segundos."
 
 
+ConexionBD = sqlite3.Connection
+"""Tipo de la conexión que entrega `obtener_conexion`: los servicios lo usan para anotar los
+parámetros `conexion` de sus funciones auxiliares sin importar `sqlite3` (solo `db/` lo hace)."""
+
+
 @contextmanager
 def obtener_conexion(*, inmediata: bool = False) -> Generator[sqlite3.Connection, None, None]:
     """Provee una conexión SQLite dentro de una transacción segura.

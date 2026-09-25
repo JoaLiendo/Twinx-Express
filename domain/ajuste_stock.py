@@ -40,6 +40,7 @@ class AjusteStock:
     observaciones: str | None = None
     id: int | None = None
     fecha: str | None = None
+    inventario_id: int | None = None  # 022: inventario físico que originó el ajuste (RECUENTO)
 
     def __post_init__(self) -> None:
         self._validar()

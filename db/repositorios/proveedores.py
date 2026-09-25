@@ -11,7 +11,7 @@ import sqlite3
 
 from db.conexion import obtener_conexion
 from domain.proveedor import Proveedor
-from excepciones import ErrorBaseDatos, NombreProveedorDuplicadoError, ProveedorNoEncontradoError
+from excepciones import NombreProveedorDuplicadoError, ProveedorNoEncontradoError
 
 _COLUMNAS = "id, nombre, contacto_nombre, telefono, email, direccion, notas, activo, fecha_creacion"
 
@@ -31,11 +31,10 @@ def _fila_a_proveedor(fila: sqlite3.Row) -> Proveedor:
     )
 
 
-def crear_proveedor(proveedor: Proveedor) -> Proveedor:
-    """Inserta un nuevo proveedor y devuelve la entidad con su id asignado.
+def crear_proveedor_en_conexion(conexion: sqlite3.Connection, proveedor: Proveedor) -> Proveedor:
+    """Inserta un nuevo proveedor dentro de la transacción recibida.
 
-    Traduce la violación de UNIQUE sobre `nombre` en
-    `NombreProveedorDuplicadoError`.
+    Traduce la violación de UNIQUE sobre `nombre` en `NombreProveedorDuplicadoError`.
     """
     consulta = f"""
         INSERT INTO proveedores (nombre, contacto_nombre, telefono, email, direccion, notas)
@@ -51,15 +50,16 @@ def crear_proveedor(proveedor: Proveedor) -> Proveedor:
         proveedor.notas,
     )
     try:
-        with obtener_conexion() as conexion:
-            fila = conexion.execute(consulta, parametros).fetchone()
-    except ErrorBaseDatos as error:
-        if isinstance(error.__cause__, sqlite3.IntegrityError):
-            raise NombreProveedorDuplicadoError(
-                f"Ya existe un proveedor con el nombre '{proveedor.nombre}'."
-            ) from error
-        raise
+        fila = conexion.execute(consulta, parametros).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise NombreProveedorDuplicadoError(f"Ya existe un proveedor con el nombre '{proveedor.nombre}'.") from error
     return _fila_a_proveedor(fila)
+
+
+def crear_proveedor(proveedor: Proveedor) -> Proveedor:
+    """Inserta un nuevo proveedor en su propia transacción y devuelve la entidad con su id."""
+    with obtener_conexion() as conexion:
+        return crear_proveedor_en_conexion(conexion, proveedor)
 
 
 def obtener_por_id_en_conexion(conexion: sqlite3.Connection, proveedor_id: int) -> Proveedor | None:
@@ -103,7 +103,42 @@ def listar_todos() -> list[Proveedor]:
     return [_fila_a_proveedor(fila) for fila in filas]
 
 
-def actualizar_datos(proveedor: Proveedor) -> Proveedor:
+def obtener_por_id_incluyendo_inactivos_en_conexion(
+    conexion: sqlite3.Connection, proveedor_id: int
+) -> Proveedor | None:
+    """Igual que `obtener_por_id_en_conexion`, pero también encuentra proveedores dados de baja
+    (ficha e historial: un proveedor inactivo conserva su historial de compras)."""
+    fila = conexion.execute(f"SELECT {_COLUMNAS} FROM proveedores WHERE id = ?", (proveedor_id,)).fetchone()
+    return _fila_a_proveedor(fila) if fila is not None else None
+
+
+def obtener_por_id_incluyendo_inactivos(proveedor_id: int) -> Proveedor | None:
+    with obtener_conexion() as conexion:
+        return obtener_por_id_incluyendo_inactivos_en_conexion(conexion, proveedor_id)
+
+
+def _escapar_comodines_like(texto: str) -> str:
+    """Escapa `\\`, `%` y `_` para que lo que tipea el usuario no se interprete como patrón LIKE."""
+    return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def buscar(texto: str, incluir_inactivos: bool = False) -> list[Proveedor]:
+    """Proveedores cuyo nombre, contacto, teléfono o email contienen `texto` (sin distinguir
+    mayúsculas), ordenados por nombre. Los comodines LIKE se buscan como texto literal."""
+    patron = f"%{_escapar_comodines_like(texto.strip())}%"
+    condicion_activo = "" if incluir_inactivos else "activo = 1 AND "
+    consulta = f"""
+        SELECT {_COLUMNAS} FROM proveedores
+        WHERE {condicion_activo}(nombre LIKE ? ESCAPE '\\' OR contacto_nombre LIKE ? ESCAPE '\\'
+                                 OR telefono LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
+        ORDER BY nombre
+    """
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta, (patron, patron, patron, patron)).fetchall()
+    return [_fila_a_proveedor(fila) for fila in filas]
+
+
+def actualizar_datos_en_conexion(conexion: sqlite3.Connection, proveedor: Proveedor) -> Proveedor:
     """Actualiza los datos editables de un proveedor existente (no su id ni `activo`)."""
     if proveedor.id is None:
         raise ProveedorNoEncontradoError("No se puede actualizar un proveedor sin id.")
@@ -124,47 +159,36 @@ def actualizar_datos(proveedor: Proveedor) -> Proveedor:
         proveedor.id,
     )
     try:
-        with obtener_conexion() as conexion:
-            fila = conexion.execute(consulta, parametros).fetchone()
-    except ErrorBaseDatos as error:
-        if isinstance(error.__cause__, sqlite3.IntegrityError):
-            raise NombreProveedorDuplicadoError(
-                f"Ya existe un proveedor con el nombre '{proveedor.nombre}'."
-            ) from error
-        raise
+        fila = conexion.execute(consulta, parametros).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise NombreProveedorDuplicadoError(f"Ya existe un proveedor con el nombre '{proveedor.nombre}'.") from error
 
     if fila is None:
         raise ProveedorNoEncontradoError(f"No existe un proveedor con id {proveedor.id}.")
     return _fila_a_proveedor(fila)
 
 
-def eliminar_proveedor(proveedor_id: int) -> bool:
-    """Elimina un proveedor activo. Devuelve `True` si la baja fue lógica.
+def actualizar_datos(proveedor: Proveedor) -> Proveedor:
+    """Actualiza los datos editables de un proveedor en su propia transacción."""
+    with obtener_conexion() as conexion:
+        return actualizar_datos_en_conexion(conexion, proveedor)
 
-    Intenta primero un `DELETE` físico. Hoy (Fase 4A) ninguna tabla
-    referencia `proveedores`, así que este `DELETE` siempre tiene
-    éxito y la rama de abajo queda sin ejercitar en la práctica: está
-    escrita para activarse sola -- sin cambios acá -- el día que Fase
-    4B agregue `compras.proveedor_id REFERENCES proveedores(id) ON
-    DELETE RESTRICT` y falle con `sqlite3.IntegrityError` (mismo
-    patrón que `db.repositorios.productos.eliminar_producto` y
-    `db.repositorios.categorias.eliminar_categoria`).
+
+def eliminar_proveedor_en_conexion(conexion: sqlite3.Connection, proveedor_id: int) -> bool:
+    """Da de baja un proveedor activo dentro de la transacción recibida. Devuelve `True` si la
+    baja fue lógica.
+
+    Intenta primero un `DELETE` físico. Si el proveedor tiene compras o productos vinculados, la
+    FK `ON DELETE RESTRICT` lo impide (`sqlite3.IntegrityError`; el `DELETE` fallido no deja ningún
+    efecto) y se lo desactiva (mismo patrón que `db.repositorios.productos.eliminar_producto_en_conexion`).
     """
     try:
-        with obtener_conexion() as conexion:
-            cursor = conexion.execute(
-                "DELETE FROM proveedores WHERE id = ? AND activo = 1", (proveedor_id,)
-            )
-            fue_eliminado = cursor.rowcount > 0
+        cursor = conexion.execute("DELETE FROM proveedores WHERE id = ? AND activo = 1", (proveedor_id,))
+        fue_eliminado = cursor.rowcount > 0
         baja_logica = False
-    except ErrorBaseDatos as error:
-        if not isinstance(error.__cause__, sqlite3.IntegrityError):
-            raise
-        with obtener_conexion() as conexion:
-            cursor = conexion.execute(
-                "UPDATE proveedores SET activo = 0 WHERE id = ? AND activo = 1", (proveedor_id,)
-            )
-            fue_eliminado = cursor.rowcount > 0
+    except sqlite3.IntegrityError:
+        cursor = conexion.execute("UPDATE proveedores SET activo = 0 WHERE id = ? AND activo = 1", (proveedor_id,))
+        fue_eliminado = cursor.rowcount > 0
         baja_logica = True
 
     if not fue_eliminado:
@@ -172,7 +196,13 @@ def eliminar_proveedor(proveedor_id: int) -> bool:
     return baja_logica
 
 
-def reactivar_proveedor(proveedor_id: int) -> Proveedor:
+def eliminar_proveedor(proveedor_id: int) -> bool:
+    """Elimina un proveedor activo en su propia transacción. Devuelve `True` si la baja fue lógica."""
+    with obtener_conexion() as conexion:
+        return eliminar_proveedor_en_conexion(conexion, proveedor_id)
+
+
+def reactivar_proveedor_en_conexion(conexion: sqlite3.Connection, proveedor_id: int) -> Proveedor:
     """Revierte una baja lógica (`activo` de 0 a 1). No toca ninguna otra columna."""
     consulta = f"""
         UPDATE proveedores
@@ -180,8 +210,13 @@ def reactivar_proveedor(proveedor_id: int) -> Proveedor:
         WHERE id = ? AND activo = 0
         RETURNING {_COLUMNAS}
     """
-    with obtener_conexion() as conexion:
-        fila = conexion.execute(consulta, (proveedor_id,)).fetchone()
+    fila = conexion.execute(consulta, (proveedor_id,)).fetchone()
     if fila is None:
         raise ProveedorNoEncontradoError(f"No existe un proveedor inactivo con id {proveedor_id}.")
     return _fila_a_proveedor(fila)
+
+
+def reactivar_proveedor(proveedor_id: int) -> Proveedor:
+    """Reactiva un proveedor dado de baja lógica en su propia transacción."""
+    with obtener_conexion() as conexion:
+        return reactivar_proveedor_en_conexion(conexion, proveedor_id)

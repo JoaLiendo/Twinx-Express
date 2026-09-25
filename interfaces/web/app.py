@@ -40,6 +40,7 @@ from interfaces.web.rutas import (
     configuracion_inicial,
     dashboard,
     empleados,
+    inventario,
     pedidos,
     precios,
     productos,
@@ -152,6 +153,7 @@ app.include_router(clientes.router)
 app.include_router(pedidos.router)
 app.include_router(precios.router)
 app.include_router(proveedores.router)
+app.include_router(inventario.router)
 app.include_router(compras.router)
 app.include_router(reportes.router)
 app.include_router(reposicion.router)

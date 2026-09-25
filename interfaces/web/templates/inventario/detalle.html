@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Inventario #{{ inventario.id }}{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Inventario #{{ inventario.id }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <a href="/inventario" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Inventarios</a>
+    <div class="flex items-center gap-2">
+      {% if inventario.estado == 'ABIERTO' %}{{ ui.badge('Abierto', 'info') }}
+      {% elif inventario.estado == 'CONFIRMADO' %}{{ ui.badge('Confirmado', 'exito') }}
+      {% else %}{{ ui.badge('Cancelado', 'neutral') }}{% endif %}
+    </div>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <dl class="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Iniciado por</dt><dd class="text-slate-800 dark:text-slate-200">{{ detalle.usuario_nombre_completo }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Inicio</dt><dd class="text-slate-800 dark:text-slate-200">{{ inventario.fecha_inicio }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Cierre</dt><dd class="text-slate-800 dark:text-slate-200">{{ inventario.fecha_cierre or '—' }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Productos</dt><dd class="text-slate-800 dark:text-slate-200">{{ lineas | length }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Contados</dt><dd class="text-slate-800 dark:text-slate-200" id="cantidad-contados">{{ contadas | length }}</dd></div>
+      {% if inventario.observaciones %}
+        <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Observaciones</dt><dd class="text-slate-800 dark:text-slate-200">{{ inventario.observaciones }}</dd></div>
+      {% endif %}
+    </dl>
+  </div>
+
+  {% if inventario.estado == 'ABIERTO' %}
+    {% if desactualizadas %}
+      <div id="aviso-desactualizadas" role="alert"
+           class="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-slate-800 dark:text-slate-100">
+        <strong>El stock cambió después de contar {{ desactualizadas | length }} producto(s)</strong>
+        (una venta, compra, ajuste o anulación). No se puede confirmar hasta volver a contarlos:
+        {% for linea in desactualizadas %}{{ linea.producto_nombre }}{{ ', ' if not loop.last else '.' }}{% endfor %}
+        <a href="/inventario/conteo" class="font-semibold text-primary hover:text-primary-hover ml-1">Ir al conteo →</a>
+      </div>
+    {% endif %}
+
+    <div class="flex flex-wrap items-center gap-3">
+      <a href="/inventario/conteo" class="rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-sm font-semibold px-4 py-2
+                                          dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Ir al conteo</a>
+      <form method="post" action="/inventario/{{ inventario.id }}/confirmar" id="form-confirmar-inventario"
+            onsubmit="return confirm('¿Confirmar el inventario? Se ajustará el stock de los productos con diferencia.');">
+        <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia }}" />
+        <button type="submit" {{ 'disabled' if not contadas else '' }}
+                class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+          Confirmar inventario
+        </button>
+      </form>
+      <form method="post" action="/inventario/{{ inventario.id }}/cancelar" id="form-cancelar-inventario"
+            onsubmit="return confirm('¿Cancelar el inventario? No se modifica el stock y no se puede reabrir.');">
+        <button type="submit" class="rounded-lg bg-error/10 hover:bg-error/20 transition text-error text-sm font-semibold px-4 py-2">Cancelar inventario</button>
+      </form>
+    </div>
+  {% endif %}
+
+  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="overflow-x-auto">
+      <table id="tabla-lineas-inventario" class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <th class="px-4 py-3">Producto</th>
+            <th class="px-4 py-3 text-right">Esperado</th>
+            <th class="px-4 py-3 text-right">Contado</th>
+            <th class="px-4 py-3 text-right">Diferencia</th>
+            <th class="px-4 py-3 text-right">Costo unit.</th>
+            <th class="px-4 py-3 text-right">Valor dif.</th>
+            <th class="px-4 py-3">Contó</th>
+            <th class="px-4 py-3">Ajuste</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for linea in lineas %}
+            <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800" data-producto-id="{{ linea.producto_id }}">
+              <td class="px-4 py-3 text-slate-800 dark:text-slate-200">
+                {{ linea.producto_nombre }}
+                {% if not linea.producto_activo %}{{ ui.badge('Inactivo', 'neutral') }}{% endif %}
+                {% if linea.desactualizada %}{{ ui.badge('Desactualizado', 'advertencia') }}{% endif %}
+                <span class="block text-xs text-slate-400 tabular-nums">{{ linea.producto_codigo_barras }}</span>
+              </td>
+              {% if linea.contada %}
+                <td class="px-4 py-3 text-right tabular-nums text-slate-500 dark:text-slate-400" data-esperado>{{ linea.stock_esperado }}</td>
+                <td class="px-4 py-3 text-right tabular-nums" data-contado>{{ linea.cantidad_contada }}</td>
+                <td class="px-4 py-3 text-right tabular-nums font-semibold {{ 'text-error' if linea.diferencia < 0 else ('text-success' if linea.diferencia > 0 else 'text-slate-500') }}" data-diferencia>{{ '%+d' | format(linea.diferencia) if linea.diferencia else '0' }}</td>
+                <td class="px-4 py-3 text-right tabular-nums text-slate-500 dark:text-slate-400">${{ linea.costo_unitario_centavos | dinero_ar }}</td>
+                <td class="px-4 py-3 text-right tabular-nums">
+                  {% if linea.diferencia_valorizada_centavos < 0 %}-${{ (-linea.diferencia_valorizada_centavos) | dinero_ar }}{% else %}${{ linea.diferencia_valorizada_centavos | dinero_ar }}{% endif %}
+                </td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{ linea.usuario_conteo_nombre }}<span class="block text-xs text-slate-400">{{ linea.fecha_conteo }}</span></td>
+                <td class="px-4 py-3 text-slate-500 dark:text-slate-400 tabular-nums">{{ '#' ~ linea.ajuste_id if linea.ajuste_id else '—' }}</td>
+              {% else %}
+                <td colspan="7" class="px-4 py-3 text-slate-400 italic">Sin contar</td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

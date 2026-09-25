@@ -16,6 +16,7 @@ import logging
 from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import compras as repositorio_compras
+from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import proveedores as repositorio_proveedores
 from domain.compra import Compra, DetalleCompra, ItemCompra, LineaDetalleCompra, ResumenCompra
@@ -145,6 +146,7 @@ def registrar_compra(
             repositorio_productos.actualizar_costo_en_conexion(
                 conexion, producto.id, item.costo_unitario_centavos, usuario_id, "COMPRA"
             )
+            repositorio_producto_proveedor.asegurar_vinculo_en_conexion(conexion, producto.id, proveedor_id)
 
         repositorio_auditoria.registrar_en_conexion(
             conexion,

@@ -27,6 +27,7 @@
             <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
               <th class="px-4 py-3 w-10 no-imprimir"></th>
               <th class="px-4 py-3">Producto</th>
+              <th class="px-4 py-3">Proveedor</th>
               <th class="px-4 py-3 text-right">Stock</th>
               <th class="px-4 py-3 text-right">Mínimo</th>
               <th class="px-4 py-3 text-right">Comprar</th>
@@ -42,6 +43,9 @@
                   {{ s.nombre }}
                   {% if s.stock_actual == 0 %}{{ ui.badge('Sin stock', 'alerta') }}{% endif %}
                 </td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-400" data-proveedor>
+                  {% if s.proveedor_nombre %}{{ s.proveedor_nombre }}{% if not s.proveedor_activo %} {{ ui.badge('Inactivo', 'neutral') }}{% endif %}{% else %}<span class="text-slate-400 dark:text-slate-500">Sin proveedor principal</span>{% endif %}
+                </td>
                 <td class="px-4 py-3 text-right tabular-nums {{ 'text-error font-semibold' if s.stock_actual == 0 else '' }}">{{ s.stock_actual }}</td>
                 <td class="px-4 py-3 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ s.stock_minimo }}</td>
                 <td class="px-4 py-3 text-right">
@@ -55,7 +59,7 @@
           </tbody>
           <tfoot>
             <tr class="border-t border-slate-200 dark:border-slate-700">
-              <td colspan="6" class="px-4 py-3 text-right text-sm font-medium text-slate-600 dark:text-slate-400">Costo estimado de lo seleccionado</td>
+              <td colspan="7" class="px-4 py-3 text-right text-sm font-medium text-slate-600 dark:text-slate-400">Costo estimado de lo seleccionado</td>
               <td class="px-4 py-3 text-right tabular-nums font-bold text-slate-900 dark:text-slate-100" id="total-reposicion">${{ costo_total_centavos | dinero_ar }}</td>
             </tr>
           </tfoot>
@@ -68,7 +72,7 @@
         Imprimir lista seleccionada
       </button>
       <a href="/compras/nueva" class="text-sm font-medium text-primary hover:text-primary-hover">Registrar una compra →</a>
-      <span class="text-xs text-slate-400 dark:text-slate-500">El costo usa el costo vigente de cada producto; los productos sin costo cargado suman $0.</span>
+      <span class="text-xs text-slate-400 dark:text-slate-500">El costo es el de la última compra al proveedor principal; si no tiene, se usa el costo vigente del producto. Los productos sin costo cargado suman $0.</span>
     </div>
   {% else %}
     {{ ui.estado_vacio("No hay productos para reponer", "Ningún producto con stock mínimo configurado está por debajo del mínimo. Si esperabas ver alguno, revisá que tenga un stock mínimo mayor a cero.") }}

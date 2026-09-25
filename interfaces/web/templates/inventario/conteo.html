@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Conteo de inventario{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Conteo de inventario</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-5">
+  {% if not inventario %}
+    {{ ui.estado_vacio("No hay ningún inventario abierto.", "Cuando el dueño inicie uno, vas a poder contar los productos desde acá.") }}
+  {% else %}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-slate-600 dark:text-slate-400">
+        Inventario <strong>#{{ inventario.id }}</strong>: contá lo que hay físicamente de cada producto. No se muestra el stock del sistema.
+        <span id="progreso-conteo" class="font-semibold text-slate-800 dark:text-slate-200">{{ contadas }} de {{ lineas | length }} contados</span>.
+      </p>
+      {% if usuario_actual and usuario_actual.rol == 'OWNER' %}
+        <a href="/inventario/{{ inventario.id }}" class="text-sm font-medium text-primary hover:text-primary-hover">Revisar y confirmar →</a>
+      {% endif %}
+    </div>
+
+    <input type="search" data-filtro-inventario placeholder="Filtrar por nombre o código de barras" aria-label="Filtrar productos" autofocus
+           class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                  dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                  focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <ul id="lista-conteo" class="divide-y divide-slate-100 dark:divide-slate-800">
+        {% for linea in lineas %}
+          <li class="flex flex-wrap items-center gap-3 px-4 py-3" data-fila-filtrable data-producto-id="{{ linea.producto_id }}"
+              data-texto="{{ (linea.producto_nombre ~ ' ' ~ linea.producto_codigo_barras) | lower }}">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+                {{ linea.producto_nombre }}
+                {% if not linea.producto_activo %}{{ ui.badge('Inactivo', 'neutral') }}{% endif %}
+              </p>
+              <p class="text-xs text-slate-400 tabular-nums">{{ linea.producto_codigo_barras }}</p>
+            </div>
+            <span data-estado class="text-xs {{ 'text-success font-semibold' if linea.contada else 'text-slate-400' }}">
+              {% if linea.contada %}Contado: {{ linea.cantidad_contada }}{% else %}Sin contar{% endif %}
+            </span>
+            <form method="post" action="/inventario/conteo/{{ linea.producto_id }}" data-form-conteo class="flex items-center gap-2">
+              <input type="number" name="cantidad" min="0" step="1" inputmode="numeric" required aria-label="Cantidad contada de {{ linea.producto_nombre }}"
+                     value="{{ linea.cantidad_contada if linea.contada else '' }}"
+                     class="w-24 rounded-md border border-slate-300 px-2 py-1.5 text-right text-sm tabular-nums bg-white text-slate-900
+                            dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+              <button type="submit" class="rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-xs font-semibold px-3 py-2
+                                           dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">
+                {{ 'Recontar' if linea.contada else 'Guardar' }}
+              </button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/inventario.js"></script>
+{% endblock %}

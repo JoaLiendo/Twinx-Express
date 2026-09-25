@@ -10,8 +10,9 @@ deberían usar para operar sobre productos: no deben llamar a
 import logging
 from dataclasses import dataclass, field
 
-from db.conexion import obtener_conexion
+from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import ajustes_stock as repositorio_ajustes_stock
+from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario
 from domain.producto import Producto
@@ -119,7 +120,9 @@ class SugerenciaReposicion:
 
     `cantidad_sugerida` = `stock_minimo - stock_actual` (lo que falta para llegar
     al mínimo; siempre positiva porque el producto está estrictamente por debajo).
-    `costo_estimado_centavos` usa el costo vigente del producto.
+    `costo_unitario_centavos` es el último costo de compra al proveedor principal del
+    producto (`costo_es_del_proveedor`) o, si no tiene principal o nunca se le compró, el
+    costo vigente del producto. Los datos del proveedor son solo informativos.
     """
 
     producto_id: int
@@ -129,6 +132,10 @@ class SugerenciaReposicion:
     stock_minimo: int
     cantidad_sugerida: int
     costo_unitario_centavos: int
+    proveedor_id: int | None = None
+    proveedor_nombre: str | None = None
+    proveedor_activo: bool = True
+    costo_es_del_proveedor: bool = False
 
     @property
     def costo_estimado_centavos(self) -> int:
@@ -138,20 +145,30 @@ class SugerenciaReposicion:
 def listar_reposicion() -> list[SugerenciaReposicion]:
     """Productos que necesitan reposición (stock mínimo > 0 y stock actual
     estrictamente por debajo del mínimo, incluido el stock 0) con la cantidad
-    sugerida `stock_minimo - stock_actual`. Solo lectura: no crea compras ni
+    sugerida `stock_minimo - stock_actual`, su proveedor principal y el último costo con
+    él (respaldo: costo vigente del producto). Solo lectura: no crea compras ni
     modifica stock."""
-    return [
-        SugerenciaReposicion(
-            producto_id=producto.id,
-            codigo_barras=producto.codigo_barras,
-            nombre=producto.nombre,
-            stock_actual=producto.stock_actual,
-            stock_minimo=producto.stock_minimo,
-            cantidad_sugerida=producto.stock_minimo - producto.stock_actual,
-            costo_unitario_centavos=producto.precio_costo_centavos,
+    principales = repositorio_producto_proveedor.listar_principales_con_costo()
+    sugerencias = []
+    for producto in repositorio_productos.listar_para_reposicion():
+        principal = principales.get(producto.id)
+        ultimo_costo = principal.ultimo_costo_centavos if principal is not None else None
+        sugerencias.append(
+            SugerenciaReposicion(
+                producto_id=producto.id,
+                codigo_barras=producto.codigo_barras,
+                nombre=producto.nombre,
+                stock_actual=producto.stock_actual,
+                stock_minimo=producto.stock_minimo,
+                cantidad_sugerida=producto.stock_minimo - producto.stock_actual,
+                costo_unitario_centavos=ultimo_costo if ultimo_costo is not None else producto.precio_costo_centavos,
+                proveedor_id=principal.proveedor_id if principal is not None else None,
+                proveedor_nombre=principal.proveedor_nombre if principal is not None else None,
+                proveedor_activo=principal.proveedor_activo if principal is not None else True,
+                costo_es_del_proveedor=ultimo_costo is not None,
+            )
         )
-        for producto in repositorio_productos.listar_para_reposicion()
-    ]
+    return sugerencias
 
 
 @dataclass
@@ -369,6 +386,63 @@ def asignar_imagen(producto_id: int, contenido: bytes, nombre_original: str) -> 
     return resultado
 
 
+def aplicar_ajuste_en_conexion(
+    conexion: ConexionBD,
+    producto: Producto,
+    delta: int,
+    motivo: str,
+    usuario_id: int,
+    observaciones: str | None = None,
+    clave_idempotencia: str | None = None,
+    inventario_id: int | None = None,
+) -> AjusteStock:
+    """Núcleo del ajuste de stock, dentro de la transacción `BEGIN IMMEDIATE` de quien invoca.
+
+    Recibe el producto ya resuelto (así el ajuste manual exige un producto activo y el inventario
+    físico puede ajustar también uno inactivo con stock). Valida que el stock no quede negativo,
+    escribe el nuevo stock por el único punto autorizado (`actualizar_stock_en_conexion`), registra
+    el ajuste con `stock_anterior`/`stock_resultante` y deja la auditoría `AJUSTE_STOCK`, todo en
+    la transacción del llamador. `inventario_id` marca el ajuste como RECUENTO de un inventario.
+
+    Raises:
+        StockInsuficienteError: si el ajuste dejaría el stock en negativo.
+        DatosInvalidosError: si `motivo`/`delta`/`observaciones` son inválidos.
+    """
+    stock_anterior = producto.stock_actual
+    nuevo_stock = stock_anterior + delta
+    if nuevo_stock < 0:
+        raise StockInsuficienteError(
+            f"El ajuste dejaría el stock de '{producto.nombre}' en negativo: "
+            f"{stock_anterior} + ({delta}) = {nuevo_stock}."
+        )
+
+    producto.actualizar_stock(nuevo_stock)
+    repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
+
+    ajuste = AjusteStock(
+        producto_id=producto.id,
+        usuario_id=usuario_id,
+        motivo=motivo,
+        delta=delta,
+        stock_anterior=stock_anterior,
+        stock_resultante=nuevo_stock,
+        observaciones=observaciones,
+        inventario_id=inventario_id,
+    )
+    ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(
+        conexion, ajuste, clave_idempotencia=clave_idempotencia
+    )
+    repositorio_auditoria.registrar_en_conexion(
+        conexion,
+        usuario_id,
+        "AJUSTE_STOCK",
+        "PRODUCTO",
+        producto.id,
+        f"{producto.nombre}: {motivo} {delta:+d} (stock {stock_anterior} → {nuevo_stock})",
+    )
+    return ajuste_creado
+
+
 def ajustar_stock(
     producto_id: int,
     delta: int,
@@ -420,36 +494,8 @@ def ajustar_stock(
         if producto is None:
             raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
 
-        stock_anterior = producto.stock_actual
-        nuevo_stock = stock_anterior + delta
-        if nuevo_stock < 0:
-            raise StockInsuficienteError(
-                f"El ajuste dejaría el stock de '{producto.nombre}' en negativo: "
-                f"{stock_anterior} + ({delta}) = {nuevo_stock}."
-            )
-
-        producto.actualizar_stock(nuevo_stock)
-        repositorio_productos.actualizar_stock_en_conexion(conexion, producto_id, producto.stock_actual)
-
-        ajuste = AjusteStock(
-            producto_id=producto_id,
-            usuario_id=usuario_id,
-            motivo=motivo,
-            delta=delta,
-            stock_anterior=stock_anterior,
-            stock_resultante=nuevo_stock,
-            observaciones=observaciones,
-        )
-        ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(
-            conexion, ajuste, clave_idempotencia=clave_idempotencia
-        )
-        repositorio_auditoria.registrar_en_conexion(
-            conexion,
-            usuario_id,
-            "AJUSTE_STOCK",
-            "PRODUCTO",
-            producto_id,
-            f"{producto.nombre}: {motivo} {delta:+d} (stock {stock_anterior} → {nuevo_stock})",
+        ajuste_creado = aplicar_ajuste_en_conexion(
+            conexion, producto, delta, motivo, usuario_id, observaciones, clave_idempotencia
         )
 
     logger.info(

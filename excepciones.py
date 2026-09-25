@@ -144,6 +144,14 @@ class ProveedorNoEncontradoError(ErrorAplicacion):
     """No existe un proveedor con el id solicitado."""
 
 
+class VinculoProveedorExistenteError(ErrorAplicacion):
+    """El producto ya está vinculado a ese proveedor."""
+
+
+class VinculoProveedorNoEncontradoError(ErrorAplicacion):
+    """El producto no está vinculado a ese proveedor."""
+
+
 class ProductoDuplicadoEnCompraError(DatosInvalidosError):
     """Un mismo producto aparece en más de una línea de la misma compra
     (ver `services.servicio_compras.registrar_compra`: cada producto
@@ -221,3 +229,35 @@ class CobroInvalidoError(DatosInvalidosError):
 class VentaACuentaNoAnulableError(ErrorAplicacion):
     """Una venta a cuenta corriente no puede anularse en la V1.3: hacerlo
     obligaría a reversar el CARGO de la cuenta del cliente."""
+
+
+class InventarioNoEncontradoError(ErrorAplicacion):
+    """No existe un inventario con el id solicitado."""
+
+
+class InventarioNoAbiertoError(ErrorAplicacion):
+    """El inventario ya fue confirmado o cancelado: no admite conteos ni cierre."""
+
+
+class InventarioAbiertoExistenteError(ErrorAplicacion):
+    """Ya hay un inventario abierto: hay que confirmarlo o cancelarlo antes de iniciar otro."""
+
+
+class InventarioSinConteosError(DatosInvalidosError):
+    """No se puede confirmar un inventario sin ninguna línea contada."""
+
+
+class ProductoFueraDeInventarioError(ErrorAplicacion):
+    """El producto no forma parte de las líneas del inventario abierto."""
+
+
+class InventarioDesactualizadoError(ErrorAplicacion):
+    """El stock de uno o más productos cambió después de contarlos (una venta, compra, ajuste o
+    anulación): el inventario no se confirma y hay que volver a contarlos.
+
+    `productos` lista los nombres de los productos desactualizados.
+    """
+
+    def __init__(self, mensaje: str, productos: list[str]) -> None:
+        super().__init__(mensaje)
+        self.productos = productos

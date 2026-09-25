@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.3.0
+Twinx Express 1.4.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -396,3 +396,69 @@ f) AL ACTUALIZAR DESDE LA VERSION 1.2 (LEER ANTES DE ABRIR LA CAJA)
      cliente asociado.
    Si algo sale mal y necesitas volver a la version anterior, segui el
    punto 7 (restaurar el backup preventivo).
+
+
+13) NOVEDADES DE LA VERSION 1.4: PROVEEDORES E INVENTARIO FISICO
+----------------------------------------------------------------------------------
+
+a) PROVEEDORES (menu Proveedores, solo el dueño)
+   Ademas de crear, editar, dar de baja y reactivar proveedores:
+   - Busqueda por nombre, contacto, telefono o email.
+   - Ficha del proveedor: sus datos, los productos que le compras y el
+     historial de compras (la mas reciente primero). Tambien se puede
+     abrir la ficha de un proveedor dado de baja.
+   - Un producto puede tener varios proveedores. Uno solo es el
+     PRINCIPAL. Cada vinculo puede tener el codigo con el que ese
+     proveedor conoce al producto.
+   - Al registrar una compra, el producto se vincula solo con ese
+     proveedor si todavia no lo estaba. Si el producto no tenia proveedor
+     principal, ese pasa a ser el principal. Si ya tenia uno, una compra
+     NUNCA lo reemplaza: para cambiarlo, en la ficha del proveedor usa
+     "Marcar como principal". Quitar un vinculo tampoco elige otro
+     principal por su cuenta.
+   - En la ficha tambien se puede vincular un producto a mano y quitar un
+     vinculo.
+   - Reposicion: cada producto muestra su proveedor principal y usa como
+     costo el de la ultima compra a ese proveedor. Si no tiene proveedor
+     principal o nunca se le compro, usa el costo actual del producto.
+     Sigue siendo solo una lista de consulta: no crea compras.
+
+b) INVENTARIO FISICO (menu Inventario)
+   Sirve para contar lo que hay realmente en el local y corregir el stock
+   del sistema.
+   - El dueño inicia un inventario con todos los productos activos o con
+     los productos que elija (puede incluir productos dados de baja que
+     todavia tengan stock). Solo puede haber un inventario abierto a la
+     vez.
+   - El dueño y el cajero cuentan: en la pantalla de conteo se carga la
+     cantidad de cada producto. NO se muestra el stock del sistema ni la
+     diferencia. Si te equivocas, volves a contar ese producto.
+   - Solo el dueño revisa (stock del sistema, cantidad contada,
+     diferencia y quien conto), confirma o cancela. El cajero no puede
+     confirmar ni cancelar.
+   - Al confirmar, el sistema comprueba que el stock de cada producto
+     contado no haya cambiado desde que se conto (por ejemplo por una
+     venta, una compra o un ajuste, aunque el stock haya vuelto al mismo
+     numero). Si cambio, NO se confirma nada: avisa que productos
+     cambiaron y hay que volver a contarlos. El inventario nunca pisa
+     movimientos hechos despues del conteo.
+   - Si todo coincide, se corrige el stock de los productos con
+     diferencia (cada uno queda como un ajuste con motivo RECUENTO en el
+     historial del producto) y el inventario queda cerrado, todo junto o
+     nada. Los productos contados sin diferencia no se tocan.
+   - Los productos que no se contaron NO se modifican (no se toman como
+     cero). Hace falta contar al menos uno para confirmar.
+   - Un inventario confirmado o cancelado no se puede reabrir: si hay que
+     corregir algo, se cancela uno abierto y se inicia otro. Cancelar no
+     modifica el stock.
+   - Si tocas dos veces "Confirmar", el inventario se confirma una sola
+     vez.
+
+c) AL ACTUALIZAR DESDE LA VERSION 1.3
+   Al abrir la nueva version por primera vez, KioscoApp actualiza tus
+   datos automaticamente, con un backup preventivo previo en
+   %LOCALAPPDATA%\KioscoApp\backups\ (ver punto 6). No se pierde ni se
+   modifica ningun dato: los proveedores de tus compras anteriores quedan
+   vinculados a sus productos (el principal de cada producto es el de su
+   compra mas reciente) y los inventarios empiezan vacios. Si algo sale
+   mal, segui el punto 7.

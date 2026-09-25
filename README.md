@@ -390,6 +390,84 @@ sesiones anteriores no pueden anularse, y las ventas anteriores quedan sin clien
 | `019_sesiones_caja.sql` | Sesiones de caja, con reconstrucción histórica de las cajas de V1.2. |
 | `020_clientes_cuenta_corriente.sql` | Clientes, ventas a cuenta y libro de cuenta corriente (cargos y cobros). |
 
+## Proveedores e inventario físico (V1.4)
+
+### Proveedores (solo OWNER)
+
+Además del alta, edición, baja y reactivación que ya existían, el menú *Proveedores* suma:
+
+- **Búsqueda** por nombre, persona de contacto, teléfono o email (activos por defecto; también en la
+  vista de dados de baja).
+- **Ficha** (`GET /proveedores/{id}`, también para proveedores dados de baja): datos, productos
+  vinculados e historial de compras del proveedor, la más reciente primero.
+- **Relación producto-proveedor.** Un producto puede tener varios proveedores. Cada vínculo tiene un
+  *código del proveedor* opcional y, como máximo, un vínculo por producto es el **principal**. El
+  vínculo no guarda costos: el costo sale de las compras (`detalle_compra`) y del costo vigente del
+  producto.
+- **Vínculo automático.** Al registrar una compra se crea el vínculo de cada producto con el proveedor
+  si no existía. Si el producto todavía no tenía proveedor principal, ese vínculo pasa a ser el
+  principal; si ya tenía uno, **una compra nunca lo reemplaza**. El cambio de principal es siempre una
+  acción explícita del OWNER desde la ficha del proveedor («Marcar como principal»); quitar un vínculo
+  principal tampoco promueve a otro.
+- Desde la ficha el OWNER también puede vincular un producto activo a mano y quitar un vínculo.
+- **Reposición.** Cada sugerencia muestra el proveedor principal del producto (marcado *Inactivo* si
+  está dado de baja) y usa como costo el de la última línea de compra a ese proveedor; si no hay
+  proveedor principal o nunca se le compró, usa el costo vigente del producto. Sigue siendo solo de
+  consulta: no crea compras.
+- Un proveedor o un producto con vínculos no se borra: se desactiva. Alta, edición, baja y reactivación
+  de proveedores, y alta, baja y cambio de principal de vínculos, quedan en la auditoría en la misma
+  transacción que la operación.
+
+### Inventario físico
+
+El menú *Inventario* (visible para OWNER y CASHIER) compara lo **contado** físicamente con el stock que
+el sistema tenía **en el momento del conteo**.
+
+| Ruta | Quién | Qué hace |
+|---|---|---|
+| `GET /inventario` | OWNER (el CASHIER es llevado al conteo) | Historial de inventarios y acceso al abierto. |
+| `GET/POST /inventario/nuevo` | solo OWNER | Inicia un inventario: todos los productos activos, o una selección manual. |
+| `GET /inventario/conteo` | OWNER, CASHIER | Pantalla de conteo del inventario abierto, **sin stock esperado ni diferencia**. |
+| `POST /inventario/conteo/{producto_id}` y `POST /api/inventario/conteo/{producto_id}` | OWNER, CASHIER | Registra (o reemplaza) el conteo de un producto. |
+| `GET /inventario/{id}` | solo OWNER | Revisión: esperado, contado, diferencia, costo, quién contó y ajuste asociado. |
+| `POST /inventario/{id}/confirmar` y `/cancelar` | solo OWNER | Confirma o cancela el inventario. |
+
+**Reglas.**
+- Un inventario está `ABIERTO`, `CONFIRMADO` o `CANCELADO`. Solo puede haber uno abierto a la vez y un
+  inventario cerrado no se reabre: para corregir, se cancela y se inicia otro. Las líneas (productos)
+  quedan fijadas al iniciarlo. La selección manual puede incluir productos inactivos que todavía tengan
+  stock.
+- El conteo es a ciegas: las pantallas y las respuestas de conteo nunca incluyen el stock esperado ni la
+  diferencia (esos datos solo los ve el OWNER en la revisión). Al contar, el servidor guarda de una vez el
+  stock esperado, su versión, la cantidad contada, el costo, quién contó y cuándo. Volver a contar un
+  producto reemplaza su conteo anterior.
+- **Confirmar** valida, para todas las líneas contadas (también las que no tienen diferencia), que ni el
+  stock ni la versión del producto hayan cambiado desde que se contó (`productos.version_stock`, que sube
+  con cada cambio real de stock: venta, anulación, compra o ajuste, incluso si el stock vuelve al mismo
+  número). Si alguna cambió, **no se confirma nada**: se informa qué productos cambiaron y hay que volver a
+  contarlos. El inventario nunca sobrescribe movimientos posteriores al conteo.
+- Si todo coincide, en una única transacción se generan los ajustes de stock, se audita y se cierra el
+  inventario, o no se hace nada. Una línea contada **sin diferencia no genera ajuste**; una con diferencia
+  genera un ajuste con motivo `RECUENTO` asociado al inventario (queda en el historial de ajustes del
+  producto y en la auditoría). Los productos **sin contar no se modifican** (jamás se toman como cero); hace
+  falta al menos un producto contado para confirmar.
+- La confirmación es idempotente: un doble clic o un reenvío no duplica ajustes ni auditoría.
+- Cancelar no toca el stock. La creación, confirmación y cancelación se auditan
+  (`INVENTARIO_CREADO`, `INVENTARIO_CONFIRMADO`, `INVENTARIO_CANCELADO`).
+
+**Actualizar desde V1.3.** Las migraciones se aplican solas al abrir la nueva versión, con un backup
+preventivo previo. No se pierde ni se modifica ningún dato: la 021 crea los vínculos producto-proveedor a
+partir de las compras ya registradas (el proveedor principal de cada producto es el de su compra más
+reciente, por orden de registro) y la 022 agrega el contador de versión de stock (en 0) y las tablas del
+inventario.
+
+**Migraciones nuevas** (`db/migraciones/`, mismo mecanismo atómico y versionado):
+
+| Migración | Contenido |
+|---|---|
+| `021_producto_proveedor.sql` | Tabla `producto_proveedor` (un principal por producto) y vínculos históricos a partir de las compras. |
+| `022_inventario_fisico.sql` | `productos.version_stock` con su trigger, tablas `inventarios` e `inventario_lineas` y `ajustes_stock.inventario_id`, con triggers que impiden estados inválidos. |
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -406,5 +484,6 @@ sesiones anteriores no pueden anularse, y las ventas anteriores quedan sin clien
 - [x] Modo oscuro y layout responsive (375/768/1024/1440)
 - [x] Reportes de ventas, precios (historial y actualización masiva), auditoría, importación, configuración del ticket y reposición (V1.2, ver la sección «Control comercial y trazabilidad (V1.2)»)
 - [x] Caja por sesiones, clientes y cuenta corriente (ventas a cuenta y cobros en efectivo) (V1.3, ver sección anterior)
+- [x] Proveedores (búsqueda, ficha, relación producto-proveedor) e inventario físico con conteo a ciegas (V1.4, ver sección anterior)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

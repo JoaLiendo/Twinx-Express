@@ -63,5 +63,5 @@ def test_con_sesion_cashier_expone_el_usuario_y_nav_restringida(base_datos_tempo
     contexto = contexto_base(_request_con_cookie(token))
 
     assert contexto["usuario_actual"].rol == "CASHIER"
-    # 021: Clientes es visible para ambos roles.
-    assert _hrefs(contexto["nav_items"]) == {"/", "/ventas", "/caja", "/productos", "/clientes"}
+    # 021: Clientes es visible para ambos roles. V1.4: Inventario también (el CASHIER solo cuenta).
+    assert _hrefs(contexto["nav_items"]) == {"/", "/ventas", "/caja", "/productos", "/clientes", "/inventario"}

@@ -403,10 +403,15 @@ def test_migracion_desde_base_completamente_vacia_aplica_todo(tmp_path, monkeypa
     con = sqlite3.connect(tmp_path / "vacia.db")
     try:
         registradas = [f[0] for f in con.execute("SELECT nombre_archivo FROM schema_migraciones ORDER BY 1")]
-        assert registradas[-1] == NOMBRE_020
+        assert NOMBRE_020 in registradas  # las migraciones posteriores (021+) también se aplican
         assert con.execute("PRAGMA foreign_key_check").fetchall() == []
         # 7 triggers de la 019 + 13 nuevos de la 020 (los 2 de ventas de la 019 se recrean, no se suman).
-        assert len(con.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'").fetchall()) == 20
+        # (sin contar los de migraciones posteriores: trg_productos_* y trg_inventario*, de la 022)
+        triggers_019_020 = con.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name NOT LIKE 'trg_productos_%'"
+            " AND name NOT LIKE 'trg_inventario%' AND name NOT LIKE 'trg_ajustes_stock_inventario%'"
+        ).fetchall()
+        assert len(triggers_019_020) == 20
     finally:
         con.close()
 
