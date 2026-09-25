@@ -56,6 +56,7 @@ from pathlib import Path
 
 NOMBRE_USUARIO_PRUEBA = "e2e_owner"
 PASSWORD_PRUEBA = "clave-e2e-12345"
+NOMBRE_CASHIER_PRUEBA = "e2e_cashier"
 
 # Fase 5E.2: datos deterministas y explícitos para los flujos de POS.
 # Precios en centavos enteros (nunca floats, mismo criterio que todo el
@@ -92,7 +93,7 @@ PRODUCTO_XSS_STOCK = 100
 
 
 def _sembrar_usuario_de_prueba() -> None:
-    """Único usuario que necesitan los tests: un OWNER válido. Reutiliza
+    """Usuarios que necesitan los tests: un OWNER y un CASHIER válidos. Reutiliza
     el dominio/servicios reales -- no es un endpoint de la app, es un
     script de bootstrap que corre antes de que uvicorn empiece a
     escuchar."""
@@ -100,18 +101,22 @@ def _sembrar_usuario_de_prueba() -> None:
     from domain.usuario import Usuario
     from services import servicio_auth
 
-    repositorio_usuarios.crear_usuario(
-        Usuario(
-            nombre_usuario=NOMBRE_USUARIO_PRUEBA,
-            nombre_completo="E2E Owner",
-            # iteraciones=1000 (no las 600.000 de producción): mismo
-            # parámetro explícito que ya usan los tests HTTP existentes
-            # (ver tests/test_interfaces_web/*.py) para no pagar ~220ms
-            # de hashing por cada arranque de servidor E2E.
-            password_hash=servicio_auth.hashear_password(PASSWORD_PRUEBA, iteraciones=1000),
-            rol="OWNER",
+    # iteraciones=1000 (no las 600.000 de producción): mismo parámetro explícito que ya usan los
+    # tests HTTP existentes (ver tests/test_interfaces_web/*.py) para no pagar ~220ms de hashing
+    # por cada arranque de servidor E2E.
+    password_hash = servicio_auth.hashear_password(PASSWORD_PRUEBA, iteraciones=1000)
+    for nombre_usuario, nombre_completo, rol in (
+        (NOMBRE_USUARIO_PRUEBA, "E2E Owner", "OWNER"),
+        (NOMBRE_CASHIER_PRUEBA, "E2E Cashier", "CASHIER"),
+    ):
+        repositorio_usuarios.crear_usuario(
+            Usuario(
+                nombre_usuario=nombre_usuario,
+                nombre_completo=nombre_completo,
+                password_hash=password_hash,
+                rol=rol,
+            )
         )
-    )
 
 
 def _abrir_caja_de_prueba() -> None:

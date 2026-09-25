@@ -6,6 +6,7 @@ const { expect } = require('@playwright/test');
 // en cada archivo de test.
 const USUARIO = 'e2e_owner';
 const PASSWORD = 'clave-e2e-12345';
+const USUARIO_CASHIER = 'e2e_cashier'; // misma contraseña que el OWNER
 
 const PRODUCTO_1 = {
   codigoBarras: '7790000000001',
@@ -46,9 +47,9 @@ const PRODUCTO_XSS = {
  * `interfaces/web/rutas/autenticacion.py::procesar_login`), no una
  * clase de presentación.
  */
-async function loginViaUI(page, { irA = '/ventas' } = {}) {
+async function loginViaUI(page, { irA = '/ventas', usuario = USUARIO } = {}) {
   await page.goto(irA);
-  await page.locator('input[name="nombre_usuario"]').fill(USUARIO);
+  await page.locator('input[name="nombre_usuario"]').fill(usuario);
   await page.locator('input[name="password"]').fill(PASSWORD);
   await page.getByRole('button', { name: 'Ingresar' }).click();
 }
@@ -173,6 +174,7 @@ async function realizarVentaSimple(page, { codigoBarras = PRODUCTO_1.codigoBarra
 
 module.exports = {
   USUARIO,
+  USUARIO_CASHIER,
   PASSWORD,
   PRODUCTO_1,
   PRODUCTO_2,

@@ -5,8 +5,7 @@
 // stock ajustado; y el rechazo cuando el stock cambió después de contar (una venta). Las reglas de
 // negocio y la concurrencia están cubiertas exhaustivamente en pytest (test_inventario.py,
 // test_concurrencia_inventario.py, test_migracion_022.py); esto confirma que el mecanismo funciona
-// desde el navegador. El servidor de pruebas solo tiene un OWNER, así que el rol CASHIER (contar y no
-// confirmar) se cubre en pytest.
+// desde el navegador. El rol CASHIER (contar y no confirmar) se cubre en 13-inventario-cashier.spec.js.
 const { test, expect } = require('@playwright/test');
 const { loginViaUI, leerStockDeCard, registrarListenersDeErrores, PRODUCTO_1, PRODUCTO_2 } = require('./helpers');
 
