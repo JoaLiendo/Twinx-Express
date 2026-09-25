@@ -143,7 +143,7 @@ class TestPantalla:
 
         html = solicitud("GET", "/reposicion", cookies=cookies).texto
 
-        assert 'name="hasta"' not in html and "× stock mínimo" not in html and '<form method="get"' not in html
+        assert 'name="hasta"' not in html and "× stock mínimo" not in html
 
     def test_un_parametro_hasta_ajeno_no_rompe_la_pantalla_ni_cambia_la_regla(self, base_datos_temporal):
         cookies = _cookies()

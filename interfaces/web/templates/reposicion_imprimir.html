@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lista de reposición</title>
+  <style>
+    /* Página standalone (sin Tailwind ni base.html) pensada para imprimir en A4/Carta. */
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; font-family: system-ui, sans-serif; color: #111; background: #fff; }
+    .hoja { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .meta { margin: 2px 0; font-size: 14px; color: #333; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #ccc; }
+    th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tfoot td { border-bottom: none; font-weight: bold; font-size: 15px; }
+    .aviso { margin-top: 16px; font-size: 12px; color: #555; }
+    .acciones { margin-top: 20px; }
+    .acciones button, .acciones a { padding: 8px 16px; margin-right: 8px; font-size: 13px; color: #1e293b; background: #e2e8f0; border: none; border-radius: 6px; text-decoration: none; cursor: pointer; }
+    @media print { body { padding: 0; } .acciones { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="hoja">
+    <h1>Lista de reposición</h1>
+    <p class="meta">Proveedor: <strong id="reposicion-proveedor">{{ lista.proveedor_nombre or "Sin proveedor principal" }}</strong></p>
+    <p class="meta">Fecha: {{ fecha }}</p>
+    <table id="tabla-reposicion-imprimible">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Código</th>
+          <th class="num">Cantidad</th>
+          <th class="num">Costo unit.</th>
+          <th class="num">Subtotal</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for linea in lista.lineas %}
+          <tr>
+            <td>{{ linea.nombre }}</td>
+            <td>{{ linea.codigo_barras }}</td>
+            <td class="num">{{ linea.cantidad }}</td>
+            <td class="num">${{ linea.costo_unitario_centavos | dinero_ar }}</td>
+            <td class="num">${{ linea.subtotal_centavos | dinero_ar }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4" class="num">Total estimado</td>
+          <td class="num" id="reposicion-total">${{ lista.total_centavos | dinero_ar }}</td>
+        </tr>
+      </tfoot>
+    </table>
+    <p class="aviso">Costos estimados (último costo con el proveedor principal o costo vigente del producto). Esta lista no es una orden de compra ni registra ninguna compra.</p>
+    <div class="acciones">
+      <button type="button" onclick="window.print()">Imprimir</button>
+      <a href="/reposicion">Volver a reposición</a>
+    </div>
+  </div>
+</body>
+</html>

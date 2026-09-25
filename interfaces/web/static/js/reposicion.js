@@ -1,12 +1,12 @@
 /**
  * Revisión de la lista de reposición (V1.2): el dueño ajusta cantidades y
- * destilda lo que no quiere comprar. Solo recalcula los subtotales en pantalla y
- * decide qué filas se imprimen: no envía nada al servidor.
+ * destilda lo que no quiere comprar. Solo recalcula los subtotales en pantalla:
+ * lo que se envía (productos tildados y cantidades) lo arma el formulario de cada grupo
+ * y lo valida el servidor.
  */
 (function () {
   const filas = Array.from(document.querySelectorAll('[data-fila-reposicion]'));
   const totalEl = document.getElementById('total-reposicion');
-  const botonImprimir = document.getElementById('imprimir-reposicion');
   if (!filas.length || !totalEl) return;
 
   function formatear(centavos) {
@@ -37,6 +37,5 @@
     fila.querySelector('[data-cantidad]').addEventListener('input', recalcular);
     fila.querySelector('[data-incluir]').addEventListener('change', recalcular);
   }
-  if (botonImprimir) botonImprimir.addEventListener('click', () => window.print());
   recalcular();
 })();

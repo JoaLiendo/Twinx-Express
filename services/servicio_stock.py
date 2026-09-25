@@ -15,11 +15,13 @@ from db.repositorios import ajustes_stock as repositorio_ajustes_stock
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario
+from domain.dinero import MAXIMO_ENTERO
 from domain.producto import Producto
 from excepciones import (
     MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
     CategoriaNoEncontradaError,
     ClaveIdempotenciaReutilizadaError,
+    DatosInvalidosError,
     ErrorBaseDatos,
     ProductoNoEncontradoError,
     StockInsuficienteError,
@@ -169,6 +171,119 @@ def listar_reposicion() -> list[SugerenciaReposicion]:
             )
         )
     return sugerencias
+
+
+@dataclass(frozen=True)
+class GrupoReposicion:
+    """Las sugerencias de reposición de un mismo proveedor principal (`proveedor_id=None`: los
+    productos sin proveedor principal). Conserva el orden de urgencia de `listar_reposicion`."""
+
+    proveedor_id: int | None
+    proveedor_nombre: str | None
+    proveedor_activo: bool
+    sugerencias: list[SugerenciaReposicion]
+
+
+@dataclass(frozen=True)
+class LineaListaReposicion:
+    """Un producto de una lista de reposición ya elegida, con la cantidad a comprar y su costo sugerido."""
+
+    producto_id: int
+    codigo_barras: str
+    nombre: str
+    cantidad: int
+    costo_unitario_centavos: int
+
+    @property
+    def subtotal_centavos(self) -> int:
+        return self.cantidad * self.costo_unitario_centavos
+
+
+@dataclass(frozen=True)
+class ListaReposicion:
+    """Productos elegidos de un grupo de reposición, para precargar una compra o imprimir. No es una
+    orden de compra: no se guarda ni tiene número ni estado."""
+
+    proveedor_id: int | None
+    proveedor_nombre: str | None
+    proveedor_activo: bool
+    lineas: list[LineaListaReposicion]
+
+    @property
+    def total_centavos(self) -> int:
+        return sum(linea.subtotal_centavos for linea in self.lineas)
+
+
+def agrupar_reposicion_por_proveedor() -> list[GrupoReposicion]:
+    """`listar_reposicion` agrupada por proveedor principal: primero los proveedores por nombre y al
+    final el grupo sin proveedor principal. Solo lectura; no cambia la regla de reposición."""
+    por_proveedor: dict[int | None, list[SugerenciaReposicion]] = {}
+    for sugerencia in listar_reposicion():
+        por_proveedor.setdefault(sugerencia.proveedor_id, []).append(sugerencia)
+    grupos = [
+        GrupoReposicion(
+            proveedor_id=proveedor_id,
+            proveedor_nombre=sugerencias[0].proveedor_nombre,
+            proveedor_activo=sugerencias[0].proveedor_activo,
+            sugerencias=sugerencias,
+        )
+        for proveedor_id, sugerencias in por_proveedor.items()
+    ]
+    return sorted(grupos, key=lambda grupo: (grupo.proveedor_id is None, (grupo.proveedor_nombre or "").casefold()))
+
+
+def preparar_lista_reposicion(proveedor_id: int | None, cantidades: dict[int, int]) -> ListaReposicion:
+    """Arma la lista de reposición de un grupo con las cantidades elegidas (producto_id -> cantidad).
+
+    Los costos salen siempre de `listar_reposicion` (último costo con el proveedor principal o, si no
+    hay, el costo vigente): nunca de lo que envía el cliente. No escribe nada.
+
+    Raises:
+        DatosInvalidosError: si no se eligió ningún producto, una cantidad no es un entero entre 1 y
+            `MAXIMO_ENTERO`, el grupo ya no existe, o un producto no pertenece a ese grupo (otro
+            proveedor principal) o ya no necesita reposición.
+    """
+    if not cantidades:
+        raise DatosInvalidosError("Elegí al menos un producto para reponer.")
+    grupo = next((g for g in agrupar_reposicion_por_proveedor() if g.proveedor_id == proveedor_id), None)
+    if grupo is None:
+        raise DatosInvalidosError("Ese proveedor ya no tiene productos para reponer.")
+    por_producto = {sugerencia.producto_id: sugerencia for sugerencia in grupo.sugerencias}
+    for producto_id, cantidad in cantidades.items():
+        if producto_id not in por_producto:
+            raise DatosInvalidosError("Un producto elegido no corresponde a este proveedor o ya no necesita reposición.")
+        if not 1 <= cantidad <= MAXIMO_ENTERO:
+            raise DatosInvalidosError("La cantidad a comprar debe ser un entero mayor a cero.")
+    return ListaReposicion(
+        proveedor_id=grupo.proveedor_id,
+        proveedor_nombre=grupo.proveedor_nombre,
+        proveedor_activo=grupo.proveedor_activo,
+        lineas=[
+            LineaListaReposicion(
+                producto_id=sugerencia.producto_id,
+                codigo_barras=sugerencia.codigo_barras,
+                nombre=sugerencia.nombre,
+                cantidad=cantidades[sugerencia.producto_id],
+                costo_unitario_centavos=sugerencia.costo_unitario_centavos,
+            )
+            for sugerencia in grupo.sugerencias
+            if sugerencia.producto_id in cantidades
+        ],
+    )
+
+
+def preparar_precarga_compra(proveedor_id: int | None, cantidades: dict[int, int]) -> ListaReposicion:
+    """Como `preparar_lista_reposicion`, para precargar el formulario de compra: además exige que el
+    proveedor principal esté activo (una compra a un proveedor inactivo no se puede registrar, y el
+    atajo no debe dejar reasignar sus productos a otro). La lista imprimible sí admite ese caso.
+
+    Raises:
+        DatosInvalidosError: lo mismo que `preparar_lista_reposicion`, o si el proveedor está inactivo.
+    """
+    lista = preparar_lista_reposicion(proveedor_id, cantidades)
+    if not lista.proveedor_activo:
+        raise DatosInvalidosError("El proveedor principal está inactivo: no se puede precargar una compra a su nombre.")
+    return lista
 
 
 @dataclass

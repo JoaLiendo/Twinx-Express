@@ -83,5 +83,7 @@
     botonAgregar.addEventListener('click', agregarLinea);
   }
 
-  agregarLinea();
+  // Con una precarga (reposición) las líneas ya vienen renderizadas; solo se recalculan los subtotales.
+  if (contenedorLineas.querySelector('.linea-compra')) actualizarTotal();
+  else agregarLinea();
 })();

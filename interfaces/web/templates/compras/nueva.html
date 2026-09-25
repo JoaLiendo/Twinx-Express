@@ -1,6 +1,47 @@
 {% extends "base.html" %}
 {% import "_componentes.html" as ui %}
 
+{% macro linea_compra(producto_id=none, cantidad=none, costo=none) %}
+            <div class="linea-compra grid grid-cols-12 gap-2 items-start rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+              <div class="col-span-12 sm:col-span-5">
+                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Producto</label>
+                <select name="producto_id" required
+                        class="linea-producto w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900
+                               dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                               focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+                  <option value="">Seleccionar...</option>
+                  {% for producto in productos %}
+                    <option value="{{ producto.id }}" {{ 'selected' if producto.id == producto_id else '' }}>{{ producto.nombre }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-span-4 sm:col-span-2">
+                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Cantidad</label>
+                <input type="number" name="cantidad" min="1" step="1" required{% if cantidad %} value="{{ cantidad }}"{% endif %}
+                       class="linea-cantidad w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 tabular-nums
+                              dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                              focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+              </div>
+              <div class="col-span-4 sm:col-span-2">
+                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Costo unitario</label>
+                <input type="text" name="costo_unitario" placeholder="0.00" inputmode="decimal" required{% if costo is not none %} value="{{ costo }}"{% endif %}
+                       pattern="^\s*[0-9]+([.,][0-9]{1,2})?\s*$" title="Un número positivo, ej. 150.50"
+                       class="linea-costo w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 tabular-nums placeholder:text-slate-400
+                              dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                              focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+              </div>
+              <div class="col-span-3 sm:col-span-2">
+                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subtotal</label>
+                <p class="linea-subtotal px-1 py-2 text-sm font-semibold text-slate-800 dark:text-slate-200 tabular-nums">$0.00</p>
+              </div>
+              <div class="col-span-1 flex items-end justify-end h-full pb-1">
+                <button type="button" class="boton-quitar-linea text-slate-300 hover:text-error dark:text-slate-600 dark:hover:text-error" aria-label="Quitar línea">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+              </div>
+            </div>
+{% endmacro %}
+
 {% block titulo %}Nueva compra{% endblock %}
 {% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Nueva compra</h1>{% endblock %}
 
@@ -25,7 +66,7 @@
                            focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
               <option value="">Seleccionar...</option>
               {% for proveedor in proveedores %}
-                <option value="{{ proveedor.id }}">{{ proveedor.nombre }}</option>
+                <option value="{{ proveedor.id }}" {{ 'selected' if precarga and precarga.proveedor_id == proveedor.id else '' }}>{{ proveedor.nombre }}</option>
               {% endfor %}
             </select>
           </div>
@@ -49,47 +90,14 @@
             </button>
           </div>
 
-          <div id="lineas-compra" class="space-y-3"></div>
+          <div id="lineas-compra" class="space-y-3">
+            {% if precarga %}
+              {% for linea in precarga.lineas %}{{ linea_compra(linea.producto_id, linea.cantidad, linea.costo_unitario_centavos | dinero) }}{% endfor %}
+            {% endif %}
+          </div>
 
           <template id="plantilla-linea-compra">
-            <div class="linea-compra grid grid-cols-12 gap-2 items-start rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-              <div class="col-span-12 sm:col-span-5">
-                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Producto</label>
-                <select name="producto_id" required
-                        class="linea-producto w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900
-                               dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
-                               focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
-                  <option value="">Seleccionar...</option>
-                  {% for producto in productos %}
-                    <option value="{{ producto.id }}">{{ producto.nombre }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div class="col-span-4 sm:col-span-2">
-                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Cantidad</label>
-                <input type="number" name="cantidad" min="1" step="1" required
-                       class="linea-cantidad w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 tabular-nums
-                              dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
-                              focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
-              </div>
-              <div class="col-span-4 sm:col-span-2">
-                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Costo unitario</label>
-                <input type="text" name="costo_unitario" placeholder="0.00" inputmode="decimal" required
-                       pattern="^\s*[0-9]+([.,][0-9]{1,2})?\s*$" title="Un número positivo, ej. 150.50"
-                       class="linea-costo w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 tabular-nums placeholder:text-slate-400
-                              dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
-                              focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
-              </div>
-              <div class="col-span-3 sm:col-span-2">
-                <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subtotal</label>
-                <p class="linea-subtotal px-1 py-2 text-sm font-semibold text-slate-800 dark:text-slate-200 tabular-nums">$0.00</p>
-              </div>
-              <div class="col-span-1 flex items-end justify-end h-full pb-1">
-                <button type="button" class="boton-quitar-linea text-slate-300 hover:text-error dark:text-slate-600 dark:hover:text-error" aria-label="Quitar línea">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 6l12 12M18 6 6 18"/></svg>
-                </button>
-              </div>
-            </div>
+            {{ linea_compra() }}
           </template>
         </div>
 

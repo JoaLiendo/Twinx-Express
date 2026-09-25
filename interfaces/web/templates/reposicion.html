@@ -10,7 +10,7 @@
   <div class="flex flex-wrap items-end justify-between gap-4 no-imprimir">
     <p class="text-sm text-slate-500 dark:text-slate-400 max-w-xl">
       Productos con stock mínimo configurado cuyo stock está por debajo del mínimo (incluye los que ya no tienen stock).
-      La cantidad sugerida es lo que falta para llegar al mínimo: podés cambiarla antes de imprimir. Esta pantalla es de consulta: no registra compras ni modifica el stock.
+      Se agrupan por proveedor principal. La cantidad sugerida es lo que falta para llegar al mínimo: podés cambiarla y destildar lo que no querés antes de pasar a compra o imprimir. Esta pantalla es de consulta: no registra compras ni modifica el stock.
     </p>
   </div>
 
@@ -19,60 +19,72 @@
       <strong>{{ sugerencias | length }}</strong> producto(s) para reponer, <strong>{{ sin_stock }}</strong> sin stock.
     </p>
 
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
-      <p class="sm:hidden text-xs text-slate-400 dark:text-slate-500 px-5 pt-3 no-imprimir">Desliza hacia la derecha para ver más →</p>
-      <div class="overflow-x-auto">
-        <table id="tabla-reposicion" class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              <th class="px-4 py-3 w-10 no-imprimir"></th>
-              <th class="px-4 py-3">Producto</th>
-              <th class="px-4 py-3">Proveedor</th>
-              <th class="px-4 py-3 text-right">Stock</th>
-              <th class="px-4 py-3 text-right">Mínimo</th>
-              <th class="px-4 py-3 text-right">Comprar</th>
-              <th class="px-4 py-3 text-right">Costo unit.</th>
-              <th class="px-4 py-3 text-right">Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for s in sugerencias %}
-              <tr data-fila-reposicion data-costo="{{ s.costo_unitario_centavos }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800">
-                <td class="px-4 py-3 no-imprimir"><input type="checkbox" checked data-incluir aria-label="Incluir {{ s.nombre }}" /></td>
-                <td class="px-4 py-3 text-slate-800 dark:text-slate-200">
-                  {{ s.nombre }}
-                  {% if s.stock_actual == 0 %}{{ ui.badge('Sin stock', 'alerta') }}{% endif %}
-                </td>
-                <td class="px-4 py-3 text-slate-600 dark:text-slate-400" data-proveedor>
-                  {% if s.proveedor_nombre %}{{ s.proveedor_nombre }}{% if not s.proveedor_activo %} {{ ui.badge('Inactivo', 'neutral') }}{% endif %}{% else %}<span class="text-slate-400 dark:text-slate-500">Sin proveedor principal</span>{% endif %}
-                </td>
-                <td class="px-4 py-3 text-right tabular-nums {{ 'text-error font-semibold' if s.stock_actual == 0 else '' }}">{{ s.stock_actual }}</td>
-                <td class="px-4 py-3 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ s.stock_minimo }}</td>
-                <td class="px-4 py-3 text-right">
-                  <input type="number" min="0" value="{{ s.cantidad_sugerida }}" data-cantidad aria-label="Cantidad a comprar de {{ s.nombre }}"
-                         class="w-20 rounded-md border border-slate-300 px-2 py-1 text-right text-sm tabular-nums bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
-                </td>
-                <td class="px-4 py-3 text-right tabular-nums text-slate-500 dark:text-slate-400">${{ s.costo_unitario_centavos | dinero_ar }}</td>
-                <td class="px-4 py-3 text-right tabular-nums font-semibold text-slate-900 dark:text-slate-100" data-subtotal>${{ s.costo_estimado_centavos | dinero_ar }}</td>
+    {% for grupo in grupos %}
+      <form method="get" action="/reposicion/comprar" data-grupo-reposicion
+            class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+        {% if grupo.proveedor_id is not none %}<input type="hidden" name="proveedor_id" value="{{ grupo.proveedor_id }}" />{% endif %}
+        <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+          <p class="font-semibold text-slate-900 dark:text-slate-100" data-proveedor>
+            {% if grupo.proveedor_nombre %}{{ grupo.proveedor_nombre }}{% if not grupo.proveedor_activo %} {{ ui.badge('Inactivo', 'neutral') }}{% endif %}{% else %}<span class="text-slate-500 dark:text-slate-400">Sin proveedor principal</span>{% endif %}
+          </p>
+          <div class="flex flex-wrap items-center gap-2 no-imprimir">
+            {% if grupo.proveedor_id is none or grupo.proveedor_activo %}
+              <button type="submit" data-accion="comprar"
+                      class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
+                Pasar a compra
+              </button>
+            {% endif %}
+            <button type="submit" formaction="/reposicion/imprimir" formtarget="_blank" data-accion="imprimir"
+                    class="rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-sm font-semibold px-4 py-2 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">
+              Imprimir lista
+            </button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" data-tabla-reposicion>
+            <thead>
+              <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                <th class="px-4 py-3 w-10 no-imprimir"></th>
+                <th class="px-4 py-3">Producto</th>
+                <th class="px-4 py-3 text-right">Stock</th>
+                <th class="px-4 py-3 text-right">Mínimo</th>
+                <th class="px-4 py-3 text-right">Comprar</th>
+                <th class="px-4 py-3 text-right">Costo unit.</th>
+                <th class="px-4 py-3 text-right">Subtotal</th>
               </tr>
-            {% endfor %}
-          </tbody>
-          <tfoot>
-            <tr class="border-t border-slate-200 dark:border-slate-700">
-              <td colspan="7" class="px-4 py-3 text-right text-sm font-medium text-slate-600 dark:text-slate-400">Costo estimado de lo seleccionado</td>
-              <td class="px-4 py-3 text-right tabular-nums font-bold text-slate-900 dark:text-slate-100" id="total-reposicion">${{ costo_total_centavos | dinero_ar }}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {% for s in grupo.sugerencias %}
+                <tr data-fila-reposicion data-costo="{{ s.costo_unitario_centavos }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                  <td class="px-4 py-3 no-imprimir"><input type="checkbox" name="p" value="{{ s.producto_id }}" checked data-incluir aria-label="Incluir {{ s.nombre }}" /></td>
+                  <td class="px-4 py-3 text-slate-800 dark:text-slate-200">
+                    {{ s.nombre }}
+                    {% if s.stock_actual == 0 %}{{ ui.badge('Sin stock', 'alerta') }}{% endif %}
+                  </td>
+                  <td class="px-4 py-3 text-right tabular-nums {{ 'text-error font-semibold' if s.stock_actual == 0 else '' }}">{{ s.stock_actual }}</td>
+                  <td class="px-4 py-3 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ s.stock_minimo }}</td>
+                  <td class="px-4 py-3 text-right">
+                    <input type="number" min="1" step="1" name="cantidad_{{ s.producto_id }}" value="{{ s.cantidad_sugerida }}" data-cantidad aria-label="Cantidad a comprar de {{ s.nombre }}"
+                           class="w-20 rounded-md border border-slate-300 px-2 py-1 text-right text-sm tabular-nums bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+                  </td>
+                  <td class="px-4 py-3 text-right tabular-nums text-slate-500 dark:text-slate-400">${{ s.costo_unitario_centavos | dinero_ar }}</td>
+                  <td class="px-4 py-3 text-right tabular-nums font-semibold text-slate-900 dark:text-slate-100" data-subtotal>${{ s.costo_estimado_centavos | dinero_ar }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </form>
+    {% endfor %}
+
+    <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <span class="text-sm font-medium text-slate-600 dark:text-slate-400">Costo estimado de lo seleccionado (todos los proveedores)</span>
+      <span class="tabular-nums font-bold text-slate-900 dark:text-slate-100" id="total-reposicion">${{ costo_total_centavos | dinero_ar }}</span>
     </div>
 
     <div class="flex flex-wrap items-center gap-4 no-imprimir">
-      <button type="button" id="imprimir-reposicion" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
-        Imprimir lista seleccionada
-      </button>
       <a href="/compras/nueva" class="text-sm font-medium text-primary hover:text-primary-hover">Registrar una compra →</a>
-      <span class="text-xs text-slate-400 dark:text-slate-500">El costo es el de la última compra al proveedor principal; si no tiene, se usa el costo vigente del producto. Los productos sin costo cargado suman $0.</span>
+      <span class="text-xs text-slate-400 dark:text-slate-500">"Pasar a compra" abre el formulario de compra con estos productos, cantidades y costos ya cargados: no registra nada hasta que confirmes. El costo es el de la última compra al proveedor principal; si no tiene, se usa el costo vigente del producto.</span>
     </div>
   {% else %}
     {{ ui.estado_vacio("No hay productos para reponer", "Ningún producto con stock mínimo configurado está por debajo del mínimo. Si esperabas ver alguno, revisá que tenga un stock mínimo mayor a cero.") }}
@@ -82,11 +94,5 @@
 {% endblock %}
 
 {% block scripts %}
-<style>
-  @media print {
-    .no-imprimir, header, aside, #drawer-nav, #toast-container { display: none !important; }
-    tr[data-fila-reposicion].excluida { display: none !important; }
-  }
-</style>
 <script src="/static/js/reposicion.js"></script>
 {% endblock %}

@@ -18,6 +18,7 @@ from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
 from services import servicio_compras, servicio_proveedores, servicio_stock
+from services.servicio_stock import ListaReposicion
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
@@ -43,15 +44,22 @@ def listar_compras(
     return templates.TemplateResponse(request, "compras/lista.html", contexto)
 
 
-@router.get("/compras/nueva")
-def formulario_nueva_compra(request: Request):
+def respuesta_formulario_compra(request: Request, precarga: ListaReposicion | None = None):
+    """Formulario de nueva compra. `precarga` (lista de reposición) solo rellena proveedor, productos,
+    cantidades y costos sugeridos: no registra nada, la compra se confirma con `POST /compras/nueva`."""
     contexto = {
         **contexto_base(request),
         "proveedores": servicio_proveedores.listar_activos(),
         "productos": servicio_stock.listar_todos(),
         "clave_idempotencia": nueva_clave_idempotencia(),
+        "precarga": precarga,
     }
     return templates.TemplateResponse(request, "compras/nueva.html", contexto)
+
+
+@router.get("/compras/nueva")
+def formulario_nueva_compra(request: Request):
+    return respuesta_formulario_compra(request)
 
 
 @router.post("/compras/nueva")
