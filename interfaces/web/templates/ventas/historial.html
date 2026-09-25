@@ -99,6 +99,16 @@
         </table>
       </div>
     </div>
+    {% if total_paginas > 1 %}
+      {% set base_enlace = '/ventas/historial?' ~ (consulta_filtros ~ '&' if consulta_filtros else '') ~ 'pagina=' %}
+      <nav class="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400" aria-label="Paginación">
+        <span>{{ total_ventas }} ventas · página {{ pagina }} de {{ total_paginas }}</span>
+        <span class="flex gap-4">
+          {% if pagina > 1 %}<a href="{{ base_enlace }}{{ pagina - 1 }}" class="font-medium text-primary hover:text-primary-hover">← Anterior</a>{% endif %}
+          {% if pagina < total_paginas %}<a href="{{ base_enlace }}{{ pagina + 1 }}" class="font-medium text-primary hover:text-primary-hover">Siguiente →</a>{% endif %}
+        </span>
+      </nav>
+    {% endif %}
   {% else %}
     {{ ui.estado_vacio("Sin ventas en el período", "No hay ventas registradas entre las fechas y el filtro elegidos.") }}
   {% endif %}

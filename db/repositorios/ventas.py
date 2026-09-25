@@ -583,6 +583,28 @@ def _fila_a_resumen_venta(fila: sqlite3.Row) -> ResumenVenta:
     )
 
 
+def _filtro_resumen(
+    fecha_desde: str | None, fecha_hasta: str | None, tipo_pago: str | None, estado: str | None
+) -> tuple[str, list[object]]:
+    """Cláusula `WHERE` (con placeholders) y parámetros de los filtros del Historial; los
+    filtros solo tocan columnas de `ventas v`, así que sirve tanto para listar como para contar."""
+    condiciones = []
+    parametros: list[object] = []
+    if fecha_desde is not None:
+        condiciones.append("date(v.fecha) >= date(?)")
+        parametros.append(fecha_desde)
+    if fecha_hasta is not None:
+        condiciones.append("date(v.fecha) <= date(?)")
+        parametros.append(fecha_hasta)
+    if tipo_pago is not None:
+        condiciones.append("v.tipo_pago = ?")
+        parametros.append(tipo_pago)
+    if estado is not None:
+        condiciones.append("v.estado = ?")
+        parametros.append(estado)
+    return (f"WHERE {' AND '.join(condiciones)}" if condiciones else ""), parametros
+
+
 def listar_resumen(
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
@@ -615,26 +637,40 @@ def listar_resumen(
     (con `estado="ANULADA"`), sin que ninguno de los dos necesite su
     propia consulta.
     """
-    condiciones = []
-    parametros: list[object] = []
-    if fecha_desde is not None:
-        condiciones.append("date(v.fecha) >= date(?)")
-        parametros.append(fecha_desde)
-    if fecha_hasta is not None:
-        condiciones.append("date(v.fecha) <= date(?)")
-        parametros.append(fecha_hasta)
-    if tipo_pago is not None:
-        condiciones.append("v.tipo_pago = ?")
-        parametros.append(tipo_pago)
-    if estado is not None:
-        condiciones.append("v.estado = ?")
-        parametros.append(estado)
-
-    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    where, parametros = _filtro_resumen(fecha_desde, fecha_hasta, tipo_pago, estado)
     consulta = f"{_CONSULTA_RESUMEN_VENTA_BASE} {where} GROUP BY v.id ORDER BY v.id DESC"
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta, parametros).fetchall()
     return [_fila_a_resumen_venta(fila) for fila in filas]
+
+
+def listar_resumen_pagina(
+    fecha_desde: str | None,
+    fecha_hasta: str | None,
+    tipo_pago: str | None,
+    estado: str | None,
+    limite: int,
+    desplazamiento: int,
+) -> list[ResumenVenta]:
+    """Una página de `listar_resumen` (mismos filtros y orden), recortada en SQL con
+    `LIMIT/OFFSET`: el Historial no carga en memoria las ventas que no muestra."""
+    where, parametros = _filtro_resumen(fecha_desde, fecha_hasta, tipo_pago, estado)
+    consulta = f"{_CONSULTA_RESUMEN_VENTA_BASE} {where} GROUP BY v.id ORDER BY v.id DESC LIMIT ? OFFSET ?"
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta, [*parametros, limite, desplazamiento]).fetchall()
+    return [_fila_a_resumen_venta(fila) for fila in filas]
+
+
+def contar_resumen(
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    tipo_pago: str | None = None,
+    estado: str | None = None,
+) -> int:
+    """Cantidad total de ventas que cumplen los filtros de `listar_resumen`, sin paginar."""
+    where, parametros = _filtro_resumen(fecha_desde, fecha_hasta, tipo_pago, estado)
+    with obtener_conexion() as conexion:
+        return conexion.execute(f"SELECT COUNT(*) FROM ventas v {where}", parametros).fetchone()[0]
 
 
 def obtener_resumen_por_id(venta_id: int) -> ResumenVenta | None:

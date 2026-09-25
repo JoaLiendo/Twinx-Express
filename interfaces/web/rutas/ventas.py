@@ -7,6 +7,9 @@ negocio (la validación de stock/tipo de pago ocurre en domain/services,
 igual que en la CLI).
 """
 
+from math import ceil
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 
 from domain.usuario import Usuario
@@ -67,6 +70,14 @@ def api_registrar_venta(
     )
 
 
+def _pagina_o_primera(texto: str) -> int:
+    """Número de página pedido; cualquier valor que no sea un entero >= 1 equivale a la primera."""
+    try:
+        return max(1, int(texto))
+    except ValueError:
+        return 1
+
+
 @router.get("/ventas/historial")
 def historial_ventas(
     request: Request,
@@ -74,6 +85,7 @@ def historial_ventas(
     fecha_hasta: str | None = None,
     tipo_pago: str | None = None,
     estado: str | None = None,
+    pagina: str = "1",
 ):
     # `estado or None`: el <select> de "Todas" envía `estado=""` (una
     # request GET siempre manda el campo, aunque esté vacío) -- sin esta
@@ -81,9 +93,13 @@ def historial_ventas(
     # un filtro real (`v.estado = ''`, cero resultados) en vez de "sin
     # filtrar" (mismo recurso que ya usa `accion_anular_venta` para
     # `observaciones`).
+    total_ventas = servicio_ventas.contar_historial(fecha_desde, fecha_hasta, tipo_pago, estado or None)
+    total_paginas = max(1, ceil(total_ventas / servicio_ventas.VENTAS_POR_PAGINA))
+    pagina_efectiva = min(_pagina_o_primera(pagina), total_paginas)
     fecha_desde_efectiva, fecha_hasta_efectiva, ventas = servicio_ventas.listar_historial(
-        fecha_desde, fecha_hasta, tipo_pago, estado or None
+        fecha_desde, fecha_hasta, tipo_pago, estado or None, pagina_efectiva
     )
+    filtros = {"fecha_desde": fecha_desde, "fecha_hasta": fecha_hasta, "tipo_pago": tipo_pago, "estado": estado}
     contexto = {
         **contexto_base(request),
         "ventas": ventas,
@@ -94,6 +110,11 @@ def historial_ventas(
         "tipos_pago": sorted(TIPOS_PAGO_ACEPTADOS),
         "estado": estado or "",
         "estados": sorted(ESTADOS_VENTA_VALIDOS),
+        "pagina": pagina_efectiva,
+        "total_paginas": total_paginas,
+        "total_ventas": total_ventas,
+        # Filtros pedidos (no los efectivos) para que los enlaces de página no fijen el rango por defecto.
+        "consulta_filtros": urlencode({clave: valor for clave, valor in filtros.items() if valor is not None}),
     }
     return templates.TemplateResponse(request, "ventas/historial.html", contexto)
 

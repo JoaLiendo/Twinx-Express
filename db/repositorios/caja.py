@@ -220,6 +220,15 @@ def listar_movimientos() -> list[MovimientoCaja]:
     return [_fila_a_movimiento(fila) for fila in filas]
 
 
+def listar_movimientos_recientes(limite: int) -> list[MovimientoCaja]:
+    """Los últimos `limite` movimientos de caja, el más reciente primero (recortados en SQL)."""
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            f"SELECT {_COLUMNAS} FROM caja_movimientos ORDER BY id DESC LIMIT ?", (limite,)
+        ).fetchall()
+    return [_fila_a_movimiento(fila) for fila in filas]
+
+
 def listar_movimientos_de_sesion_en_conexion(conexion: sqlite3.Connection, sesion_id: int) -> list[MovimientoCaja]:
     """Movimientos de una sesión de caja (`sesion_caja_id`), en orden cronológico.
 

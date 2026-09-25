@@ -59,6 +59,18 @@ def listar_movimientos() -> list[MovimientoCaja]:
     return repositorio_caja.listar_movimientos()
 
 
+def listar_movimientos_de_sesion_actual() -> list[MovimientoCaja]:
+    """Movimientos de la sesión que la UI considera actual (la abierta o, si no hay, la última
+    cerrada), cronológicos. No mezcla sesiones anteriores: acota la pantalla de caja."""
+    sesion = repositorio_caja.obtener_ultima_sesion()
+    return repositorio_caja.listar_movimientos_de_sesion(sesion.id) if sesion is not None else []
+
+
+def listar_movimientos_recientes(limite: int) -> list[MovimientoCaja]:
+    """Los últimos `limite` movimientos de caja, el más reciente primero."""
+    return repositorio_caja.listar_movimientos_recientes(limite)
+
+
 def _resumir_sesion(
     ventas: list[Venta], movimientos: list[MovimientoCaja], sesion_abierta: bool
 ) -> ArqueoCaja:

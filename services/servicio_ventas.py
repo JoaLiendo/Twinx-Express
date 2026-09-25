@@ -62,6 +62,9 @@ logger = logging.getLogger(__name__)
 # es "buscar una venta de hace un par de semanas", no un resumen del día.
 DIAS_RANGO_POR_DEFECTO_HISTORIAL = 30
 
+# Filas del Historial por página: acota el HTML y la consulta sin importar cuántas ventas haya.
+VENTAS_POR_PAGINA = 100
+
 _ROLES_VENTA_A_CUENTA = frozenset({"OWNER", "CASHIER"})
 
 
@@ -315,14 +318,34 @@ def _rango_por_defecto_historial() -> tuple[str, str]:
     return desde.isoformat(), hoy.isoformat()
 
 
+def _rango_efectivo_historial(fecha_desde: str | None, fecha_hasta: str | None) -> tuple[str, str]:
+    if fecha_desde is None or fecha_hasta is None:
+        return _rango_por_defecto_historial()
+    return fecha_desde, fecha_hasta
+
+
+def contar_historial(
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    tipo_pago: str | None = None,
+    estado: str | None = None,
+) -> int:
+    """Total de ventas del período y filtros pedidos (mismo rango efectivo que `listar_historial`),
+    sin paginar: base de la cantidad de páginas."""
+    desde, hasta = _rango_efectivo_historial(fecha_desde, fecha_hasta)
+    return repositorio_ventas.contar_resumen(desde, hasta, tipo_pago, estado)
+
+
 def listar_historial(
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
     tipo_pago: str | None = None,
     estado: str | None = None,
+    pagina: int = 1,
 ) -> tuple[str, str, list[ResumenVenta]]:
-    """Historial de Ventas del período pedido: devuelve
-    `(fecha_desde_efectiva, fecha_hasta_efectiva, ventas)`.
+    """Una página (`VENTAS_POR_PAGINA`, desde 1) del Historial de Ventas del período pedido:
+    devuelve `(fecha_desde_efectiva, fecha_hasta_efectiva, ventas)`. Una página fuera de rango
+    devuelve una lista vacía; quien pagina decide cómo acotarla (ver `contar_historial`).
 
     Si no se pasa alguno de los dos límites, usa el rango por defecto
     (últimos `DIAS_RANGO_POR_DEFECTO_HISTORIAL` días) para ambos -- un
@@ -336,10 +359,10 @@ def listar_historial(
     mismo comportamiento que antes de este parámetro -- y
     `"ACTIVA"`/`"ANULADA"` acotan el listado a un único estado.
     """
-    if fecha_desde is None or fecha_hasta is None:
-        fecha_desde, fecha_hasta = _rango_por_defecto_historial()
-
-    ventas = repositorio_ventas.listar_resumen(fecha_desde, fecha_hasta, tipo_pago, estado)
+    fecha_desde, fecha_hasta = _rango_efectivo_historial(fecha_desde, fecha_hasta)
+    ventas = repositorio_ventas.listar_resumen_pagina(
+        fecha_desde, fecha_hasta, tipo_pago, estado, VENTAS_POR_PAGINA, (pagina - 1) * VENTAS_POR_PAGINA
+    )
     return fecha_desde, fecha_hasta, ventas
 
 

@@ -32,7 +32,7 @@ def _mensaje_resultado_cierre(diferencia_centavos: int) -> str:
 def panel_caja(request: Request):
     contexto = {
         **contexto_base(request),
-        "movimientos": list(reversed(servicio_caja.listar_movimientos())),
+        "movimientos": list(reversed(servicio_caja.listar_movimientos_de_sesion_actual())),
         "clave_ingreso": nueva_clave_idempotencia(),
         "clave_egreso": nueva_clave_idempotencia(),
     }

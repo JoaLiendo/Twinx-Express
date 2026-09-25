@@ -10,6 +10,8 @@ from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base
 from services import servicio_caja, servicio_stock
 
+MOVIMIENTOS_RECIENTES = 5
+
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
 
 
@@ -17,7 +19,7 @@ router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
 def ver_dashboard(request: Request):
     productos_criticos = servicio_stock.listar_stock_critico()
     arqueo = servicio_caja.calcular_arqueo_de_sesion()
-    movimientos_recientes = list(reversed(servicio_caja.listar_movimientos()))[:5]
+    movimientos_recientes = servicio_caja.listar_movimientos_recientes(MOVIMIENTOS_RECIENTES)
     contexto = {
         **contexto_base(request),
         "productos_criticos": productos_criticos,
