@@ -485,6 +485,20 @@ Sin funcionalidad nueva ni migraciones: endurece lo existente.
 
 **Actualizar desde V1.4.** Sin migraciones: los datos quedan intactos.
 
+## Cuenta corriente, reposición y reportes (V1.6)
+
+Sin migraciones ni dependencias nuevas.
+
+- **Cuenta corriente.** El historial de ventas se filtra por cliente; el ticket de una venta a cuenta muestra el
+  cliente y su saldo posterior al cargo; el listado de clientes muestra la deuda total.
+- **Reposición integrada con compras.** La reposición agrupa por proveedor principal, permite editar cantidades,
+  se puede imprimir y precarga una compra que no se guarda hasta confirmarla. Un proveedor inactivo se informa
+  en lugar de fallar.
+- **Reportes operativos.** Caja por sesión, compras por proveedor, deuda de cuenta corriente y cobranzas de
+  cuenta corriente, calculados con agregaciones SQL.
+
+**Actualizar desde V1.5.** Sin migraciones: los datos quedan intactos.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -503,5 +517,6 @@ Sin funcionalidad nueva ni migraciones: endurece lo existente.
 - [x] Caja por sesiones, clientes y cuenta corriente (ventas a cuenta y cobros en efectivo) (V1.3, ver sección anterior)
 - [x] Proveedores (búsqueda, ficha, relación producto-proveedor) e inventario físico con conteo a ciegas (V1.4, ver sección anterior)
 - [x] Robustez numérica, historial/caja/dashboard acotados y cobertura E2E del rol CASHIER (V1.5, ver «Robustez y escala (V1.5)»)
+- [x] Cuenta corriente completa, reposición integrada con compras y reportes operativos (V1.6, ver «Cuenta corriente, reposición y reportes (V1.6)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

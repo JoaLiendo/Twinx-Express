@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.5.0
+Twinx Express 1.6.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -487,5 +487,28 @@ c) CAJA Y PANEL DE INICIO MAS LIVIANOS
    - El panel de inicio muestra los 5 ultimos movimientos de caja.
 
 d) AL ACTUALIZAR DESDE LA VERSION 1.4
+   No hay cambios en la base de datos ni migraciones nuevas: tus datos
+   quedan tal cual. Si algo sale mal, segui el punto 7.
+
+
+15) NOVEDADES DE LA VERSION 1.6: CUENTA CORRIENTE, REPOSICION Y REPORTES
+----------------------------------------------------------------------------------
+
+a) CUENTA CORRIENTE
+   - El Historial de ventas se puede filtrar por cliente.
+   - El ticket de una venta a cuenta muestra el cliente y su saldo
+     despues del cargo.
+   - La lista de clientes muestra la deuda total.
+
+b) REPOSICION INTEGRADA CON COMPRAS
+   La pantalla de Reposicion agrupa los productos por proveedor
+   principal, permite editar las cantidades, se puede imprimir y arma una
+   compra ya cargada. Nada se guarda hasta que confirmas la compra.
+
+c) REPORTES OPERATIVOS
+   Nuevos reportes: caja por sesion, compras por proveedor, deuda de
+   cuenta corriente y cobranzas de cuenta corriente.
+
+d) AL ACTUALIZAR DESDE LA VERSION 1.5
    No hay cambios en la base de datos ni migraciones nuevas: tus datos
    quedan tal cual. Si algo sale mal, segui el punto 7.

@@ -105,10 +105,12 @@ test('inventario CASHIER: cuenta a ciegas y no puede confirmar, cancelar ni entr
     `422 /api/inventario/conteo/${idProducto}`,
     `403 /inventario/${idInventario}`,
   ]);
-  // Chrome informa esos mismos dos 4xx como console.error de recurso; no hay ningún otro error.
-  expect(errores.erroresDeNavegador).toEqual([
-    'console.error: Failed to load resource: the server responded with a status of 422 (Unprocessable Content)',
-    'console.error: Failed to load resource: the server responded with a status of 403 (Forbidden)',
+  // Chrome informa esos mismos dos 4xx como console.error de recurso; no hay ningún otro error. El texto
+  // de la frase de estado (p. ej. «Unprocessable Entity» / «Unprocessable Content») depende de la versión
+  // del servidor, así que se compara solo el código.
+  expect(errores.erroresDeNavegador.map((e) => e.replace(/(status of \d+).*$/, '$1'))).toEqual([
+    'console.error: Failed to load resource: the server responded with a status of 422',
+    'console.error: Failed to load resource: the server responded with a status of 403',
   ]);
   errores.respuestasHttpInesperadas.length = 0;
   errores.erroresDeNavegador.length = 0;
