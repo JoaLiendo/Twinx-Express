@@ -15,6 +15,7 @@ import sqlite3
 
 from db.conexion import obtener_conexion
 from db.repositorios import caja as repositorio_caja
+from domain.reportes_operativos import ProductoRotacion
 from domain.venta import ItemVenta, LineaVenta, ProductoMasVendido, ResumenVenta, Venta, VentaConDetalle
 from excepciones import CajaCerradaError, VentaYaAnuladaError
 
@@ -760,3 +761,46 @@ def anular_venta_en_conexion(
     if fila is None:
         raise VentaYaAnuladaError(f"La venta {venta_id} ya fue anulada anteriormente.")
     return _fila_a_venta(fila)
+
+
+def listar_rotacion_en_rango(desde_inicio: str, hasta_exclusivo: str) -> list[ProductoRotacion]:
+    """Productos con `stock_actual > 0` (activos o inactivos, como la valorización del inventario) y sus
+    unidades vendidas en `[desde_inicio, hasta_exclusivo)`, todo en una única consulta SQL.
+
+    Cuenta solo ventas `ACTIVA`. Los productos sin ventas en el rango aparecen con 0 unidades. Devuelve
+    `ProductoRotacion` con `dias_desde_ultima_venta` en `None`: lo calcula el servicio (la base no
+    conoce "hoy"). Orden estable: sin ventas primero, luego mayor valor de stock, nombre e id.
+    """
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            """
+            SELECT p.id, p.codigo_barras, p.nombre, p.activo, p.stock_actual, p.precio_costo_centavos,
+                   COALESCE(r.unidades, 0) AS unidades,
+                   (SELECT MAX(v.fecha)
+                    FROM detalle_venta d JOIN ventas v ON v.id = d.venta_id
+                    WHERE d.producto_id = p.id AND v.estado = 'ACTIVA') AS ultima_venta
+            FROM productos p
+            LEFT JOIN (SELECT d.producto_id, SUM(d.cantidad) AS unidades
+                       FROM ventas v JOIN detalle_venta d ON d.venta_id = v.id
+                       WHERE v.estado = 'ACTIVA' AND v.fecha >= ? AND v.fecha < ?
+                       GROUP BY d.producto_id) r ON r.producto_id = p.id
+            WHERE p.stock_actual > 0
+            ORDER BY (COALESCE(r.unidades, 0) > 0), p.stock_actual * p.precio_costo_centavos DESC,
+                     p.nombre COLLATE NOCASE, p.id
+            """,
+            (desde_inicio, hasta_exclusivo),
+        ).fetchall()
+    return [
+        ProductoRotacion(
+            producto_id=fila["id"],
+            codigo_barras=fila["codigo_barras"],
+            nombre=fila["nombre"],
+            activo=bool(fila["activo"]),
+            stock_actual=fila["stock_actual"],
+            costo_unitario_centavos=fila["precio_costo_centavos"],
+            unidades_vendidas=fila["unidades"],
+            fecha_ultima_venta=fila["ultima_venta"],
+            dias_desde_ultima_venta=None,
+        )
+        for fila in filas
+    ]

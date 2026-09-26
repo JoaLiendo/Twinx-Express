@@ -91,3 +91,35 @@ class CobranzaDeCliente:
     cliente_nombre: str
     cantidad_cobros: int
     total_centavos: int
+
+
+ESTADO_SIN_VENTAS = "SIN_VENTAS"
+ESTADO_CON_VENTAS = "CON_VENTAS"
+
+
+@dataclass(frozen=True)
+class ProductoRotacion:
+    """Producto con stock y su movimiento de ventas en un período (reporte de rotación).
+
+    `unidades_vendidas` cuenta solo ventas activas dentro del período; `fecha_ultima_venta` es la última
+    venta activa de toda la historia (`None` si nunca se vendió). `valor_stock_centavos` es
+    `stock_actual * costo_unitario_centavos`, la misma valorización del inventario.
+    """
+
+    producto_id: int
+    codigo_barras: str
+    nombre: str
+    activo: bool
+    stock_actual: int
+    costo_unitario_centavos: int
+    unidades_vendidas: int
+    fecha_ultima_venta: str | None
+    dias_desde_ultima_venta: int | None
+
+    @property
+    def valor_stock_centavos(self) -> int:
+        return self.stock_actual * self.costo_unitario_centavos
+
+    @property
+    def estado(self) -> str:
+        return ESTADO_CON_VENTAS if self.unidades_vendidas > 0 else ESTADO_SIN_VENTAS

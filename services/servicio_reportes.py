@@ -13,14 +13,21 @@ que no dependen de ninguno de los dos campos.
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import clientes as repositorio_clientes
 from db.repositorios import compras as repositorio_compras
 from db.repositorios import ventas as repositorio_ventas
-from domain.reportes_operativos import CobranzaDeCliente, ComprasDeProveedor, DeudorCuenta, ResumenSesionCaja
+from domain.reportes_operativos import (
+    ESTADO_SIN_VENTAS,
+    CobranzaDeCliente,
+    ComprasDeProveedor,
+    DeudorCuenta,
+    ProductoRotacion,
+    ResumenSesionCaja,
+)
 from domain.venta import ProductoMasVendido, ResumenVenta, Venta
 from excepciones import DatosInvalidosError
 
@@ -419,3 +426,45 @@ def generar_reporte_cobranzas(fecha_desde: str | None = None, fecha_hasta: str |
     """Cobros de cuenta corriente del período agrupados por cliente (solo `COBRO`)."""
     desde, hasta, inicio, fin = _limites_del_periodo(fecha_desde, fecha_hasta)
     return ReporteCobranzas(desde, hasta, repositorio_clientes.resumir_cobranzas(inicio, fin))
+
+
+@dataclass
+class ReporteRotacion:
+    fecha_desde: str
+    fecha_hasta: str
+    filas: list[ProductoRotacion]
+
+    @property
+    def _sin_ventas(self) -> list[ProductoRotacion]:
+        return [fila for fila in self.filas if fila.estado == ESTADO_SIN_VENTAS]
+
+    @property
+    def productos_sin_ventas(self) -> int:
+        return len(self._sin_ventas)
+
+    @property
+    def unidades_inmovilizadas(self) -> int:
+        return sum(fila.stock_actual for fila in self._sin_ventas)
+
+    @property
+    def valor_inmovilizado_centavos(self) -> int:
+        return sum(fila.valor_stock_centavos for fila in self._sin_ventas)
+
+
+def generar_reporte_rotacion(
+    fecha_desde: str | None = None, fecha_hasta: str | None = None, hoy: date | None = None
+) -> ReporteRotacion:
+    """Productos con stock y sus ventas activas del período: los `SIN_VENTAS` son stock inmovilizado.
+
+    Una sola consulta agregada en SQL (`listar_rotacion_en_rango`); acá solo se calculan los días desde
+    la última venta respecto de `hoy`. La valorización usa el costo vigente, igual que la del inventario.
+    """
+    desde, hasta, inicio, fin = _limites_del_periodo(fecha_desde, fecha_hasta)
+    referencia = hoy or date.today()
+    filas = [
+        replace(fila, dias_desde_ultima_venta=(referencia - date.fromisoformat(fila.fecha_ultima_venta[:10])).days)
+        if fila.fecha_ultima_venta
+        else fila
+        for fila in repositorio_ventas.listar_rotacion_en_rango(inicio, fin)
+    ]
+    return ReporteRotacion(desde, hasta, filas)

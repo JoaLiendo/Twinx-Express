@@ -6,7 +6,7 @@ Cliente delgado: solo lee los parámetros de la URL, llama a
 (eso vive en `services.servicio_reportes` -- ver su docstring para las
 métricas que este módulo deliberadamente no calcula todavía).
 
-Los reportes operativos (V1.6-C: caja por sesión, compras por proveedor y cuenta corriente) viven
+Los reportes operativos (V1.6-C: caja por sesión, compras por proveedor, cuenta corriente y rotación de stock) viven
 bajo `/reportes/...`, con la misma protección (solo OWNER) y también solo de lectura.
 """
 
@@ -81,3 +81,10 @@ def ver_reporte_cuenta_corriente(request: Request, fecha_desde: str | None = Non
         "seccion": "cuenta-corriente",
     }
     return templates.TemplateResponse(request, "reportes/cuenta_corriente.html", contexto)
+
+
+@router.get("/reportes/rotacion")
+def ver_reporte_rotacion(request: Request, fecha_desde: str | None = None, fecha_hasta: str | None = None):
+    reporte = servicio_reportes.generar_reporte_rotacion(**_periodo(fecha_desde, fecha_hasta))
+    contexto = {**contexto_base(request), "reporte": reporte, "seccion": "rotacion"}
+    return templates.TemplateResponse(request, "reportes/rotacion.html", contexto)

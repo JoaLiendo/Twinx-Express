@@ -1,5 +1,5 @@
 {# Navegación entre los reportes; `seccion` indica el activo. #}
-{% set secciones = [('ventas', '/reportes', 'Ventas'), ('caja', '/reportes/caja', 'Caja por sesión'), ('compras', '/reportes/compras', 'Compras por proveedor'), ('cuenta-corriente', '/reportes/cuenta-corriente', 'Cuenta corriente')] %}
+{% set secciones = [('ventas', '/reportes', 'Ventas'), ('caja', '/reportes/caja', 'Caja por sesión'), ('compras', '/reportes/compras', 'Compras por proveedor'), ('cuenta-corriente', '/reportes/cuenta-corriente', 'Cuenta corriente'), ('rotacion', '/reportes/rotacion', 'Rotación de stock')] %}
 <nav id="navegacion-reportes" class="flex flex-wrap gap-2" aria-label="Reportes">
   {% for clave, href, etiqueta in secciones %}
     <a href="{{ href }}" {{ 'aria-current="page"' | safe if clave == seccion else '' }}
