@@ -521,6 +521,25 @@ Dos migraciones nuevas (23 y 24, aditivas; 24 migraciones en total), sin depende
 **Actualizar desde V1.6.** Se crea un backup automático y se aplican las migraciones 23 y 24; los datos quedan
 intactos y las compras existentes quedan `ACTIVA`.
 
+## Compras operativas, exportaciones y seguridad (V1.8)
+
+Sin migraciones (24 en total) ni dependencias nuevas.
+
+- **Compras y proveedores.** La ficha del proveedor muestra el estado de cada compra (las anuladas con motivo y
+  fecha) y solo las últimas 20, con enlace a `/compras?proveedor_id=`. El listado de compras se pagina en SQL
+  (`LIMIT/OFFSET`, 50 por página) con filtros combinables por proveedor, fechas (comparación indexable), estado y
+  producto (`EXISTS`, sin duplicar compras). En el producto: última compra ACTIVA con costo anterior demostrable y
+  `/productos/{id}/compras` con su historial (activas y anuladas, paginado, filtrable por fechas).
+- **Exportaciones CSV** (`services/servicio_exportacion_csv.py`): compras, ventas, deuda de clientes, rotación y
+  kardex, con los mismos filtros, parsers y permisos que cada pantalla y sobre todo el conjunto filtrado. UTF-8 con
+  BOM, coma, quoting del módulo `csv`, importes como texto decimal simple.
+- **Inyección de fórmulas.** `domain/celdas_seguras.py` neutraliza los textos que empiezan con `=`, `+`, `-`, `@`,
+  tabulación o retorno de carro con una regla inyectiva (también escapa un apóstrofo inicial) que la importación de
+  CSV deshace exactamente. El XLSX de productos fuerza a texto las celdas que `openpyxl` guardaría como fórmula.
+- No implementadas: cuentas a pagar a proveedores y órdenes de compra.
+
+**Actualizar desde V1.7.** Sin migraciones: los datos quedan intactos.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -541,5 +560,6 @@ intactos y las compras existentes quedan `ACTIVA`.
 - [x] Robustez numérica, historial/caja/dashboard acotados y cobertura E2E del rol CASHIER (V1.5, ver «Robustez y escala (V1.5)»)
 - [x] Cuenta corriente completa, reposición integrada con compras y reportes operativos (V1.6, ver «Cuenta corriente, reposición y reportes (V1.6)»)
 - [x] Rotación de stock, anulación segura de compras y movimientos de stock por producto (V1.7, ver «Rotación, anulación de compras y movimientos de stock (V1.7)»)
+- [x] Compras paginadas y filtrables, historial por producto, exportaciones CSV operativas y protección contra inyección de fórmulas (V1.8, ver «Compras operativas, exportaciones y seguridad (V1.8)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

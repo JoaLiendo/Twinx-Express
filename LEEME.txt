@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.7.0
+Twinx Express 1.8.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -548,3 +548,39 @@ c) MOVIMIENTOS DE STOCK POR PRODUCTO (solo el dueño)
 d) AL ACTUALIZAR DESDE LA VERSION 1.6
    KioscoApp crea automaticamente un backup y aplica 2 migraciones nuevas
    (23 y 24): tus datos quedan tal cual. Si algo sale mal, segui el punto 7.
+
+
+17) NOVEDADES DE LA VERSION 1.8: COMPRAS, EXPORTACIONES Y SEGURIDAD
+----------------------------------------------------------------------------------
+
+a) COMPRAS Y PROVEEDORES
+   - La ficha del proveedor marca cada compra como ACTIVA o ANULADA (con
+     motivo y fecha de anulacion) y muestra sus ultimas compras, con un
+     enlace a la lista completa.
+   - La lista de Compras ahora se pagina y se puede filtrar por proveedor,
+     fechas, estado (activa/anulada) y producto; los filtros se conservan
+     al cambiar de pagina.
+   - En cada producto: "Historial de compras" (todas sus compras, activas
+     y anuladas) y la ultima compra valida con su costo. Una compra
+     anulada nunca cuenta como ultima compra.
+
+b) EXPORTACIONES A CSV
+   Boton "Exportar CSV" en Compras, Historial de ventas, Rotacion de stock,
+   Deuda de cuenta corriente y Movimientos de stock de un producto. Exporta
+   TODO lo que muestran los filtros elegidos (no solo la pagina visible) y
+   respeta los mismos permisos que cada pantalla. Se abren directamente en
+   Excel.
+
+c) SEGURIDAD DE LOS ARCHIVOS EXPORTADOS
+   Los textos que empiezan con =, +, - o @ se marcan con un apostrofo al
+   exportar para que Excel no los ejecute como formulas. El CSV y el XLSX
+   de productos tambien quedaron protegidos, y al volver a importar un CSV
+   exportado los datos quedan exactamente como estaban.
+
+d) AL ACTUALIZAR DESDE LA VERSION 1.7
+   No hay cambios en la base de datos ni migraciones nuevas (siguen siendo
+   24): tus datos quedan tal cual. Si algo sale mal, segui el punto 7.
+
+e) TODAVIA NO INCLUIDO
+   Cuentas a pagar a proveedores y ordenes de compra no estan
+   implementadas.
