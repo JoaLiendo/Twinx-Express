@@ -499,6 +499,28 @@ Sin migraciones ni dependencias nuevas.
 
 **Actualizar desde V1.5.** Sin migraciones: los datos quedan intactos.
 
+## Rotación, anulación de compras y movimientos de stock (V1.7)
+
+Dos migraciones nuevas (23 y 24, aditivas; 24 migraciones en total), sin dependencias nuevas.
+
+- **Rotación de stock** (`/reportes/rotacion`). Productos con stock y sus ventas activas del período, en una única
+  consulta SQL: unidades vendidas, última venta, valorización a costo actual y valor inmovilizado. Migración 023:
+  índices `ventas(fecha)` y `compras(fecha)` para los reportes por rango.
+- **Anulación segura de compras** (solo OWNER). Todo o nada dentro de una transacción: exige `stock_actual >=
+  cantidad` en todas las líneas y revierte el stock. El costo anterior se restaura solo si se demuestra (la línea
+  guarda el evento de `historial_precios` que produjo su cambio de costo, ese evento sigue siendo el último y no hay
+  otra compra activa posterior); si no, se conserva y la auditoría (`COMPRA_ANULADA`) registra la causa. Las
+  compras anteriores a V1.7 (`costo_trazable = 0`) revierten stock pero nunca restauran costo: no se infiere ningún
+  evento. Migración 024: estado y datos de anulación en `compras`, `detalle_compra.historial_precio_id`, origen
+  `ANULACION_COMPRA` en `historial_precios` (la tabla se reconstruye con verificación). Los reportes por proveedor y
+  el último costo de reposición ignoran las compras anuladas.
+- **Movimientos de stock por producto** (`/productos/{id}/movimientos`, solo OWNER). Kardex de solo lectura armado
+  con los eventos reales (ventas, compras, sus anulaciones como movimientos aparte, ajustes y recuentos); sin
+  tabla nueva. El saldo inicial es reconstruido desde `stock_actual`, coherente con cualquier rango de fechas.
+
+**Actualizar desde V1.6.** Se crea un backup automático y se aplican las migraciones 23 y 24; los datos quedan
+intactos y las compras existentes quedan `ACTIVA`.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -518,5 +540,6 @@ Sin migraciones ni dependencias nuevas.
 - [x] Proveedores (búsqueda, ficha, relación producto-proveedor) e inventario físico con conteo a ciegas (V1.4, ver sección anterior)
 - [x] Robustez numérica, historial/caja/dashboard acotados y cobertura E2E del rol CASHIER (V1.5, ver «Robustez y escala (V1.5)»)
 - [x] Cuenta corriente completa, reposición integrada con compras y reportes operativos (V1.6, ver «Cuenta corriente, reposición y reportes (V1.6)»)
+- [x] Rotación de stock, anulación segura de compras y movimientos de stock por producto (V1.7, ver «Rotación, anulación de compras y movimientos de stock (V1.7)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

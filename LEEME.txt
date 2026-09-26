@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.6.0
+Twinx Express 1.7.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -512,3 +512,39 @@ c) REPORTES OPERATIVOS
 d) AL ACTUALIZAR DESDE LA VERSION 1.5
    No hay cambios en la base de datos ni migraciones nuevas: tus datos
    quedan tal cual. Si algo sale mal, segui el punto 7.
+
+
+16) NOVEDADES DE LA VERSION 1.7: ROTACION, ANULACION DE COMPRAS Y MOVIMIENTOS
+----------------------------------------------------------------------------------
+
+a) ROTACION DE STOCK
+   Nuevo reporte "Rotacion de stock" (Reportes): muestra que productos con
+   stock no se vendieron en el periodo, cuantas unidades y cuanto dinero
+   (a costo actual) tenes inmovilizado, y cuando fue la ultima venta.
+   Los reportes por fecha ahora son mas rapidos.
+
+b) ANULACION DE COMPRAS (solo el dueño)
+   Una compra cargada por error se puede anular desde su detalle, con un
+   motivo. Al anularla:
+   - Se descuenta el stock que habia ingresado. Solo se puede si el stock
+     actual alcanza para TODOS los productos de la compra; si no, no se
+     cambia nada.
+   - El costo anterior de cada producto se restaura unicamente si se puede
+     demostrar que esa compra fue la ultima que lo fijo. Si hubo otra
+     compra posterior o un cambio de costo, el costo actual se conserva.
+   - Las compras anteriores a la version 1.7 tambien se pueden anular
+     (se revierte el stock), pero su costo siempre se conserva.
+   - La compra queda visible como ANULADA y no cuenta en los reportes de
+     compras ni en el ultimo costo de la reposicion.
+
+c) MOVIMIENTOS DE STOCK POR PRODUCTO (solo el dueño)
+   Desde el listado o la edicion de un producto: "Movimientos". Muestra por
+   que el producto tiene el stock actual: compras, ventas, ajustes y
+   recuentos de inventario. Una venta o compra anulada aparece con su
+   movimiento original y con su reversion. El saldo inicial se reconstruye
+   a partir del stock actual (el sistema no guarda el stock de alta como
+   movimiento). Se puede filtrar por fechas.
+
+d) AL ACTUALIZAR DESDE LA VERSION 1.6
+   KioscoApp crea automaticamente un backup y aplica 2 migraciones nuevas
+   (23 y 24): tus datos quedan tal cual. Si algo sale mal, segui el punto 7.
