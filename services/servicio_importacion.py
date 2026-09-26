@@ -29,6 +29,7 @@ from openpyxl import load_workbook
 from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import productos as repositorio_productos
+from domain.celdas_seguras import desneutralizar_texto
 from domain.dinero import texto_a_centavos
 from domain.producto import Producto
 from excepciones import ArchivoImportacionInvalidoError, DatosInvalidosError
@@ -302,6 +303,11 @@ def _validar_columnas(columnas: list[str]) -> None:
         )
 
 
+# Columnas de texto libre: el CSV exportado las neutraliza (ver `domain.celdas_seguras`), así que al leer se deshace
+# ese escape. El XLSX no lo necesita: sus celdas de texto se exportan como texto sin cambiar el valor.
+_COLUMNAS_DE_TEXTO = frozenset({"codigo_barras", "nombre", "categoria", "unidad_medida"})
+
+
 def _extraer_filas_csv(contenido: bytes) -> list[dict[str, str]]:
     try:
         texto = contenido.decode("utf-8-sig")
@@ -328,7 +334,10 @@ def _extraer_filas_csv(contenido: bytes) -> list[dict[str, str]]:
     for valores in lector:
         if not any(valor.strip() for valor in valores):
             continue
-        filas.append(dict(zip(columnas, valores)))
+        filas.append({
+            columna: desneutralizar_texto(valor) if columna in _COLUMNAS_DE_TEXTO else valor
+            for columna, valor in zip(columnas, valores)
+        })
     return filas
 
 

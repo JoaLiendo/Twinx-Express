@@ -9,24 +9,19 @@ conjunto filtrado -- no la página visible --, con los mismos filtros y las mism
 origen; todo se genera en memoria.
 
 PROTECCIÓN CONTRA INYECCIÓN DE FÓRMULAS: un texto que empiece con `=`, `+`, `-`, `@` (o tabulación / retorno de
-carro) lo interpretaría como fórmula Excel/LibreOffice al abrir el archivo. `neutralizar_texto` le antepone un
-apóstrofo, que las planillas muestran como texto y no como parte del valor. Solo se tocan los textos: los números
-que generamos (`numero`, `dinero`) pasan intactos, incluso negativos.
+carro) lo interpretaría como fórmula Excel/LibreOffice al abrir el archivo. `domain.celdas_seguras.neutralizar_texto`
+le antepone un apóstrofo (regla inyectiva: ver ese módulo, que también define la inversa que usa la importación).
+Solo se tocan los textos: los números que generamos (`numero`, `dinero`) pasan intactos, incluso negativos.
 """
 
 import csv
 import io
 from collections.abc import Iterable, Sequence
 
+from domain.celdas_seguras import Numero, neutralizar_texto
 from domain.dinero import centavos_a_texto
 from domain.reportes_operativos import ProductoRotacion
 from services import servicio_compras, servicio_movimientos_stock, servicio_reportes, servicio_ventas
-
-_PREFIJOS_DE_FORMULA = ("=", "+", "-", "@", "\t", "\r")
-
-
-class Numero(str):
-    """Texto numérico generado por el sistema (cantidad, importe): no se neutraliza."""
 
 
 def numero(valor: int | None) -> Numero:
@@ -35,13 +30,6 @@ def numero(valor: int | None) -> Numero:
 
 def dinero(centavos: int | None) -> Numero:
     return Numero("" if centavos is None else centavos_a_texto(centavos))
-
-
-def neutralizar_texto(texto: str | None) -> str:
-    """Texto seguro para una celda: `None` es vacío y un texto que empieza como una fórmula lleva un `'` delante."""
-    if not texto:
-        return ""
-    return "'" + texto if texto.startswith(_PREFIJOS_DE_FORMULA) else texto
 
 
 def _celda(valor: str | None) -> str:

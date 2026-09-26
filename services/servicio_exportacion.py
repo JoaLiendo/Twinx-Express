@@ -22,14 +22,15 @@ ningún archivo temporal en disco: la ruta HTTP devuelve los bytes
 directamente en la respuesta.
 """
 
-import csv
 import io
 
 from openpyxl import Workbook
 
+from domain.celdas_seguras import Numero
 from domain.dinero import centavos_a_texto
 from domain.producto import Producto
 from services import servicio_categorias, servicio_stock
+from services.servicio_exportacion_csv import generar_csv
 from services.servicio_importacion import COLUMNAS_REQUERIDAS
 
 # Mismas dos columnas opcionales que ya acepta la importación (ver
@@ -55,10 +56,10 @@ def _fila_exportable(producto: Producto, categorias_por_id: dict[int, str]) -> l
     return [
         producto.codigo_barras,
         producto.nombre,
-        centavos_a_texto(producto.precio_costo_centavos),
-        centavos_a_texto(producto.precio_venta_centavos),
-        str(producto.stock_actual),
-        str(producto.stock_minimo),
+        Numero(centavos_a_texto(producto.precio_costo_centavos)),
+        Numero(centavos_a_texto(producto.precio_venta_centavos)),
+        Numero(producto.stock_actual),
+        Numero(producto.stock_minimo),
         nombre_categoria,
         producto.unidad_medida,
     ]
@@ -78,20 +79,15 @@ def _productos_y_categorias() -> tuple[list[Producto], dict[int, str]]:
 def generar_csv_productos() -> bytes:
     """Catálogo de productos activos como CSV, listo para descargar.
 
-    Codificado con BOM UTF-8 (`utf-8-sig`): así Excel en Windows
+    Los textos que empiezan como una fórmula se neutralizan (ver `domain.celdas_seguras`; la importación de CSV
+    deshace exactamente ese escape). Codificado con BOM UTF-8 (`utf-8-sig`): así Excel en Windows
     reconoce la codificación y muestra bien nombres con tildes/ñ, y
     `servicio_importacion._extraer_filas_csv` decodifica ese mismo BOM
     sin problema (ya usa `utf-8-sig` para leer, ver su código).
     """
     productos, categorias_por_id = _productos_y_categorias()
 
-    buffer_texto = io.StringIO()
-    escritor = csv.writer(buffer_texto)
-    escritor.writerow(COLUMNAS_EXPORTACION)
-    for producto in productos:
-        escritor.writerow(_fila_exportable(producto, categorias_por_id))
-
-    return buffer_texto.getvalue().encode("utf-8-sig")
+    return generar_csv(COLUMNAS_EXPORTACION, (_fila_exportable(p, categorias_por_id) for p in productos))
 
 
 def generar_xlsx_productos() -> bytes:
@@ -103,6 +99,11 @@ def generar_xlsx_productos() -> bytes:
     hoja.append(list(COLUMNAS_EXPORTACION))
     for producto in productos:
         hoja.append(_fila_exportable(producto, categorias_por_id))
+        # openpyxl guarda como FÓRMULA todo texto que empieza con "=": se fuerza a texto (los demás prefijos
+        # ya se guardan como texto). El valor no cambia, así que al reimportar el XLSX vuelve idéntico.
+        for celda in hoja[hoja.max_row]:
+            if celda.data_type == "f":
+                celda.data_type = "s"
 
     buffer_binario = io.BytesIO()
     libro.save(buffer_binario)
