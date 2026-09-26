@@ -12,6 +12,8 @@ Las compras son inmutables en esta fase: no hay `actualizar_compra` ni
 """
 
 import logging
+from dataclasses import dataclass
+from math import ceil
 
 from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
@@ -22,16 +24,20 @@ from db.repositorios import proveedores as repositorio_proveedores
 from db.repositorios import historial_precios as repositorio_historial_precios
 from domain.compra import (
     Compra,
+    CompraDeProducto,
     DecisionCosto,
     DetalleCompra,
     ItemCompra,
     LineaDetalleCompra,
     ResumenCompra,
+    UltimaCompraDeProducto,
     decidir_costo_de_linea,
     validar_motivo_anulacion_compra,
 )
 from domain.auditoria import LONGITUD_MAXIMA_RESUMEN
 from domain.dinero import centavos_a_texto
+from domain.fechas import limites_de_fechas
+from domain.producto import Producto
 from excepciones import (
     MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
     ClaveIdempotenciaReutilizadaError,
@@ -302,14 +308,87 @@ def listar_detalle(compra_id: int) -> list[DetalleCompra]:
     return repositorio_compras.listar_detalle(compra_id)
 
 
-def listar_resumen(
+COMPRAS_POR_PAGINA = 50
+ESTADOS_COMPRA_FILTRABLES = ("ACTIVA", "ANULADA")
+_MENSAJE_FECHAS = "Las fechas del filtro deben tener el formato AAAA-MM-DD y ser válidas."
+
+
+@dataclass(frozen=True)
+class PaginaCompras:
+    compras: list[ResumenCompra]
+    total: int
+    pagina: int
+    total_paginas: int
+
+
+@dataclass(frozen=True)
+class HistorialDeProducto:
+    producto: Producto
+    lineas: list[CompraDeProducto]
+    total: int
+    pagina: int
+    total_paginas: int
+
+
+def _total_paginas(total: int) -> int:
+    return max(1, ceil(total / COMPRAS_POR_PAGINA))
+
+
+def listar_pagina(
     proveedor_id: int | None = None,
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
-) -> list[ResumenCompra]:
-    """Historial de compras con proveedor/usuario/cantidad de líneas ya
-    resueltos (Fase 4C, ver `db.repositorios.compras.listar_resumen`)."""
-    return repositorio_compras.listar_resumen(proveedor_id, fecha_desde, fecha_hasta)
+    estado: str | None = None,
+    producto_id: int | None = None,
+    pagina: int = 1,
+) -> PaginaCompras:
+    """Una página del historial de compras con filtros combinables (proveedor, rango de días, estado y
+    producto). La página se recorta en SQL y una página fuera de rango se lleva a la última.
+
+    Raises:
+        DatosInvalidosError: si una fecha no es `AAAA-MM-DD` válida, `desde` es posterior a `hasta`, o el
+            estado no es `ACTIVA` ni `ANULADA` (vacío o `None` no filtra).
+    """
+    desde, _ = limites_de_fechas(fecha_desde, fecha_hasta, _MENSAJE_FECHAS)  # valida; el repositorio recibe días
+    hasta = fecha_hasta or None
+    if estado is not None and estado not in ESTADOS_COMPRA_FILTRABLES:
+        raise DatosInvalidosError("El estado de compra elegido no es válido.")
+    filtros = (proveedor_id, desde, hasta, estado, producto_id)
+    total = repositorio_compras.contar_resumen(*filtros)
+    total_paginas = _total_paginas(total)
+    pagina_efectiva = min(max(1, pagina), total_paginas)
+    compras = repositorio_compras.listar_resumen(
+        *filtros, limite=COMPRAS_POR_PAGINA, desplazamiento=(pagina_efectiva - 1) * COMPRAS_POR_PAGINA
+    )
+    return PaginaCompras(compras, total, pagina_efectiva, total_paginas)
+
+
+def obtener_ultima_compra_de_producto(producto_id: int) -> UltimaCompraDeProducto | None:
+    """Última compra activa del producto (ver `repositorio_compras.obtener_ultima_compra_activa_de_producto`)."""
+    return repositorio_compras.obtener_ultima_compra_activa_de_producto(producto_id)
+
+
+def obtener_historial_de_producto(
+    producto_id: int, fecha_desde: str | None = None, fecha_hasta: str | None = None, pagina: int = 1
+) -> HistorialDeProducto:
+    """Líneas de compra de un producto (activo o inactivo), activas y anuladas, paginadas y filtradas en SQL.
+
+    Raises:
+        ProductoNoEncontradoError: si el producto no existe.
+        DatosInvalidosError: si una fecha es inválida o `desde` es posterior a `hasta`.
+    """
+    desde, _ = limites_de_fechas(fecha_desde, fecha_hasta, _MENSAJE_FECHAS)  # valida; el repositorio recibe días
+    hasta = fecha_hasta or None
+    producto = repositorio_productos.obtener_por_id_incluyendo_inactivos(producto_id)
+    if producto is None:
+        raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
+    total = repositorio_compras.contar_lineas_de_producto(producto_id, desde, hasta)
+    total_paginas = _total_paginas(total)
+    pagina_efectiva = min(max(1, pagina), total_paginas)
+    lineas = repositorio_compras.listar_lineas_de_producto(
+        producto_id, desde, hasta, COMPRAS_POR_PAGINA, (pagina_efectiva - 1) * COMPRAS_POR_PAGINA
+    )
+    return HistorialDeProducto(producto, lineas, total, pagina_efectiva, total_paginas)
 
 
 def obtener_resumen_por_id(compra_id: int) -> ResumenCompra | None:

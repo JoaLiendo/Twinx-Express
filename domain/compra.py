@@ -84,6 +84,36 @@ class ResumenCompra:
     fecha_anulacion: str | None = None
 
 
+@dataclass(frozen=True)
+class CompraDeProducto:
+    """Una línea de compra de un producto para su historial (V1.8-A), con el estado de la compra: las
+    anuladas se muestran como histórico, marcadas, nunca como compras válidas."""
+
+    compra_id: int
+    fecha: str
+    proveedor_nombre: str
+    cantidad: int
+    costo_unitario_centavos: int
+    subtotal_centavos: int
+    estado: str
+    motivo_anulacion: str | None
+    fecha_anulacion: str | None
+
+
+@dataclass(frozen=True)
+class UltimaCompraDeProducto:
+    """Última compra ACTIVA de un producto. `costo_anterior_centavos` es el costo vigente justo antes de esa
+    compra y solo se informa si se puede demostrar (compra con trazabilidad V1.7: el evento de historial que
+    ella produjo, o el mismo costo si no lo cambió); en una compra anterior es `None`."""
+
+    compra_id: int
+    fecha: str
+    proveedor_nombre: str
+    cantidad: int
+    costo_unitario_centavos: int
+    costo_anterior_centavos: int | None
+
+
 @dataclass
 class LineaDetalleCompra:
     """Una línea de compra para la pantalla de detalle (Fase 4C), ya

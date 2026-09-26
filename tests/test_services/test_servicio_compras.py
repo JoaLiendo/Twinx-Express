@@ -260,21 +260,22 @@ def test_obtener_compra_y_su_detalle(base_datos_temporal):
     assert len(servicio_compras.listar_detalle(creada.id)) == 1
 
 
-def test_listar_resumen(base_datos_temporal):
+def test_listar_pagina(base_datos_temporal):
     proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
     usuario = _crear_usuario()
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
 
     creada = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 150)])
 
-    resumenes = servicio_compras.listar_resumen()
-    assert len(resumenes) == 1
+    pagina = servicio_compras.listar_pagina()
+    resumenes = pagina.compras
+    assert (len(resumenes), pagina.total, pagina.pagina, pagina.total_paginas) == (1, 1, 1, 1)
     assert resumenes[0].id == creada.id
     assert resumenes[0].proveedor_nombre == "Distribuidora SA"
     assert resumenes[0].usuario_nombre_completo == "Ana"
     assert resumenes[0].cantidad_lineas == 1
 
-    assert servicio_compras.listar_resumen(proveedor_id=9999) == []
+    assert servicio_compras.listar_pagina(proveedor_id=9999).compras == []
 
 
 def test_obtener_resumen_por_id(base_datos_temporal):

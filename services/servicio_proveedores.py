@@ -34,13 +34,18 @@ logger = logging.getLogger(__name__)
 _SOLO_OWNER = frozenset({"OWNER"})
 
 
+# La ficha muestra solo las compras más recientes (el historial completo, filtrable y paginado, está en /compras).
+COMPRAS_EN_FICHA = 20
+
+
 @dataclass(frozen=True)
 class FichaProveedor:
-    """Un proveedor con sus productos vinculados y su historial de compras (más recientes primero)."""
+    """Un proveedor con sus productos vinculados y sus últimas compras (más recientes primero, activas y anuladas)."""
 
     proveedor: Proveedor
     productos: list[ProductoDeProveedor]
     compras: list[ResumenCompra]
+    total_compras: int = 0
 
 
 def _auditar(
@@ -118,7 +123,8 @@ def obtener_ficha(proveedor_id: int) -> FichaProveedor:
     return FichaProveedor(
         proveedor=proveedor,
         productos=repositorio_producto_proveedor.listar_por_proveedor(proveedor_id),
-        compras=repositorio_compras.listar_resumen(proveedor_id),
+        compras=repositorio_compras.listar_resumen(proveedor_id, limite=COMPRAS_EN_FICHA),
+        total_compras=repositorio_compras.contar_resumen(proveedor_id),
     )
 
 

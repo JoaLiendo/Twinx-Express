@@ -6,8 +6,29 @@ from uuid import uuid4
 from fastapi import Request
 from starlette.responses import RedirectResponse
 
+from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual
 from interfaces.web.navegacion import navegacion_visible_para
+
+
+def pagina_o_primera(texto: str) -> int:
+    """Número de página pedido; cualquier valor que no sea un entero >= 1 equivale a la primera."""
+    try:
+        return max(1, int(texto))
+    except ValueError:
+        return 1
+
+
+def entero_opcional(texto: str, mensaje: str) -> int | None:
+    """Id de un filtro GET: vacío = sin filtro; un valor que no es un entero es un dato inválido con mensaje
+    claro, no un error del servidor."""
+    texto = texto.strip()
+    if not texto:
+        return None
+    try:
+        return int(texto)
+    except ValueError:
+        raise DatosInvalidosError(mensaje) from None
 
 
 def nueva_clave_idempotencia() -> str:

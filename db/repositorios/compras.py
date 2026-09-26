@@ -15,7 +15,16 @@ Las compras no se editan ni se borran: lo único que cambia es su `estado`
 import sqlite3
 
 from db.conexion import obtener_conexion
-from domain.compra import Compra, DetalleCompra, ItemCompra, LineaDetalleCompra, LineaParaAnular, ResumenCompra
+from domain.compra import (
+    Compra,
+    CompraDeProducto,
+    DetalleCompra,
+    ItemCompra,
+    LineaDetalleCompra,
+    LineaParaAnular,
+    ResumenCompra,
+    UltimaCompraDeProducto,
+)
 from domain.reportes_operativos import ComprasDeProveedor
 
 _COLUMNAS_COMPRA = "id, proveedor_id, usuario_id, fecha, observaciones, total_centavos, estado, costo_trazable"
@@ -299,40 +308,176 @@ def resumir_por_proveedor(
     ]
 
 
-def listar_resumen(
-    proveedor_id: int | None = None,
-    fecha_desde: str | None = None,
-    fecha_hasta: str | None = None,
-) -> list[ResumenCompra]:
-    """Historial de compras (Fase 4C): cabecera + nombre de proveedor +
-    nombre completo de usuario + cantidad de líneas, en una sola
-    consulta con JOIN (sin N+1), más recientes primero.
-
-    Los tres filtros son opcionales y se combinan con AND. `fecha_desde`/
-    `fecha_hasta` son texto "YYYY-MM-DD" (lo que manda un `<input
-    type="date">") y se comparan solo por fecha, ignorando la hora,
-    con la función `date(...)` de SQLite -- un valor no parseable hace
-    que esa condición no matchee ninguna fila (lista vacía, nunca un
-    error): comportamiento intencional, no se agrega validación extra
-    para un filtro que ya de por sí solo acota un listado existente.
-    """
+def _filtro_resumen(
+    proveedor_id: int | None,
+    fecha_desde: str | None,
+    fecha_hasta: str | None,
+    estado: str | None,
+    producto_id: int | None,
+) -> tuple[str, list[object]]:
+    """`WHERE` (con placeholders) del historial de compras. Todo filtra columnas de `compras c`: el producto
+    con `EXISTS` (una compra con varias líneas del producto no se duplica) y las fechas comparando la columna
+    sin `date()`, así el índice de fecha sirve. Sirve para listar y para contar."""
     condiciones = []
     parametros: list[object] = []
     if proveedor_id is not None:
         condiciones.append("c.proveedor_id = ?")
         parametros.append(proveedor_id)
     if fecha_desde is not None:
-        condiciones.append("date(c.fecha) >= date(?)")
+        condiciones.append("c.fecha >= ?")
         parametros.append(fecha_desde)
     if fecha_hasta is not None:
-        condiciones.append("date(c.fecha) <= date(?)")
+        condiciones.append("c.fecha < date(?, '+1 day')")
         parametros.append(fecha_hasta)
+    if estado is not None:
+        condiciones.append("c.estado = ?")
+        parametros.append(estado)
+    if producto_id is not None:
+        condiciones.append("EXISTS (SELECT 1 FROM detalle_compra x WHERE x.compra_id = c.id AND x.producto_id = ?)")
+        parametros.append(producto_id)
+    return (f"WHERE {' AND '.join(condiciones)}" if condiciones else ""), parametros
 
-    where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+
+def listar_resumen(
+    proveedor_id: int | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    estado: str | None = None,
+    producto_id: int | None = None,
+    limite: int | None = None,
+    desplazamiento: int = 0,
+) -> list[ResumenCompra]:
+    """Historial de compras (más recientes primero) con proveedor, usuario y cantidad de líneas resueltos
+    en una sola consulta con JOIN (sin N+1).
+
+    Los filtros son opcionales y se combinan con AND. `fecha_desde`/`fecha_hasta` son días `AAAA-MM-DD`
+    inclusivos (el servicio los valida; un texto que no es fecha no coincide con nada, nunca es un error).
+    `limite`/`desplazamiento` recortan la página en SQL (`LIMIT/OFFSET`), con orden estable por id.
+    """
+    where, parametros = _filtro_resumen(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
     consulta = f"{_CONSULTA_RESUMEN_BASE} {where} GROUP BY c.id ORDER BY c.id DESC"
+    if limite is not None:
+        consulta += " LIMIT ? OFFSET ?"
+        parametros = [*parametros, limite, desplazamiento]
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta, parametros).fetchall()
     return [_fila_a_resumen(fila) for fila in filas]
+
+
+def contar_resumen(
+    proveedor_id: int | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    estado: str | None = None,
+    producto_id: int | None = None,
+) -> int:
+    """Cantidad de compras que cumplen los filtros de `listar_resumen`, sin paginar."""
+    where, parametros = _filtro_resumen(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    with obtener_conexion() as conexion:
+        return conexion.execute(f"SELECT COUNT(*) FROM compras c {where}", parametros).fetchone()[0]
+
+
+_LINEAS_DE_PRODUCTO = """
+    FROM detalle_compra d
+    JOIN compras c ON c.id = d.compra_id
+    JOIN proveedores p ON p.id = c.proveedor_id
+    WHERE d.producto_id = ?
+"""
+
+
+def _condiciones_de_fecha(fecha_desde: str | None, fecha_hasta: str | None) -> tuple[str, list[object]]:
+    condiciones, parametros = "", []
+    if fecha_desde is not None:
+        condiciones += " AND c.fecha >= ?"
+        parametros.append(fecha_desde)
+    if fecha_hasta is not None:
+        condiciones += " AND c.fecha < date(?, '+1 day')"
+        parametros.append(fecha_hasta)
+    return condiciones, parametros
+
+
+def listar_lineas_de_producto(
+    producto_id: int,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    limite: int | None = None,
+    desplazamiento: int = 0,
+) -> list[CompraDeProducto]:
+    """Líneas de compra de un producto (activas y anuladas, más recientes primero) filtradas y paginadas en
+    SQL. Orden estable: id de la compra y de la línea."""
+    extra, parametros = _condiciones_de_fecha(fecha_desde, fecha_hasta)
+    consulta = f"""
+        SELECT c.id AS compra_id, c.fecha, c.estado, c.motivo_anulacion, c.fecha_anulacion,
+               p.nombre AS proveedor_nombre, d.cantidad, d.costo_unitario_centavos, d.subtotal_centavos
+        {_LINEAS_DE_PRODUCTO} {extra}
+        ORDER BY c.id DESC, d.id DESC
+    """
+    parametros = [producto_id, *parametros]
+    if limite is not None:
+        consulta += " LIMIT ? OFFSET ?"
+        parametros += [limite, desplazamiento]
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta, parametros).fetchall()
+    return [
+        CompraDeProducto(
+            compra_id=fila["compra_id"],
+            fecha=fila["fecha"],
+            proveedor_nombre=fila["proveedor_nombre"],
+            cantidad=fila["cantidad"],
+            costo_unitario_centavos=fila["costo_unitario_centavos"],
+            subtotal_centavos=fila["subtotal_centavos"],
+            estado=fila["estado"],
+            motivo_anulacion=fila["motivo_anulacion"],
+            fecha_anulacion=fila["fecha_anulacion"],
+        )
+        for fila in filas
+    ]
+
+
+def contar_lineas_de_producto(
+    producto_id: int, fecha_desde: str | None = None, fecha_hasta: str | None = None
+) -> int:
+    """Cantidad de líneas que devuelve `listar_lineas_de_producto` sin paginar."""
+    extra, parametros = _condiciones_de_fecha(fecha_desde, fecha_hasta)
+    with obtener_conexion() as conexion:
+        return conexion.execute(
+            f"SELECT COUNT(*) {_LINEAS_DE_PRODUCTO} {extra}", [producto_id, *parametros]
+        ).fetchone()[0]
+
+
+def obtener_ultima_compra_activa_de_producto(producto_id: int) -> UltimaCompraDeProducto | None:
+    """Última compra ACTIVA del producto (mayor id de cabecera, el mismo orden cronológico de la anulación
+    de compras); una compra anulada nunca es "la última válida". `None` si nunca se compró.
+
+    El costo anterior sale de la propia trazabilidad de la línea: el evento de historial que produjo
+    (`precio_anterior`) o, si la compra no cambió el costo, el mismo costo de la línea. En una compra sin
+    trazabilidad (anterior a V1.7) no se puede demostrar y queda en `NULL`."""
+    with obtener_conexion() as conexion:
+        fila = conexion.execute(
+            """
+            SELECT c.id AS compra_id, c.fecha, p.nombre AS proveedor_nombre, d.cantidad,
+                   d.costo_unitario_centavos,
+                   CASE WHEN c.costo_trazable = 1
+                        THEN COALESCE(h.precio_anterior_centavos, d.costo_unitario_centavos) END AS costo_anterior
+            FROM detalle_compra d
+            JOIN compras c ON c.id = d.compra_id
+            JOIN proveedores p ON p.id = c.proveedor_id
+            LEFT JOIN historial_precios h ON h.id = d.historial_precio_id
+            WHERE d.producto_id = ? AND c.estado = 'ACTIVA'
+            ORDER BY c.id DESC, d.id DESC LIMIT 1
+            """,
+            (producto_id,),
+        ).fetchone()
+    if fila is None:
+        return None
+    return UltimaCompraDeProducto(
+        compra_id=fila["compra_id"],
+        fecha=fila["fecha"],
+        proveedor_nombre=fila["proveedor_nombre"],
+        cantidad=fila["cantidad"],
+        costo_unitario_centavos=fila["costo_unitario_centavos"],
+        costo_anterior_centavos=fila["costo_anterior"],
+    )
 
 
 def obtener_resumen_por_id(compra_id: int) -> ResumenCompra | None:

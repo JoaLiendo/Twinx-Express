@@ -7,6 +7,8 @@ exclusivo de OWNER (mismo criterio que `proveedores.py`: Cashier no
 consulta ni registra compras).
 """
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Form, Request
 
 from domain.compra import MOTIVOS_ANULACION_COMPRA_VALIDOS, ItemCompra
@@ -15,7 +17,13 @@ from domain.usuario import Usuario
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
+from interfaces.web.utilidades import (
+    contexto_base,
+    entero_opcional,
+    nueva_clave_idempotencia,
+    pagina_o_primera,
+    redireccionar_con_mensaje,
+)
 from services import servicio_compras, servicio_proveedores, servicio_stock
 from services.servicio_stock import ListaReposicion
 
@@ -25,20 +33,45 @@ router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 @router.get("/compras")
 def listar_compras(
     request: Request,
-    proveedor_id: int | None = None,
-    fecha_desde: str | None = None,
-    fecha_hasta: str | None = None,
+    proveedor_id: str = "",
+    fecha_desde: str = "",
+    fecha_hasta: str = "",
+    estado: str = "",
+    producto_id: str = "",
+    pagina: str = "1",
 ):
+    id_proveedor = entero_opcional(proveedor_id, "El proveedor elegido no es válido.")
+    id_producto = entero_opcional(producto_id, "El producto elegido no es válido.")
+    estado_filtro = estado if estado and estado != "TODOS" else None
+    resultado = servicio_compras.listar_pagina(
+        id_proveedor, fecha_desde or None, fecha_hasta or None, estado_filtro, id_producto, pagina_o_primera(pagina)
+    )
+    filtros = {
+        "proveedor_id": id_proveedor,
+        "fecha_desde": fecha_desde or None,
+        "fecha_hasta": fecha_hasta or None,
+        "estado": estado_filtro,
+        "producto_id": id_producto,
+    }
     contexto = {
         **contexto_base(request),
-        "compras": servicio_compras.listar_resumen(proveedor_id, fecha_desde, fecha_hasta),
+        "compras": resultado.compras,
         # Incluye proveedores dados de baja: puede haber compras históricas
         # de un proveedor ya inactivo, y el filtro tiene que poder elegirlo.
         "proveedores": servicio_proveedores.listar_todos(),
-        "proveedor_id": proveedor_id,
+        "productos": servicio_stock.listar_todos() + servicio_stock.listar_inactivos(),
+        "estados": servicio_compras.ESTADOS_COMPRA_FILTRABLES,
+        "proveedor_id": id_proveedor,
+        "producto_id": id_producto,
+        "estado": estado_filtro or "",
         "fecha_desde": fecha_desde or "",
         "fecha_hasta": fecha_hasta or "",
-        "hay_filtro_activo": bool(proveedor_id or fecha_desde or fecha_hasta),
+        "hay_filtro_activo": any(valor is not None for valor in filtros.values()),
+        "pagina": resultado.pagina,
+        "total_paginas": resultado.total_paginas,
+        "total_compras": resultado.total,
+        # Los filtros pedidos viajan en los enlaces de página.
+        "consulta_filtros": urlencode({clave: valor for clave, valor in filtros.items() if valor is not None}),
     }
     return templates.TemplateResponse(request, "compras/lista.html", contexto)
 

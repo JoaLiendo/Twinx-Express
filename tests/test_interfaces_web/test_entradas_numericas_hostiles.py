@@ -187,6 +187,7 @@ RUTAS_CON_ID = [
     ("GET", "/productos/{id}/ajustes"),
     ("GET", "/productos/{id}/precios"),
     ("GET", "/productos/{id}/movimientos"),
+    ("GET", "/productos/{id}/compras"),
     ("GET", "/productos/{id}/ajustar"),
     ("POST", "/productos/{id}/eliminar"),
     ("POST", "/productos/{id}/reactivar"),

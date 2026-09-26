@@ -25,7 +25,7 @@ from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.esquemas import VentaEntrada, VentaSalida
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
+from interfaces.web.utilidades import contexto_base, pagina_o_primera, redireccionar_con_mensaje
 from services import servicio_clientes, servicio_configuracion, servicio_cuenta_corriente, servicio_stock, servicio_ventas
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
@@ -71,14 +71,6 @@ def api_registrar_venta(
     )
 
 
-def _pagina_o_primera(texto: str) -> int:
-    """Número de página pedido; cualquier valor que no sea un entero >= 1 equivale a la primera."""
-    try:
-        return max(1, int(texto))
-    except ValueError:
-        return 1
-
-
 def _cliente_del_filtro(texto: str):
     """Cliente pedido en el filtro del Historial (`None` si no se filtra). Un valor que no es un entero o
     un cliente que no existe es un dato inválido (mensaje claro), no un error del servidor."""
@@ -117,7 +109,7 @@ def historial_ventas(
     id_cliente = cliente.id if cliente is not None else None
     total_ventas = servicio_ventas.contar_historial(fecha_desde, fecha_hasta, tipo_pago, estado, id_cliente)
     total_paginas = max(1, ceil(total_ventas / servicio_ventas.VENTAS_POR_PAGINA))
-    pagina_efectiva = min(_pagina_o_primera(pagina), total_paginas)
+    pagina_efectiva = min(pagina_o_primera(pagina), total_paginas)
     fecha_desde_efectiva, fecha_hasta_efectiva, ventas = servicio_ventas.listar_historial(
         fecha_desde, fecha_hasta, tipo_pago, estado, pagina_efectiva, id_cliente
     )

@@ -128,6 +128,17 @@
             <a href="/productos/{{ producto.id }}/movimientos" class="font-medium text-primary hover:text-primary-hover">Movimientos de stock</a>
             ·
             <a href="/productos/{{ producto.id }}/precios" class="font-medium text-primary hover:text-primary-hover">Historial de precios</a>
+            ·
+            <a href="/productos/{{ producto.id }}/compras" class="font-medium text-primary hover:text-primary-hover">Historial de compras</a>
+          </p>
+          <p id="ultima-compra" class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            {% if ultima_compra %}
+              Última compra: <a href="/compras/{{ ultima_compra.compra_id }}" class="font-medium text-primary hover:text-primary-hover">#{{ ultima_compra.compra_id }}</a>
+              · {{ ultima_compra.fecha[:10] }} · {{ ultima_compra.proveedor_nombre }} · {{ ultima_compra.cantidad }} u. a ${{ ultima_compra.costo_unitario_centavos | dinero_ar }}
+              {% if ultima_compra.costo_anterior_centavos is not none %}(costo anterior ${{ ultima_compra.costo_anterior_centavos | dinero_ar }}){% else %}(costo anterior no disponible: compra previa a la trazabilidad){% endif %}
+            {% else %}
+              Todavía no se compró este producto.
+            {% endif %}
           </p>
         </div>
         <div>

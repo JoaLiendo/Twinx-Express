@@ -35,6 +35,30 @@
                       dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
       </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Estado</label>
+        <select name="estado" onchange="this.form.submit()"
+                class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white
+                       dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300
+                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+          <option value="">Todos</option>
+          {% for opcion in estados %}
+            <option value="{{ opcion }}" {{ 'selected' if estado == opcion else '' }}>{{ opcion }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Producto</label>
+        <select name="producto_id" onchange="this.form.submit()"
+                class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white max-w-[14rem]
+                       dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300
+                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+          <option value="">Todos</option>
+          {% for producto in productos %}
+            <option value="{{ producto.id }}" {{ 'selected' if producto_id == producto.id else '' }}>{{ producto.nombre }}{{ '' if producto.activo else ' (inactivo)' }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">
         Filtrar
       </button>
@@ -80,6 +104,16 @@
         </table>
       </div>
     </div>
+    {% if total_paginas > 1 %}
+      {% set base_enlace = '/compras?' ~ (consulta_filtros ~ '&' if consulta_filtros else '') ~ 'pagina=' %}
+      <nav id="paginacion-compras" class="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400" aria-label="Paginación">
+        <span>{{ total_compras }} compras · página {{ pagina }} de {{ total_paginas }}</span>
+        <span class="flex gap-4">
+          {% if pagina > 1 %}<a href="{{ base_enlace }}{{ pagina - 1 }}" class="font-medium text-primary hover:text-primary-hover">← Anterior</a>{% endif %}
+          {% if pagina < total_paginas %}<a href="{{ base_enlace }}{{ pagina + 1 }}" class="font-medium text-primary hover:text-primary-hover">Siguiente →</a>{% endif %}
+        </span>
+      </nav>
+    {% endif %}
   {% else %}
     {{ ui.estado_vacio("No se encontraron compras con esos filtros." if hay_filtro_activo else "Todavía no hay compras registradas.") }}
   {% endif %}

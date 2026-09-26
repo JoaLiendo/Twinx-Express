@@ -161,12 +161,13 @@ class TestFiltrosDeHistorial:
 
         assert respuesta.status == 200
 
-    def test_fecha_invalida_en_filtro_no_rompe(self, base_datos_temporal):
+    def test_fecha_invalida_en_filtro_es_un_error_controlado(self, base_datos_temporal):
         cookies = _cookies_owner()
 
         respuesta = solicitud("GET", "/compras?fecha_desde=no-es-una-fecha", cookies=cookies)
 
-        assert respuesta.status == 200
+        # V1.8-A: un filtro inválido se informa (redirección con mensaje) en vez de devolver una lista vacía.
+        assert respuesta.status == 303 and b"tipo=error" in dict(respuesta.headers)[b"location"]
 
 
 class TestDetalleEnriquecido:

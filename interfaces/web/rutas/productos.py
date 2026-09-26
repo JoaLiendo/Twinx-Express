@@ -7,6 +7,7 @@ plantillas o JSON. Cero SQL y cero reglas de negocio acá.
 """
 
 from datetime import date
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
@@ -17,9 +18,15 @@ from domain.usuario import Usuario
 from excepciones import ArchivoImagenInvalidoError, DatosInvalidosError, ProductoNoEncontradoError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
+from interfaces.web.utilidades import (
+    contexto_base,
+    nueva_clave_idempotencia,
+    pagina_o_primera,
+    redireccionar_con_mensaje,
+)
 from services import (
     servicio_categorias,
+    servicio_compras,
     servicio_exportacion,
     servicio_importacion,
     servicio_movimientos_stock,
@@ -273,7 +280,12 @@ def formulario_editar_producto(request: Request, producto_id: int):
         if categoria_actual is not None:
             categorias = categorias + [categoria_actual]
 
-    contexto = {**contexto_base(request), "producto": producto, "categorias": categorias}
+    contexto = {
+        **contexto_base(request),
+        "producto": producto,
+        "categorias": categorias,
+        "ultima_compra": servicio_compras.obtener_ultima_compra_de_producto(producto.id),
+    }
     return templates.TemplateResponse(request, "productos/editar.html", contexto)
 
 
@@ -426,6 +438,28 @@ def ver_movimientos_de_producto(
         return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
     contexto = {**contexto_base(request), "kardex": kardex}
     return templates.TemplateResponse(request, "productos/movimientos.html", contexto)
+
+
+@router.get("/productos/{producto_id}/compras", dependencies=[_SOLO_OWNER])
+def ver_compras_de_producto(
+    request: Request, producto_id: int, fecha_desde: str = "", fecha_hasta: str = "", pagina: str = "1"
+):
+    """Historial de compras del producto (solo lectura; también productos inactivos)."""
+    try:
+        historial = servicio_compras.obtener_historial_de_producto(
+            producto_id, fecha_desde or None, fecha_hasta or None, pagina_o_primera(pagina)
+        )
+    except ProductoNoEncontradoError:
+        return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
+    filtros = {"fecha_desde": fecha_desde or None, "fecha_hasta": fecha_hasta or None}
+    contexto = {
+        **contexto_base(request),
+        "historial": historial,
+        "fecha_desde": fecha_desde,
+        "fecha_hasta": fecha_hasta,
+        "consulta_filtros": urlencode({clave: valor for clave, valor in filtros.items() if valor is not None}),
+    }
+    return templates.TemplateResponse(request, "productos/compras.html", contexto)
 
 
 @router.get("/api/productos/buscar-codigo/{codigo_barras}", dependencies=[_CONSULTA])

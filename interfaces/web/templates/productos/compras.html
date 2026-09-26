@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "reportes/_periodo.html" as periodo %}
+
+{% block titulo %}Historial de compras{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Compras — {{ historial.producto.nombre }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    {% call periodo.formulario("/productos/" ~ historial.producto.id ~ "/compras", fecha_desde, fecha_hasta) %}{% endcall %}
+    <a href="/compras?producto_id={{ historial.producto.id }}" class="text-sm font-medium text-primary hover:text-primary-hover">Ver las compras completas →</a>
+  </div>
+  <p class="text-xs text-slate-500 dark:text-slate-400">
+    Cada línea de compra de este producto{% if not historial.producto.activo %} (producto inactivo){% endif %}. Las compras anuladas se muestran como histórico y no cuentan como compras válidas. Solo consulta.
+  </p>
+
+  {% if historial.lineas %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto">
+        <table id="tabla-compras-producto" class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-3">Fecha</th>
+              <th class="px-5 py-3">Compra</th>
+              <th class="px-5 py-3">Proveedor</th>
+              <th class="px-5 py-3 text-right">Cantidad</th>
+              <th class="px-5 py-3 text-right">Costo unitario</th>
+              <th class="px-5 py-3 text-right">Subtotal</th>
+              <th class="px-5 py-3">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for linea in historial.lineas %}
+              <tr data-compra="{{ linea.compra_id }}" data-estado="{{ linea.estado }}"
+                  class="border-b border-slate-50 last:border-0 dark:border-slate-800 {{ 'opacity-60' if linea.estado == 'ANULADA' else '' }}">
+                <td class="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ linea.fecha }}</td>
+                <td class="px-5 py-3"><a href="/compras/{{ linea.compra_id }}" class="font-medium text-primary hover:text-primary-hover">#{{ linea.compra_id }}</a></td>
+                <td class="px-5 py-3">{{ linea.proveedor_nombre }}</td>
+                <td class="px-5 py-3 text-right tabular-nums">{{ linea.cantidad }}</td>
+                <td class="px-5 py-3 text-right tabular-nums">${{ linea.costo_unitario_centavos | dinero_ar }}</td>
+                <td class="px-5 py-3 text-right font-semibold tabular-nums">${{ linea.subtotal_centavos | dinero_ar }}</td>
+                <td class="px-5 py-3 whitespace-nowrap">
+                  {% if linea.estado == 'ANULADA' %}
+                    {{ ui.badge('ANULADA', 'alerta') }}
+                    <span class="block text-xs text-slate-500 dark:text-slate-400">{{ linea.motivo_anulacion }} · {{ linea.fecha_anulacion }}</span>
+                  {% else %}
+                    {{ ui.badge('ACTIVA', 'exito') }}
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if historial.total_paginas > 1 %}
+      {% set base_enlace = '/productos/' ~ historial.producto.id ~ '/compras?' ~ (consulta_filtros ~ '&' if consulta_filtros else '') ~ 'pagina=' %}
+      <nav id="paginacion-compras-producto" class="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400" aria-label="Paginación">
+        <span>{{ historial.total }} líneas · página {{ historial.pagina }} de {{ historial.total_paginas }}</span>
+        <span class="flex gap-4">
+          {% if historial.pagina > 1 %}<a href="{{ base_enlace }}{{ historial.pagina - 1 }}" class="font-medium text-primary hover:text-primary-hover">← Anterior</a>{% endif %}
+          {% if historial.pagina < historial.total_paginas %}<a href="{{ base_enlace }}{{ historial.pagina + 1 }}" class="font-medium text-primary hover:text-primary-hover">Siguiente →</a>{% endif %}
+        </span>
+      </nav>
+    {% endif %}
+  {% else %}
+    {{ ui.estado_vacio("Sin compras", "Este producto no tiene compras en las fechas elegidas.") }}
+  {% endif %}
+
+  <a href="{{ '/productos/%d/editar' % historial.producto.id if historial.producto.activo else '/productos?mostrar_inactivos=true' }}"
+     class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver al producto</a>
+</div>
+{% endblock %}

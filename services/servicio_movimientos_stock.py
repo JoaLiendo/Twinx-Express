@@ -5,10 +5,8 @@ reconstruye los saldos hacia atrás desde `productos.stock_actual`: el sistema n
 histórico, así que el saldo inicial siempre es RECONSTRUIDO, nunca un dato persistido ni un cero supuesto.
 """
 
-import re
-from datetime import date, timedelta
-
 from db.repositorios import movimientos_stock as repositorio_movimientos
+from domain.fechas import limites_de_fechas
 from domain.movimiento_stock import (
     TIPO_ANULACION_COMPRA,
     TIPO_ANULACION_VENTA,
@@ -18,33 +16,9 @@ from domain.movimiento_stock import (
     Kardex,
     MovimientoStock,
 )
-from excepciones import DatosInvalidosError, ProductoNoEncontradoError
+from excepciones import ProductoNoEncontradoError
 
-_FECHA_ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
 _MENSAJE_FECHAS = "Las fechas del kardex deben tener el formato AAAA-MM-DD y ser válidas."
-
-
-def _fecha_valida(texto: str) -> date:
-    try:
-        if not _FECHA_ISO.fullmatch(texto):
-            raise ValueError
-        return date.fromisoformat(texto)
-    except ValueError:
-        raise DatosInvalidosError(_MENSAJE_FECHAS) from None
-
-
-def _limites(fecha_desde: str | None, fecha_hasta: str | None) -> tuple[str | None, str | None]:
-    """`(inicio, fin_exclusivo)` como texto comparable con las columnas de fecha/hora (sin aplicar `date()` a
-    la columna); `None` deja el extremo abierto."""
-    desde = _fecha_valida(fecha_desde) if fecha_desde else None
-    hasta = _fecha_valida(fecha_hasta) if fecha_hasta else None
-    if desde and hasta and desde > hasta:
-        raise DatosInvalidosError("La fecha desde no puede ser posterior a la fecha hasta.")
-    try:
-        fin_exclusivo = (hasta + timedelta(days=1)).isoformat() if hasta else None
-    except OverflowError:
-        raise DatosInvalidosError(_MENSAJE_FECHAS) from None
-    return (desde.isoformat() if desde else None), fin_exclusivo
 
 
 def _referencia(tipo: str, fuente_id: int, inventario_id: int | None) -> str:
@@ -80,7 +54,7 @@ def generar_kardex(producto_id: int, fecha_desde: str | None = None, fecha_hasta
         ProductoNoEncontradoError: si el producto no existe.
         DatosInvalidosError: si una fecha no es `AAAA-MM-DD` válida o `desde` es posterior a `hasta`.
     """
-    inicio, fin_exclusivo = _limites(fecha_desde, fecha_hasta)
+    inicio, fin_exclusivo = limites_de_fechas(fecha_desde, fecha_hasta, _MENSAJE_FECHAS)
     lectura = repositorio_movimientos.leer_movimientos(producto_id, inicio, fin_exclusivo)
     if lectura is None:
         raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")

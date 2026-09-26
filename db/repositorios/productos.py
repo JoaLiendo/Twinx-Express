@@ -127,6 +127,12 @@ def obtener_por_id(producto_id: int) -> Producto | None:
         return obtener_por_id_en_conexion(conexion, producto_id)
 
 
+def obtener_por_id_incluyendo_inactivos(producto_id: int) -> Producto | None:
+    """Lectura de un producto activo o dado de baja, para pantallas de solo consulta (historiales)."""
+    with obtener_conexion() as conexion:
+        return obtener_por_id_en_conexion_incluyendo_inactivos(conexion, producto_id)
+
+
 def buscar_por_codigo_barras(codigo_barras: str) -> Producto | None:
     """Busca un producto activo por código de barras exacto (lectura por lector USB)."""
     consulta = f"SELECT {_COLUMNAS} FROM productos WHERE codigo_barras = ? AND activo = 1"
