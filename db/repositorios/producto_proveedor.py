@@ -128,7 +128,7 @@ def listar_principales_con_costo() -> dict[int, ProveedorPrincipal]:
     """Proveedor principal de cada producto que lo tiene, con el último costo de compra a él.
 
     El último costo es el de la línea de mayor `detalle_compra.id` de ese producto con ese
-    proveedor. Lo usa la reposición para sugerir a quién comprar y a qué costo.
+    proveedor en una compra activa (las anuladas no determinan costo). Lo usa la reposición para sugerir a quién comprar y a qué costo.
     """
     with obtener_conexion() as conexion:
         filas = conexion.execute(
@@ -139,6 +139,7 @@ def listar_principales_con_costo() -> dict[int, ProveedorPrincipal]:
                       FROM detalle_compra d
                       JOIN compras c ON c.id = d.compra_id
                      WHERE d.producto_id = pp.producto_id AND c.proveedor_id = pp.proveedor_id
+                       AND c.estado = 'ACTIVA'
                      ORDER BY d.id DESC
                      LIMIT 1) AS ultimo_costo_centavos
             FROM producto_proveedor pp

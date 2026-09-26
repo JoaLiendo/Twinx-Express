@@ -8,17 +8,17 @@ una transacción más amplia que también valida proveedor/productos e
 incrementa stock/costo (ver `services.servicio_compras.registrar_compra`).
 Mismo patrón que `db.repositorios.ventas.registrar_venta_con_detalle`.
 
-Las compras son inmutables en esta fase: no hay `actualizar` ni
-`eliminar` acá (ver `services.servicio_compras`).
+Las compras no se editan ni se borran: lo único que cambia es su `estado`
+(`anular_compra_en_conexion`, ver `services.servicio_compras.anular_compra`).
 """
 
 import sqlite3
 
 from db.conexion import obtener_conexion
-from domain.compra import Compra, DetalleCompra, ItemCompra, LineaDetalleCompra, ResumenCompra
+from domain.compra import Compra, DetalleCompra, ItemCompra, LineaDetalleCompra, LineaParaAnular, ResumenCompra
 from domain.reportes_operativos import ComprasDeProveedor
 
-_COLUMNAS_COMPRA = "id, proveedor_id, usuario_id, fecha, observaciones, total_centavos"
+_COLUMNAS_COMPRA = "id, proveedor_id, usuario_id, fecha, observaciones, total_centavos, estado, costo_trazable"
 _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centavos, subtotal_centavos"
 
 # Base del historial (Fase 4C): resuelve proveedor y usuario con JOIN y
@@ -32,6 +32,7 @@ _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centav
 _CONSULTA_RESUMEN_BASE = """
     SELECT
         c.id, c.fecha, c.observaciones, c.total_centavos,
+        c.estado, c.motivo_anulacion, c.observaciones_anulacion, c.fecha_anulacion,
         p.nombre AS proveedor_nombre,
         u.nombre_completo AS usuario_nombre_completo,
         COUNT(dc.id) AS cantidad_lineas
@@ -51,6 +52,10 @@ def _fila_a_resumen(fila: sqlite3.Row) -> ResumenCompra:
         cantidad_lineas=fila["cantidad_lineas"],
         total_centavos=fila["total_centavos"],
         observaciones=fila["observaciones"],
+        estado=fila["estado"],
+        motivo_anulacion=fila["motivo_anulacion"],
+        observaciones_anulacion=fila["observaciones_anulacion"],
+        fecha_anulacion=fila["fecha_anulacion"],
     )
 
 
@@ -75,6 +80,8 @@ def _fila_a_compra(fila: sqlite3.Row) -> Compra:
         fecha=fila["fecha"],
         observaciones=fila["observaciones"],
         total_centavos=fila["total_centavos"],
+        estado=fila["estado"],
+        costo_trazable=bool(fila["costo_trazable"]),
     )
 
 
@@ -118,6 +125,7 @@ def registrar_compra_con_detalle(
     total_centavos: int,
     items_con_subtotal: list[tuple[ItemCompra, int]],
     clave_idempotencia: str | None = None,
+    eventos_costo: dict[int, int] | None = None,
 ) -> Compra:
     """Inserta la compra y su detalle dentro de la conexión recibida.
 
@@ -128,14 +136,19 @@ def registrar_compra_con_detalle(
     *rollback*: eso lo controla el `with obtener_conexion()` de quien
     invoca, para que la compra, su detalle y el incremento de
     stock/costo queden todos dentro de una única transacción atómica.
+
+    `eventos_costo` mapea `producto_id` al evento de `historial_precios` que produjo el cambio de costo
+    de esa línea (V1.7-B): la compra queda marcada `costo_trazable` y cada línea guarda su evento
+    (`NULL` si el costo no cambió). Sin `eventos_costo` la compra se registra sin trazabilidad.
     """
     fila_compra = conexion.execute(
         f"""
-        INSERT INTO compras (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO compras
+            (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia, costo_trazable)
+        VALUES (?, ?, ?, ?, ?, ?)
         RETURNING {_COLUMNAS_COMPRA}
         """,
-        (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia),
+        (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia, int(eventos_costo is not None)),
     ).fetchone()
 
     compra_id = fila_compra["id"]
@@ -144,13 +157,84 @@ def registrar_compra_con_detalle(
         conexion.execute(
             """
             INSERT INTO detalle_compra
-                (compra_id, producto_id, cantidad, costo_unitario_centavos, subtotal_centavos)
-            VALUES (?, ?, ?, ?, ?)
+                (compra_id, producto_id, cantidad, costo_unitario_centavos, subtotal_centavos, historial_precio_id)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (compra_id, item.producto_id, item.cantidad, item.costo_unitario_centavos, subtotal_centavos),
+            (
+                compra_id,
+                item.producto_id,
+                item.cantidad,
+                item.costo_unitario_centavos,
+                subtotal_centavos,
+                (eventos_costo or {}).get(item.producto_id),
+            ),
         )
 
     return _fila_a_compra(fila_compra)
+
+
+def obtener_por_id_en_conexion(conexion: sqlite3.Connection, compra_id: int) -> Compra | None:
+    """Compra por id (activa o anulada) dentro de la conexión recibida."""
+    fila = conexion.execute(f"SELECT {_COLUMNAS_COMPRA} FROM compras WHERE id = ?", (compra_id,)).fetchone()
+    return _fila_a_compra(fila) if fila is not None else None
+
+
+def listar_lineas_para_anular_en_conexion(conexion: sqlite3.Connection, compra_id: int) -> list[LineaParaAnular]:
+    """Líneas de la compra con el evento de costo que cada una produjo (`LEFT JOIN`: sin evento, `None`)."""
+    filas = conexion.execute(
+        """
+        SELECT d.producto_id, d.cantidad, d.historial_precio_id,
+               h.precio_anterior_centavos, h.precio_nuevo_centavos
+        FROM detalle_compra d
+        LEFT JOIN historial_precios h ON h.id = d.historial_precio_id
+        WHERE d.compra_id = ?
+        ORDER BY d.producto_id
+        """,
+        (compra_id,),
+    ).fetchall()
+    return [
+        LineaParaAnular(
+            producto_id=fila["producto_id"],
+            cantidad=fila["cantidad"],
+            historial_precio_id=fila["historial_precio_id"],
+            precio_anterior_centavos=fila["precio_anterior_centavos"],
+            precio_nuevo_centavos=fila["precio_nuevo_centavos"],
+        )
+        for fila in filas
+    ]
+
+
+def existe_compra_activa_posterior_en_conexion(
+    conexion: sqlite3.Connection, producto_id: int, compra_id: int
+) -> bool:
+    """Si hay otra compra ACTIVA del producto con id de cabecera mayor a `compra_id`. La cronología es la
+    de la cabecera (`compras.id`), no la de las líneas ni la fecha."""
+    fila = conexion.execute(
+        """
+        SELECT 1 FROM detalle_compra d JOIN compras c ON c.id = d.compra_id
+        WHERE d.producto_id = ? AND c.id > ? AND c.estado = 'ACTIVA' LIMIT 1
+        """,
+        (producto_id, compra_id),
+    ).fetchone()
+    return fila is not None
+
+
+def anular_compra_en_conexion(
+    conexion: sqlite3.Connection, compra_id: int, motivo: str, observaciones: str | None, usuario_id: int
+) -> bool:
+    """Pasa una compra `ACTIVA` a `ANULADA` con su motivo, usuario y fecha. `WHERE estado = 'ACTIVA'` es la
+    barrera final contra una doble anulación: devuelve `False` si no había nada que anular. No hace
+    *commit*: forma parte de la transacción de `services.servicio_compras.anular_compra`."""
+    cursor = conexion.execute(
+        """
+        UPDATE compras
+        SET estado = 'ANULADA', motivo_anulacion = ?, observaciones_anulacion = ?,
+            anulada_por_usuario_id = ?, fecha_anulacion = datetime('now', 'localtime')
+        WHERE id = ? AND estado = 'ACTIVA'
+        """,
+        (motivo, observaciones, usuario_id, compra_id),
+    )
+    return cursor.rowcount == 1
 
 
 def obtener_por_id(compra_id: int) -> Compra | None:
@@ -181,10 +265,10 @@ def listar_detalle(compra_id: int) -> list[DetalleCompra]:
 def resumir_por_proveedor(
     desde_inicio: str, hasta_exclusivo: str, proveedor_id: int | None = None
 ) -> list[ComprasDeProveedor]:
-    """Compras del período `[desde_inicio, hasta_exclusivo)` (texto de fecha/hora) agrupadas por proveedor
-    en SQL: cantidad de compras, unidades y total; el mayor total primero. Un proveedor sin compras en el
+    """Compras ACTIVAS del período `[desde_inicio, hasta_exclusivo)` (texto de fecha/hora) agrupadas por
+    proveedor en SQL (las anuladas no cuentan): cantidad de compras, unidades y total; el mayor total primero. Un proveedor sin compras en el
     período no aparece. `proveedor_id` limita el resultado a un proveedor."""
-    condiciones = "c.fecha >= ? AND c.fecha < ?"
+    condiciones = "c.estado = 'ACTIVA' AND c.fecha >= ? AND c.fecha < ?"
     parametros: list[object] = [desde_inicio, hasta_exclusivo]
     if proveedor_id is not None:
         condiciones += " AND c.proveedor_id = ?"

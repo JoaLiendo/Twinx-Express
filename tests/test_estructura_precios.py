@@ -5,7 +5,7 @@ Recorre el código de producción y exige que los únicos `UPDATE productos` que
 tocan `precio_venta_centavos` / `precio_costo_centavos` estén en dos funciones
 del repositorio, y que ambas registren el cambio en `historial_precios`. Un
 `UPDATE` nuevo en cualquier otro lugar hace fallar este test: quien lo agregue
-debe pasar por `cambiar_precio_en_conexion` (o registrar el historial y sumarse a
+debe pasar por `cambiar_precio_con_evento_en_conexion` (o registrar el historial y sumarse a
 esta lista de forma consciente)."""
 
 import ast
@@ -17,7 +17,7 @@ _EXCLUIDOS = {"tests", "tests_e2e", "dist", "build", "node_modules", ".venv", "v
 # (archivo, función) -> las dos únicas escrituras de precio permitidas.
 ESCRITURAS_DE_PRECIO_PERMITIDAS = {
     ("db/repositorios/productos.py", "actualizar_datos_en_conexion"),
-    ("db/repositorios/productos.py", "cambiar_precio_en_conexion"),
+    ("db/repositorios/productos.py", "cambiar_precio_con_evento_en_conexion"),
 }
 
 
@@ -73,14 +73,27 @@ def test_solo_hay_dos_puntos_de_escritura_de_precio_y_ambos_estan_permitidos():
 
 def test_ambos_puntos_de_escritura_registran_el_historial():
     for relativa, nombre in ESCRITURAS_DE_PRECIO_PERMITIDAS:
-        assert "registrar_cambio_en_conexion" in _llamadas(_funcion(relativa, nombre)), (
+        assert _llamadas(_funcion(relativa, nombre)) & {
+            "registrar_cambio_en_conexion",
+            "registrar_cambio_con_id_en_conexion",
+        }, (
             f"{relativa}::{nombre} cambia precios y no registra el historial"
         )
 
 
 def test_el_costo_de_una_compra_pasa_por_el_punto_unico():
-    assert "actualizar_costo_en_conexion" in _llamadas(_funcion("services/servicio_compras.py", "registrar_compra"))
-    assert "cambiar_precio_en_conexion" in _llamadas(_funcion("db/repositorios/productos.py", "actualizar_costo_en_conexion"))
+    assert "actualizar_costo_con_evento_en_conexion" in _llamadas(
+        _funcion("services/servicio_compras.py", "registrar_compra")
+    )
+    assert "cambiar_precio_con_evento_en_conexion" in _llamadas(
+        _funcion("db/repositorios/productos.py", "actualizar_costo_con_evento_en_conexion")
+    )
+
+
+def test_la_restauracion_de_costo_de_una_anulacion_pasa_por_el_punto_unico():
+    assert "actualizar_costo_con_evento_en_conexion" in _llamadas(
+        _funcion("services/servicio_compras.py", "anular_compra")
+    )
 
 
 def test_la_actualizacion_masiva_pasa_por_el_punto_unico():

@@ -1,6 +1,5 @@
-"""Rutas de ingreso de mercadería / compras (Fase 4B): listado, alta y
-detalle. Sin edición ni eliminación -- las compras son inmutables en
-esta fase (ver `services.servicio_compras`).
+"""Rutas de ingreso de mercadería / compras: listado, alta, detalle y anulación (V1.7-B). Sin edición ni
+eliminación: una compra solo puede anularse (ver `services.servicio_compras`).
 
 Cliente delgado: solo llama a `services/` y renderiza plantillas o
 redirects. Cero SQL y cero reglas de negocio acá. Todo el router es
@@ -10,7 +9,7 @@ consulta ni registra compras).
 
 from fastapi import APIRouter, Depends, Form, Request
 
-from domain.compra import ItemCompra
+from domain.compra import MOTIVOS_ANULACION_COMPRA_VALIDOS, ItemCompra
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
 from excepciones import DatosInvalidosError
@@ -103,3 +102,32 @@ def ver_compra(request: Request, compra_id: int):
         "detalle": servicio_compras.listar_detalle_con_producto(compra_id),
     }
     return templates.TemplateResponse(request, "compras/detalle.html", contexto)
+
+
+@router.get("/compras/{compra_id}/anular")
+def formulario_anular_compra(request: Request, compra_id: int):
+    compra = servicio_compras.obtener_resumen_por_id(compra_id)
+    if compra is None:
+        return redireccionar_con_mensaje("/compras", "error", "La compra no existe.")
+    if compra.estado != "ACTIVA":
+        return redireccionar_con_mensaje(f"/compras/{compra_id}", "error", "La compra ya fue anulada.")
+
+    contexto = {
+        **contexto_base(request),
+        "compra": compra,
+        "detalle": servicio_compras.listar_detalle_con_producto(compra_id),
+        "motivos": sorted(MOTIVOS_ANULACION_COMPRA_VALIDOS),
+    }
+    return templates.TemplateResponse(request, "compras/anular.html", contexto)
+
+
+@router.post("/compras/{compra_id}/anular")
+def accion_anular_compra(
+    compra_id: int,
+    motivo: str = Form(...),
+    observaciones: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    """Quién anula es siempre el usuario autenticado, nunca un dato del formulario."""
+    servicio_compras.anular_compra(compra_id, motivo, observaciones, usuario_actual.id)
+    return redireccionar_con_mensaje(f"/compras/{compra_id}", "success", "Compra anulada correctamente.")

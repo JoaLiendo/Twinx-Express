@@ -44,7 +44,7 @@
                 <td class="px-5 py-3.5 text-right font-semibold tabular-nums {{ 'text-success' if cambio.diferencia_centavos > 0 else 'text-error' }}">
                   {{ '+' if cambio.diferencia_centavos > 0 else '−' }}${{ cambio.diferencia_centavos | abs | dinero_ar }}
                 </td>
-                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ {'EDICION': 'Edición', 'COMPRA': 'Compra', 'MASIVA': 'Actualización masiva', 'IMPORTACION': 'Importación'}[cambio.origen] }}</td>
+                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ {'EDICION': 'Edición', 'COMPRA': 'Compra', 'MASIVA': 'Actualización masiva', 'IMPORTACION': 'Importación', 'ANULACION_COMPRA': 'Anulación de compra'}[cambio.origen] }}</td>
                 <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ cambio.usuario_nombre_completo or "—" }}</td>
               </tr>
             {% endfor %}

@@ -11,23 +11,26 @@ from domain.producto import Producto
 from excepciones import ProductoNoEncontradoError
 
 
-def test_actualizar_costo_en_conexion_modifica_solo_el_costo(base_datos_temporal):
+def test_actualizar_costo_con_evento_modifica_solo_el_costo_y_devuelve_el_evento(base_datos_temporal):
     producto = repositorio_productos.crear_producto(
         Producto(codigo_barras="7790000000001", nombre="Alfajor", precio_costo_centavos=100, precio_venta_centavos=200)
     )
 
     with obtener_conexion() as conexion:
-        actualizado = repositorio_productos.actualizar_costo_en_conexion(conexion, producto.id, 150)
+        evento_id = repositorio_productos.actualizar_costo_con_evento_en_conexion(conexion, producto.id, 150)
+        sin_cambio = repositorio_productos.actualizar_costo_con_evento_en_conexion(conexion, producto.id, 150)
 
+    actualizado = repositorio_productos.obtener_por_id(producto.id)
+    assert evento_id is not None and sin_cambio is None  # sin cambio de valor no hay evento
     assert actualizado.precio_costo_centavos == 150
     assert actualizado.precio_venta_centavos == 200  # sin cambios
     assert actualizado.nombre == "Alfajor"  # sin cambios
 
 
-def test_actualizar_costo_en_conexion_de_producto_inexistente_falla(base_datos_temporal):
+def test_actualizar_costo_con_evento_de_producto_inexistente_falla(base_datos_temporal):
     with obtener_conexion() as conexion:
         with pytest.raises(ProductoNoEncontradoError):
-            repositorio_productos.actualizar_costo_en_conexion(conexion, 9999, 150)
+            repositorio_productos.actualizar_costo_con_evento_en_conexion(conexion, 9999, 150)
 
 
 class TestObtenerPorIdEnConexionIncluyendoInactivos:

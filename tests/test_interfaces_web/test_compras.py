@@ -209,13 +209,14 @@ class TestDetalleEnriquecido:
 
 
 class TestInmutabilidad:
-    def test_no_existen_rutas_de_edicion_eliminacion_ni_anulacion(self, base_datos_temporal):
+    def test_no_existen_rutas_de_edicion_ni_eliminacion(self, base_datos_temporal):
+        """La anulación (V1.7-B) es la única modificación permitida y tiene sus propios tests."""
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
         compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
 
-        for ruta in (f"/compras/{compra.id}/editar", f"/compras/{compra.id}/eliminar", f"/compras/{compra.id}/anular"):
+        for ruta in (f"/compras/{compra.id}/editar", f"/compras/{compra.id}/eliminar"):
             respuesta = solicitud("POST", ruta, cookies=cookies)
             assert respuesta.status == 404, f"POST {ruta} debería dar 404 (no existe), dio {respuesta.status}"
 

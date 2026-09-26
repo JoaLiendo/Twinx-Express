@@ -1,7 +1,7 @@
 """Repositorio del historial de cambios de precio (migración 015).
 
 Solo SQL parametrizado. La decisión de qué se registra ("solo si el valor
-realmente cambió") vive en `registrar_cambio_en_conexion`, que es el único
+realmente cambió") vive en `registrar_cambio_con_id_en_conexion`, que es el único
 punto de escritura: así ningún camino que cambie un precio puede dejar una
 fila sin cambio real.
 """
@@ -10,6 +10,33 @@ import sqlite3
 
 from db.conexion import obtener_conexion
 from domain.historial_precio import CambioPrecio
+
+
+def registrar_cambio_con_id_en_conexion(
+    conexion: sqlite3.Connection,
+    producto_id: int,
+    campo: str,
+    precio_anterior_centavos: int,
+    precio_nuevo_centavos: int,
+    usuario_id: int | None,
+    origen: str,
+    lote_id: int | None = None,
+) -> int | None:
+    """Registra un cambio de precio dentro de la transacción recibida y devuelve el id del evento
+    creado, o `None` (sin insertar nada) si el precio nuevo es igual al anterior. Es el único `INSERT`
+    del historial. No hace *commit*: forma parte de la transacción de quien cambió el precio, así el
+    precio y su historial se confirman o se revierten juntos."""
+    if precio_anterior_centavos == precio_nuevo_centavos:
+        return None
+    cursor = conexion.execute(
+        """
+        INSERT INTO historial_precios
+            (producto_id, usuario_id, campo, precio_anterior_centavos, precio_nuevo_centavos, origen, lote_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (producto_id, usuario_id, campo, precio_anterior_centavos, precio_nuevo_centavos, origen, lote_id),
+    )
+    return cursor.lastrowid
 
 
 def registrar_cambio_en_conexion(
@@ -22,24 +49,21 @@ def registrar_cambio_en_conexion(
     origen: str,
     lote_id: int | None = None,
 ) -> bool:
-    """Registra un cambio de precio dentro de la transacción recibida.
-
-    Devuelve `False` (sin insertar nada) si el precio nuevo es igual al
-    anterior. No hace *commit*: forma parte de la transacción de quien
-    cambió el precio, así el precio y su historial se confirman o se
-    revierten juntos.
-    """
-    if precio_anterior_centavos == precio_nuevo_centavos:
-        return False
-    conexion.execute(
-        """
-        INSERT INTO historial_precios
-            (producto_id, usuario_id, campo, precio_anterior_centavos, precio_nuevo_centavos, origen, lote_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (producto_id, usuario_id, campo, precio_anterior_centavos, precio_nuevo_centavos, origen, lote_id),
+    """Como `registrar_cambio_con_id_en_conexion`, pero solo informa si se registró un cambio."""
+    return (
+        registrar_cambio_con_id_en_conexion(
+            conexion, producto_id, campo, precio_anterior_centavos, precio_nuevo_centavos, usuario_id, origen, lote_id
+        )
+        is not None
     )
-    return True
+
+
+def obtener_id_ultimo_evento_en_conexion(conexion: sqlite3.Connection, producto_id: int, campo: str) -> int | None:
+    """Id del evento más reciente (mayor `id`: el orden estable, no la fecha) de un campo del producto."""
+    fila = conexion.execute(
+        "SELECT MAX(id) FROM historial_precios WHERE producto_id = ? AND campo = ?", (producto_id, campo)
+    ).fetchone()
+    return fila[0]
 
 
 def listar_por_producto(producto_id: int) -> list[CambioPrecio]:

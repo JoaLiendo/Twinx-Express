@@ -19,15 +19,29 @@ from db.repositorios import compras as repositorio_compras
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import proveedores as repositorio_proveedores
-from domain.compra import Compra, DetalleCompra, ItemCompra, LineaDetalleCompra, ResumenCompra
+from db.repositorios import historial_precios as repositorio_historial_precios
+from domain.compra import (
+    Compra,
+    DecisionCosto,
+    DetalleCompra,
+    ItemCompra,
+    LineaDetalleCompra,
+    ResumenCompra,
+    decidir_costo_de_linea,
+    validar_motivo_anulacion_compra,
+)
+from domain.auditoria import LONGITUD_MAXIMA_RESUMEN
 from domain.dinero import centavos_a_texto
 from excepciones import (
     MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
     ClaveIdempotenciaReutilizadaError,
+    CompraNoEncontradaError,
+    CompraYaAnuladaError,
     DatosInvalidosError,
     ProductoDuplicadoEnCompraError,
     ProductoNoEncontradoError,
     ProveedorNoEncontradoError,
+    StockInsuficienteError,
 )
 
 logger = logging.getLogger(__name__)
@@ -126,6 +140,22 @@ def registrar_compra(
         ]
         total_centavos = sum(subtotal for _, subtotal in items_con_subtotal)
 
+        # Stock y costo primero: el costo produce el evento de historial que cada línea guarda para poder
+        # revertirlo de forma demostrable (V1.7-B). Todo dentro de la misma transacción.
+        eventos_costo: dict[int, int] = {}
+        for item in items:
+            producto = productos_por_id[item.producto_id]
+            producto.actualizar_stock(producto.stock_actual + item.cantidad)
+            repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
+            # El costo vigente cambia con cada compra (sin promedio ponderado); si difiere del anterior
+            # queda registrado en el historial de precios, y `None` significa que no cambió.
+            evento_id = repositorio_productos.actualizar_costo_con_evento_en_conexion(
+                conexion, producto.id, item.costo_unitario_centavos, usuario_id, "COMPRA"
+            )
+            if evento_id is not None:
+                eventos_costo[producto.id] = evento_id
+            repositorio_producto_proveedor.asegurar_vinculo_en_conexion(conexion, producto.id, proveedor_id)
+
         compra = repositorio_compras.registrar_compra_con_detalle(
             conexion,
             proveedor_id,
@@ -134,19 +164,8 @@ def registrar_compra(
             total_centavos,
             items_con_subtotal,
             clave_idempotencia=clave_idempotencia,
+            eventos_costo=eventos_costo,
         )
-
-        for item in items:
-            producto = productos_por_id[item.producto_id]
-            producto.actualizar_stock(producto.stock_actual + item.cantidad)
-            repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
-            # El costo vigente cambia con cada compra: `actualizar_costo_en_conexion` lo
-            # actualiza y, si difiere del anterior, lo registra en el historial de precios
-            # (misma transacción que el ingreso de stock).
-            repositorio_productos.actualizar_costo_en_conexion(
-                conexion, producto.id, item.costo_unitario_centavos, usuario_id, "COMPRA"
-            )
-            repositorio_producto_proveedor.asegurar_vinculo_en_conexion(conexion, producto.id, proveedor_id)
 
         repositorio_auditoria.registrar_en_conexion(
             conexion,
@@ -162,6 +181,110 @@ def registrar_compra(
         compra.id, compra.proveedor_id, compra.total_centavos, len(items),
     )
     return compra
+
+
+def _resumen_de_anulacion(
+    compra_id: int, motivo: str, unidades: dict[int, int], decisiones: list[DecisionCosto]
+) -> str:
+    """Resumen de auditoría de una anulación, compactado si excede el límite de la auditoría."""
+    detalle = " | ".join(
+        f"p{d.producto_id}:-{unidades[d.producto_id]} "
+        + ("RESTAURADO" if d.restaurar_a_centavos is not None else f"CONSERVADO:{d.causa}")
+        for d in decisiones
+    )
+    resumen = f"Compra #{compra_id} anulada ({motivo}). Unidades {sum(unidades.values())}. {detalle}"
+    if len(resumen) <= LONGITUD_MAXIMA_RESUMEN:
+        return resumen
+    restaurados = sum(1 for d in decisiones if d.restaurar_a_centavos is not None)
+    return (
+        f"Compra #{compra_id} anulada ({motivo}). Unidades {sum(unidades.values())} en {len(decisiones)} "
+        f"productos. Costo: {restaurados} RESTAURADO, {len(decisiones) - restaurados} CONSERVADO."
+    )
+
+
+def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuario_id: int) -> Compra:
+    """Anula una compra `ACTIVA`: descuenta el stock de cada línea, restaura el costo solo si se demuestra
+    que es reversible y marca la compra `ANULADA`, todo en una única transacción `BEGIN IMMEDIATE`.
+
+    Stock: se exige `stock_actual >= cantidad` en TODAS las líneas; si una no alcanza no se modifica nada
+    (no existe la anulación parcial). No se intenta saber qué unidades físicas son de esa compra.
+
+    Costo: se restaura el costo anterior de una línea solo si se cumplen las condiciones C1-C4 de
+    `domain.compra.decidir_costo_de_linea`; si no, se conserva y la causa queda en la auditoría. Una compra
+    anterior a la trazabilidad (V1.7) nunca restaura costo: no se infiere ningún evento de precio.
+
+    Raises:
+        CompraNoEncontradaError: si la compra no existe.
+        CompraYaAnuladaError: si ya estaba anulada (no se toca stock, costo ni auditoría de nuevo).
+        DatosInvalidosError: motivo inválido, u `OTRO` sin observaciones.
+        StockInsuficienteError: si el stock actual de algún producto no alcanza.
+    """
+    observaciones = (observaciones or "").strip() or None
+    with obtener_conexion(inmediata=True) as conexion:
+        compra = repositorio_compras.obtener_por_id_en_conexion(conexion, compra_id)
+        if compra is None:
+            raise CompraNoEncontradaError(f"No existe una compra con id {compra_id}.")
+        if compra.estado != "ACTIVA":
+            raise CompraYaAnuladaError(f"La compra {compra_id} ya fue anulada anteriormente.")
+        validar_motivo_anulacion_compra(motivo, observaciones)
+
+        lineas = repositorio_compras.listar_lineas_para_anular_en_conexion(conexion, compra_id)
+        productos = {}
+        for linea in lineas:
+            # Incluye inactivos: un producto dado de baja después de la compra también se revierte.
+            producto = repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos(
+                conexion, linea.producto_id
+            )
+            if producto is None:
+                raise ProductoNoEncontradoError(f"No existe un producto con id {linea.producto_id}.")
+            if producto.stock_actual < linea.cantidad:
+                raise StockInsuficienteError(
+                    f"No se puede anular la compra {compra_id}: de «{producto.nombre}» quedan "
+                    f"{producto.stock_actual} y la compra ingresó {linea.cantidad}."
+                )
+            productos[linea.producto_id] = producto
+
+        # Todas las decisiones de costo se toman antes de escribir nada.
+        decisiones = [
+            decidir_costo_de_linea(
+                costo_trazable=compra.costo_trazable,
+                linea=linea,
+                ultimo_evento_costo_id=repositorio_historial_precios.obtener_id_ultimo_evento_en_conexion(
+                    conexion, linea.producto_id, "COSTO"
+                ),
+                hay_compra_activa_posterior=repositorio_compras.existe_compra_activa_posterior_en_conexion(
+                    conexion, linea.producto_id, compra_id
+                ),
+                costo_vigente_centavos=productos[linea.producto_id].precio_costo_centavos,
+            )
+            for linea in lineas
+        ]
+
+        for linea in lineas:
+            producto = productos[linea.producto_id]
+            producto.actualizar_stock(producto.stock_actual - linea.cantidad)
+            repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
+        for decision in decisiones:
+            if decision.restaurar_a_centavos is not None:
+                repositorio_productos.actualizar_costo_con_evento_en_conexion(
+                    conexion, decision.producto_id, decision.restaurar_a_centavos, usuario_id, "ANULACION_COMPRA"
+                )
+
+        if not repositorio_compras.anular_compra_en_conexion(conexion, compra_id, motivo, observaciones, usuario_id):
+            raise CompraYaAnuladaError(f"La compra {compra_id} ya fue anulada anteriormente.")
+
+        repositorio_auditoria.registrar_en_conexion(
+            conexion,
+            usuario_id,
+            "COMPRA_ANULADA",
+            "COMPRA",
+            compra_id,
+            _resumen_de_anulacion(compra_id, motivo, {li.producto_id: li.cantidad for li in lineas}, decisiones),
+        )
+        anulada = repositorio_compras.obtener_por_id_en_conexion(conexion, compra_id)
+
+    logger.info("Compra anulada: id=%s motivo=%s usuario_id=%s", compra_id, motivo, usuario_id)
+    return anulada
 
 
 def obtener_por_id(compra_id: int) -> Compra | None:

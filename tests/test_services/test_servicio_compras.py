@@ -210,7 +210,7 @@ def test_registrar_compra_falla_a_mitad_de_camino_no_deja_nada_persistido(base_d
     producto_1 = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=5)
     producto_2 = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 300, 500, stock_actual=2)
 
-    original = repositorio_productos.actualizar_costo_en_conexion
+    original = repositorio_productos.actualizar_costo_con_evento_en_conexion
     llamadas = {"contador": 0}
 
     def falla_en_el_segundo(conexion, producto_id, nuevo_costo_centavos, *args, **kwargs):
@@ -219,7 +219,7 @@ def test_registrar_compra_falla_a_mitad_de_camino_no_deja_nada_persistido(base_d
             raise ErrorBaseDatos("fallo simulado para probar atomicidad")
         return original(conexion, producto_id, nuevo_costo_centavos, *args, **kwargs)
 
-    monkeypatch.setattr(repositorio_productos, "actualizar_costo_en_conexion", falla_en_el_segundo)
+    monkeypatch.setattr(repositorio_productos, "actualizar_costo_con_evento_en_conexion", falla_en_el_segundo)
 
     with pytest.raises(ErrorBaseDatos):
         servicio_compras.registrar_compra(

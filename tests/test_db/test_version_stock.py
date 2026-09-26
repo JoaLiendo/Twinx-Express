@@ -80,9 +80,11 @@ def test_la_022_solo_agrega_columnas_a_las_tablas_existentes(tmp_path, monkeypat
     antes = dict(con.execute("SELECT name, sql FROM sqlite_master WHERE type = 'table'").fetchall())
     con.close()
 
-    modulo_conexion.inicializar_base_datos()
-
+    # Solo la 022: las migraciones posteriores (ej. 024) tocan otras tablas por sus propios motivos.
     con = sqlite3.connect(ruta)
+    script_022 = (modulo_conexion.DIRECTORIO_MIGRACIONES / NOMBRE_022).read_text(encoding="utf-8")
+    con.executescript("BEGIN IMMEDIATE;\n" + script_022)
+    con.commit()
     despues = dict(con.execute("SELECT name, sql FROM sqlite_master WHERE type = 'table'").fetchall())
     con.close()
     modificadas = {tabla for tabla in antes if despues[tabla] != antes[tabla]}

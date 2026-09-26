@@ -208,6 +208,14 @@ class VentaDeCajaCerradaError(ErrorAplicacion):
     ventas)."""
 
 
+class CompraNoEncontradaError(ErrorAplicacion):
+    """No existe una compra con el id solicitado (ver `services.servicio_compras.anular_compra`)."""
+
+
+class CompraYaAnuladaError(ErrorAplicacion):
+    """La compra ya fue anulada anteriormente: no se puede anular dos veces."""
+
+
 class ClienteNoEncontradoError(ErrorAplicacion):
     """No existe un cliente con el id solicitado."""
 

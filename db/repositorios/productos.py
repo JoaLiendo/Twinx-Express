@@ -337,7 +337,7 @@ def listar_activos_con_precio(
 _COLUMNA_DE_PRECIO = {"VENTA": "precio_venta_centavos", "COSTO": "precio_costo_centavos"}
 
 
-def cambiar_precio_en_conexion(
+def cambiar_precio_con_evento_en_conexion(
     conexion: sqlite3.Connection,
     producto_id: int,
     campo: str,
@@ -345,14 +345,13 @@ def cambiar_precio_en_conexion(
     usuario_id: int | None,
     origen: str,
     lote_id: int | None = None,
-) -> bool:
-    """Único punto de escritura de un cambio de precio de venta o de costo
-    "suelto" (compras y actualización masiva): lee el valor anterior, lo
-    actualiza y registra el cambio en el historial, todo dentro de la
-    transacción recibida. Devuelve `False` (sin escribir nada) si el valor no
-    cambia. La edición completa de un producto (`actualizar_datos_en_conexion`)
-    es el otro punto de escritura y registra el historial por su cuenta; un test
-    estructural verifica que no exista ningún otro `UPDATE` de precios.
+) -> int | None:
+    """Punto único de escritura de un precio "suelto" (compras, anulación de compras y actualización
+    masiva): lee el valor anterior, lo actualiza y registra el cambio en el historial, todo dentro de la
+    transacción recibida. Devuelve el id del evento de historial creado, o `None` (sin escribir nada) si
+    el valor no cambia. La edición completa de un producto (`actualizar_datos_en_conexion`) es el otro
+    punto de escritura y registra el historial por su cuenta; un test estructural verifica que no exista
+    ningún otro `UPDATE` de precios.
 
     `campo`: `"VENTA"` o `"COSTO"`.
     """
@@ -362,33 +361,47 @@ def cambiar_precio_en_conexion(
         raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
     valor_anterior = fila[0]
     if valor_anterior == nuevo_valor_centavos:
-        return False
+        return None
     conexion.execute(
         f"UPDATE productos SET {columna} = ?, fecha_actualizacion = datetime('now', 'localtime') WHERE id = ?",
         (nuevo_valor_centavos, producto_id),
     )
-    repositorio_historial_precios.registrar_cambio_en_conexion(
+    return repositorio_historial_precios.registrar_cambio_con_id_en_conexion(
         conexion, producto_id, campo, valor_anterior, nuevo_valor_centavos, usuario_id, origen, lote_id
     )
-    return True
 
 
-def actualizar_costo_en_conexion(
+def cambiar_precio_en_conexion(
+    conexion: sqlite3.Connection,
+    producto_id: int,
+    campo: str,
+    nuevo_valor_centavos: int,
+    usuario_id: int | None,
+    origen: str,
+    lote_id: int | None = None,
+) -> bool:
+    """Como `cambiar_precio_con_evento_en_conexion`, pero solo informa si el valor cambió."""
+    evento_id = cambiar_precio_con_evento_en_conexion(
+        conexion, producto_id, campo, nuevo_valor_centavos, usuario_id, origen, lote_id
+    )
+    return evento_id is not None
+
+
+def actualizar_costo_con_evento_en_conexion(
     conexion: sqlite3.Connection,
     producto_id: int,
     nuevo_costo_centavos: int,
     usuario_id: int | None = None,
     origen: str = "COMPRA",
-) -> Producto:
-    """Fija el costo vigente de un producto usando una conexión ya abierta,
-    sin tocar ninguna otra columna. Pensada para componerse dentro de la
-    transacción de un ingreso de mercadería (ver
-    `services.servicio_compras.registrar_compra`): cada línea actualiza el costo
-    al costo unitario de esa compra (sin promedio ponderado). Delega en
-    `cambiar_precio_en_conexion`, así el historial no depende del llamador."""
-    cambiar_precio_en_conexion(conexion, producto_id, "COSTO", nuevo_costo_centavos, usuario_id, origen)
-    fila = conexion.execute(f"SELECT {_COLUMNAS} FROM productos WHERE id = ?", (producto_id,)).fetchone()
-    return _fila_a_producto(fila)
+) -> int | None:
+    """Fija el costo vigente de un producto usando una conexión ya abierta, sin tocar ninguna otra
+    columna, y devuelve el id del evento de historial (`None` si el costo no cambió). Pensada para
+    componerse dentro de la transacción de un ingreso de mercadería o de su anulación (ver
+    `services.servicio_compras`): cada línea actualiza el costo al costo unitario de esa compra (sin
+    promedio ponderado)."""
+    return cambiar_precio_con_evento_en_conexion(
+        conexion, producto_id, "COSTO", nuevo_costo_centavos, usuario_id, origen
+    )
 
 
 def actualizar_stock(producto_id: int, nuevo_stock: int) -> Producto:

@@ -174,6 +174,8 @@ RUTAS_CON_ID = [
     ("POST", "/clientes/{id}/desactivar"),
     ("POST", "/clientes/{id}/reactivar"),
     ("GET", "/compras/{id}"),
+    ("GET", "/compras/{id}/anular"),
+    ("POST", "/compras/{id}/anular"),
     ("GET", "/proveedores/{id}"),
     ("GET", "/proveedores/{id}/editar"),
     ("POST", "/proveedores/{id}/eliminar"),
