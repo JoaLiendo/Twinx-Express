@@ -25,8 +25,15 @@ from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.esquemas import VentaEntrada, VentaSalida
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, pagina_o_primera, redireccionar_con_mensaje
-from services import servicio_clientes, servicio_configuracion, servicio_cuenta_corriente, servicio_stock, servicio_ventas
+from interfaces.web.utilidades import contexto_base, pagina_o_primera, redireccionar_con_mensaje, respuesta_csv
+from services import (
+    servicio_clientes,
+    servicio_configuracion,
+    servicio_cuenta_corriente,
+    servicio_exportacion_csv,
+    servicio_stock,
+    servicio_ventas,
+)
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
 
@@ -86,6 +93,40 @@ def _cliente_del_filtro(texto: str):
     return cliente
 
 
+def _filtros_del_historial(
+    fecha_desde: str | None, fecha_hasta: str | None, tipo_pago: str | None, estado: str | None, cliente_id: str
+):
+    """Filtros del Historial normalizados: los usan por igual la pantalla y su exportación.
+    Devuelve `(fecha_desde, fecha_hasta, tipo_pago, estado, cliente)`.
+
+    `or None`: el <select> de "Todas" envía `estado=""` (una request GET siempre manda el campo, aunque esté
+    vacío) -- sin esta normalización, `listar_resumen` interpretaría la cadena vacía como un filtro real
+    (`v.estado = ''`, cero resultados) en vez de "sin filtrar". Vale igual para el medio de pago "Todos" y para
+    una fecha borrada."""
+    fecha_desde, fecha_hasta, tipo_pago, estado = (
+        valor or None for valor in (fecha_desde, fecha_hasta, tipo_pago, estado)
+    )
+    return fecha_desde, fecha_hasta, tipo_pago, estado, _cliente_del_filtro(cliente_id)
+
+
+@router.get("/ventas/historial/exportar")
+def exportar_historial_ventas(
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    tipo_pago: str | None = None,
+    estado: str | None = None,
+    cliente_id: str = "",
+):
+    """CSV de TODAS las ventas del Historial con esos filtros (no solo la página visible); mismos permisos."""
+    fecha_desde, fecha_hasta, tipo_pago, estado, cliente = _filtros_del_historial(
+        fecha_desde, fecha_hasta, tipo_pago, estado, cliente_id
+    )
+    contenido = servicio_exportacion_csv.csv_ventas(
+        fecha_desde, fecha_hasta, tipo_pago, estado, cliente.id if cliente is not None else None
+    )
+    return respuesta_csv(contenido, "ventas")
+
+
 @router.get("/ventas/historial")
 def historial_ventas(
     request: Request,
@@ -96,16 +137,9 @@ def historial_ventas(
     pagina: str = "1",
     cliente_id: str = "",
 ):
-    # `or None`: el <select> de "Todas" envía `estado=""` (una request GET
-    # siempre manda el campo, aunque esté vacío) -- sin esta normalización,
-    # `listar_resumen` interpretaría la cadena vacía como un filtro real
-    # (`v.estado = ''`, cero resultados) en vez de "sin filtrar" (mismo
-    # recurso que ya usa `accion_anular_venta` para `observaciones`). Vale
-    # igual para el medio de pago "Todos" y para una fecha borrada.
-    fecha_desde, fecha_hasta, tipo_pago, estado = (
-        valor or None for valor in (fecha_desde, fecha_hasta, tipo_pago, estado)
+    fecha_desde, fecha_hasta, tipo_pago, estado, cliente = _filtros_del_historial(
+        fecha_desde, fecha_hasta, tipo_pago, estado, cliente_id
     )
-    cliente = _cliente_del_filtro(cliente_id)
     id_cliente = cliente.id if cliente is not None else None
     total_ventas = servicio_ventas.contar_historial(fecha_desde, fecha_hasta, tipo_pago, estado, id_cliente)
     total_paginas = max(1, ceil(total_ventas / servicio_ventas.VENTAS_POR_PAGINA))

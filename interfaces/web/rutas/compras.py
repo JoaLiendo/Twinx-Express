@@ -23,11 +23,32 @@ from interfaces.web.utilidades import (
     nueva_clave_idempotencia,
     pagina_o_primera,
     redireccionar_con_mensaje,
+    respuesta_csv,
 )
-from services import servicio_compras, servicio_proveedores, servicio_stock
+from services import servicio_compras, servicio_exportacion_csv, servicio_proveedores, servicio_stock
 from services.servicio_stock import ListaReposicion
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
+
+
+def _filtros_de_compras(proveedor_id: str, fecha_desde: str, fecha_hasta: str, estado: str, producto_id: str) -> dict:
+    """Filtros del historial de compras tal como los entiende la pantalla; la exportación usa los mismos."""
+    return {
+        "proveedor_id": entero_opcional(proveedor_id, "El proveedor elegido no es válido."),
+        "fecha_desde": fecha_desde or None,
+        "fecha_hasta": fecha_hasta or None,
+        "estado": estado if estado and estado != "TODOS" else None,
+        "producto_id": entero_opcional(producto_id, "El producto elegido no es válido."),
+    }
+
+
+@router.get("/compras/exportar")
+def exportar_compras(
+    proveedor_id: str = "", fecha_desde: str = "", fecha_hasta: str = "", estado: str = "", producto_id: str = ""
+):
+    """CSV de TODAS las compras que cumplen los filtros de la pantalla (no solo la página visible)."""
+    filtros = _filtros_de_compras(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    return respuesta_csv(servicio_exportacion_csv.csv_compras(**filtros), "compras")
 
 
 @router.get("/compras")
@@ -40,19 +61,9 @@ def listar_compras(
     producto_id: str = "",
     pagina: str = "1",
 ):
-    id_proveedor = entero_opcional(proveedor_id, "El proveedor elegido no es válido.")
-    id_producto = entero_opcional(producto_id, "El producto elegido no es válido.")
-    estado_filtro = estado if estado and estado != "TODOS" else None
-    resultado = servicio_compras.listar_pagina(
-        id_proveedor, fecha_desde or None, fecha_hasta or None, estado_filtro, id_producto, pagina_o_primera(pagina)
-    )
-    filtros = {
-        "proveedor_id": id_proveedor,
-        "fecha_desde": fecha_desde or None,
-        "fecha_hasta": fecha_hasta or None,
-        "estado": estado_filtro,
-        "producto_id": id_producto,
-    }
+    filtros = _filtros_de_compras(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    resultado = servicio_compras.listar_pagina(**filtros, pagina=pagina_o_primera(pagina))
+    id_proveedor, id_producto, estado_filtro = filtros["proveedor_id"], filtros["producto_id"], filtros["estado"]
     contexto = {
         **contexto_base(request),
         "compras": resultado.compras,

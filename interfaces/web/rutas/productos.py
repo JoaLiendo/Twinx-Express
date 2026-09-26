@@ -23,11 +23,13 @@ from interfaces.web.utilidades import (
     nueva_clave_idempotencia,
     pagina_o_primera,
     redireccionar_con_mensaje,
+    respuesta_csv,
 )
 from services import (
     servicio_categorias,
     servicio_compras,
     servicio_exportacion,
+    servicio_exportacion_csv,
     servicio_importacion,
     servicio_movimientos_stock,
     servicio_precios,
@@ -425,6 +427,16 @@ def listar_ajustes_de_producto(request: Request, producto_id: int):
     ajustes = servicio_stock.listar_ajustes(producto_id)
     contexto = {**contexto_base(request), "producto": producto, "ajustes": ajustes}
     return templates.TemplateResponse(request, "productos/ajustes.html", contexto)
+
+
+@router.get("/productos/{producto_id}/movimientos/exportar", dependencies=[_SOLO_OWNER])
+def exportar_movimientos_de_producto(producto_id: int, fecha_desde: str | None = None, fecha_hasta: str | None = None):
+    """CSV del kardex del producto con el mismo período de la pantalla."""
+    try:
+        contenido = servicio_exportacion_csv.csv_kardex(producto_id, fecha_desde or None, fecha_hasta or None)
+    except ProductoNoEncontradoError:
+        return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
+    return respuesta_csv(contenido, f"kardex_producto_{producto_id}")
 
 
 @router.get("/productos/{producto_id}/movimientos", dependencies=[_SOLO_OWNER])

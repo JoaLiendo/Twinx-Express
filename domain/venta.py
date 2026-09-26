@@ -180,6 +180,27 @@ class ProductoMasVendido:
     margen_bruto_centavos: int | None = None
 
 
+@dataclass(frozen=True)
+class LineaVentaExportable:
+    """Una línea de venta con los datos de su cabecera, para exportar (V1.8-B). `total_centavos` es el total
+    de la venta completa (se repite en cada una de sus líneas)."""
+
+    venta_id: int
+    fecha: str
+    estado: str
+    usuario_nombre: str | None
+    cliente_nombre: str | None
+    tipo_pago: str
+    codigo_barras: str
+    producto_nombre: str
+    cantidad: int
+    precio_unitario_centavos: int
+    subtotal_centavos: int
+    total_centavos: int
+    motivo_anulacion: str | None
+    fecha_anulacion: str | None
+
+
 @dataclass
 class ResumenVenta:
     """Una venta con su vendedor y cantidad de líneas ya resueltos

@@ -145,10 +145,12 @@ CASOS = [
         {"producto_id": "entero"},
     ),
     ("compras_listado", "GET", "/compras", {"proveedor_id": "{prov}"}, {"proveedor_id": "entero"}),
+    ("compras_exportar", "GET", "/compras/exportar", {"proveedor_id": "{prov}", "producto_id": "{pid}"}, {"proveedor_id": "entero", "producto_id": "entero"}),
     ("reporte_compras", "GET", "/reportes/compras", {"proveedor_id": "{prov}"}, {"proveedor_id": "entero"}),
     ("productos_listado", "GET", "/productos", {"categoria_id": "1"}, {"categoria_id": "entero"}),
     ("auditoria_listado", "GET", "/auditoria", {"usuario_id": "1"}, {"usuario_id": "entero"}),
     ("historial_cliente", "GET", "/ventas/historial", {"cliente_id": "1"}, {"cliente_id": "entero"}),
+    ("ventas_exportar", "GET", "/ventas/historial/exportar", {"cliente_id": "1"}, {"cliente_id": "entero"}),
 ]
 
 # Estado previo que necesitan algunos casos (el escenario base tiene caja abierta e inventario abierto).
@@ -188,6 +190,7 @@ RUTAS_CON_ID = [
     ("GET", "/productos/{id}/precios"),
     ("GET", "/productos/{id}/movimientos"),
     ("GET", "/productos/{id}/compras"),
+    ("GET", "/productos/{id}/movimientos/exportar"),
     ("GET", "/productos/{id}/ajustar"),
     ("POST", "/productos/{id}/eliminar"),
     ("POST", "/productos/{id}/reactivar"),

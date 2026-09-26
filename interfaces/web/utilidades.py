@@ -1,10 +1,11 @@
 """Utilidades compartidas por los routers de la interfaz web."""
 
+from datetime import date
 from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import Request
-from starlette.responses import RedirectResponse
+from starlette.responses import RedirectResponse, Response
 
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual
@@ -29,6 +30,15 @@ def entero_opcional(texto: str, mensaje: str) -> int | None:
         return int(texto)
     except ValueError:
         raise DatosInvalidosError(mensaje) from None
+
+
+def respuesta_csv(contenido: bytes, nombre: str) -> Response:
+    """Descarga de un CSV (UTF-8 con BOM) con nombre `<nombre>_<fecha>.csv`, igual que la exportación de productos."""
+    return Response(
+        content=contenido,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}_{date.today().isoformat()}.csv"'},
+    )
 
 
 def nueva_clave_idempotencia() -> str:

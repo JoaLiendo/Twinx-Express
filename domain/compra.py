@@ -101,6 +101,25 @@ class CompraDeProducto:
 
 
 @dataclass(frozen=True)
+class LineaCompraExportable:
+    """Una línea de compra con los datos de su cabecera, para exportar (V1.8-B). `total_centavos` es el total
+    de la compra completa (se repite en cada una de sus líneas)."""
+
+    compra_id: int
+    fecha: str
+    proveedor_nombre: str
+    estado: str
+    codigo_barras: str
+    producto_nombre: str
+    cantidad: int
+    costo_unitario_centavos: int
+    subtotal_centavos: int
+    total_centavos: int
+    motivo_anulacion: str | None
+    fecha_anulacion: str | None
+
+
+@dataclass(frozen=True)
 class UltimaCompraDeProducto:
     """Última compra ACTIVA de un producto. `costo_anterior_centavos` es el costo vigente justo antes de esa
     compra y solo se informa si se puede demostrar (compra con trazabilidad V1.7: el evento de historial que

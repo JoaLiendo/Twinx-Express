@@ -10,7 +10,11 @@
   {% include "reportes/_navegacion.html" %}
 
   <section class="space-y-3" id="seccion-deuda">
-    <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Deuda actual por cliente</h2>
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Deuda actual por cliente</h2>
+      <a href="/reportes/cuenta-corriente/exportar" data-accion="exportar-csv"
+       class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-medium px-4 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">Exportar CSV</a>
+    </div>
     <p class="text-xs text-slate-500 dark:text-slate-400">Clientes con saldo pendiente, activos o no. No depende del período.</p>
     {% if deuda.filas %}
       <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">

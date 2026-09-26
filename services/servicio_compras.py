@@ -28,6 +28,7 @@ from domain.compra import (
     DecisionCosto,
     DetalleCompra,
     ItemCompra,
+    LineaCompraExportable,
     LineaDetalleCompra,
     ResumenCompra,
     UltimaCompraDeProducto,
@@ -334,6 +335,31 @@ def _total_paginas(total: int) -> int:
     return max(1, ceil(total / COMPRAS_POR_PAGINA))
 
 
+def _filtros_validados(
+    proveedor_id: int | None, fecha_desde: str | None, fecha_hasta: str | None, estado: str | None,
+    producto_id: int | None,
+) -> tuple[int | None, str | None, str | None, str | None, int | None]:
+    """Filtros del historial ya validados, en el orden que esperan las consultas del repositorio (que recibe
+    días completos). Los usan por igual el listado y su exportación."""
+    desde, _ = limites_de_fechas(fecha_desde, fecha_hasta, _MENSAJE_FECHAS)  # valida; el repositorio recibe días
+    if estado is not None and estado not in ESTADOS_COMPRA_FILTRABLES:
+        raise DatosInvalidosError("El estado de compra elegido no es válido.")
+    return proveedor_id, desde, fecha_hasta or None, estado, producto_id
+
+
+def listar_lineas_para_exportar(
+    proveedor_id: int | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    estado: str | None = None,
+    producto_id: int | None = None,
+) -> list[LineaCompraExportable]:
+    """Líneas de TODAS las compras que cumplen los filtros de `listar_pagina` (mismas validaciones), sin paginar."""
+    return repositorio_compras.listar_lineas_para_exportar(
+        *_filtros_validados(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    )
+
+
 def listar_pagina(
     proveedor_id: int | None = None,
     fecha_desde: str | None = None,
@@ -349,11 +375,7 @@ def listar_pagina(
         DatosInvalidosError: si una fecha no es `AAAA-MM-DD` válida, `desde` es posterior a `hasta`, o el
             estado no es `ACTIVA` ni `ANULADA` (vacío o `None` no filtra).
     """
-    desde, _ = limites_de_fechas(fecha_desde, fecha_hasta, _MENSAJE_FECHAS)  # valida; el repositorio recibe días
-    hasta = fecha_hasta or None
-    if estado is not None and estado not in ESTADOS_COMPRA_FILTRABLES:
-        raise DatosInvalidosError("El estado de compra elegido no es válido.")
-    filtros = (proveedor_id, desde, hasta, estado, producto_id)
+    filtros = _filtros_validados(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
     total = repositorio_compras.contar_resumen(*filtros)
     total_paginas = _total_paginas(total)
     pagina_efectiva = min(max(1, pagina), total_paginas)

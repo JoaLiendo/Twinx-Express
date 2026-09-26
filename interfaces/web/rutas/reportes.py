@@ -15,8 +15,8 @@ from fastapi import APIRouter, Depends, Request
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base
-from services import servicio_proveedores, servicio_reportes, servicio_stock
+from interfaces.web.utilidades import contexto_base, respuesta_csv
+from services import servicio_exportacion_csv, servicio_proveedores, servicio_reportes, servicio_stock
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
@@ -81,6 +81,18 @@ def ver_reporte_cuenta_corriente(request: Request, fecha_desde: str | None = Non
         "seccion": "cuenta-corriente",
     }
     return templates.TemplateResponse(request, "reportes/cuenta_corriente.html", contexto)
+
+
+@router.get("/reportes/rotacion/exportar")
+def exportar_reporte_rotacion(fecha_desde: str | None = None, fecha_hasta: str | None = None):
+    """CSV del mismo dataset de la pantalla de rotación (mismo período y reglas)."""
+    return respuesta_csv(servicio_exportacion_csv.csv_rotacion(**_periodo(fecha_desde, fecha_hasta)), "rotacion")
+
+
+@router.get("/reportes/cuenta-corriente/exportar")
+def exportar_deuda_de_clientes():
+    """CSV de la deuda actual de cuenta corriente (el mismo agregado que el reporte)."""
+    return respuesta_csv(servicio_exportacion_csv.csv_deuda_clientes(), "deuda_clientes")
 
 
 @router.get("/reportes/rotacion")

@@ -60,6 +60,11 @@
     </p>
   {% endif %}
 
+  <div class="flex justify-end">
+    <a href="/ventas/historial/exportar{{ '?' ~ consulta_filtros if consulta_filtros else '' }}" data-accion="exportar-csv"
+       class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-medium px-4 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">Exportar CSV</a>
+  </div>
+
   {% if ventas %}
     {% set variantes_medio_pago = {'EFECTIVO': 'exito', 'TARJETA': 'info', 'TRANSFERENCIA': 'advertencia', 'OTRO': 'neutral', 'CUENTA_CORRIENTE': 'marca'} %}
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">

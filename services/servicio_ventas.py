@@ -32,6 +32,7 @@ from domain.venta import (
     TIPO_PAGO_CUENTA_CORRIENTE,
     TIPOS_PAGO_ACEPTADOS,
     ItemVenta,
+    LineaVentaExportable,
     ResumenVenta,
     Venta,
     VentaConDetalle,
@@ -335,6 +336,19 @@ def contar_historial(
     sin paginar: base de la cantidad de páginas."""
     desde, hasta = _rango_efectivo_historial(fecha_desde, fecha_hasta)
     return repositorio_ventas.contar_resumen(desde, hasta, tipo_pago, estado, cliente_id)
+
+
+def listar_lineas_para_exportar(
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    tipo_pago: str | None = None,
+    estado: str | None = None,
+    cliente_id: int | None = None,
+) -> list[LineaVentaExportable]:
+    """Líneas de TODAS las ventas del Historial con esos filtros (mismo rango efectivo que `listar_historial`),
+    sin paginar."""
+    desde, hasta = _rango_efectivo_historial(fecha_desde, fecha_hasta)
+    return repositorio_ventas.listar_lineas_para_exportar(desde, hasta, tipo_pago, estado, cliente_id)
 
 
 def listar_historial(

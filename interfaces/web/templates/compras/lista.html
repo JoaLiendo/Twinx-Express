@@ -67,10 +67,14 @@
       {% endif %}
     </form>
 
+    <div class="flex items-center gap-2">
+    <a href="/compras/exportar{{ '?' ~ consulta_filtros if consulta_filtros else '' }}" data-accion="exportar-csv"
+       class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-medium px-4 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">Exportar CSV</a>
     <a href="/compras/nueva" class="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14M5 12h14"/></svg>
       Nueva compra
     </a>
+    </div>
   </div>
 
   {% if compras %}

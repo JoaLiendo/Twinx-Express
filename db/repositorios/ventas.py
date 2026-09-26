@@ -16,7 +16,15 @@ import sqlite3
 from db.conexion import obtener_conexion
 from db.repositorios import caja as repositorio_caja
 from domain.reportes_operativos import ProductoRotacion
-from domain.venta import ItemVenta, LineaVenta, ProductoMasVendido, ResumenVenta, Venta, VentaConDetalle
+from domain.venta import (
+    ItemVenta,
+    LineaVenta,
+    LineaVentaExportable,
+    ProductoMasVendido,
+    ResumenVenta,
+    Venta,
+    VentaConDetalle,
+)
 from excepciones import CajaCerradaError, VentaYaAnuladaError
 
 
@@ -668,6 +676,37 @@ def listar_resumen_pagina(
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta, [*parametros, limite, desplazamiento]).fetchall()
     return [_fila_a_resumen_venta(fila) for fila in filas]
+
+
+def listar_lineas_para_exportar(
+    fecha_desde: str | None,
+    fecha_hasta: str | None,
+    tipo_pago: str | None,
+    estado: str | None,
+    cliente_id: int | None = None,
+) -> list[LineaVentaExportable]:
+    """Todas las líneas de las ventas que cumplen los mismos filtros que `listar_resumen` (sin paginar), en
+    una sola consulta con JOIN. Incluye ventas anuladas si el filtro las incluye. Orden estable: venta
+    descendente, líneas en orden de carga."""
+    where, parametros = _filtro_resumen(fecha_desde, fecha_hasta, tipo_pago, estado, cliente_id)
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            f"""
+            SELECT v.id AS venta_id, v.fecha, v.estado, u.nombre_completo AS usuario_nombre,
+                   c.nombre AS cliente_nombre, v.tipo_pago, pr.codigo_barras, pr.nombre AS producto_nombre,
+                   dv.cantidad, dv.precio_unitario_centavos, dv.subtotal_centavos, v.total_centavos,
+                   v.motivo_anulacion, v.fecha_anulacion
+            FROM ventas v
+            LEFT JOIN usuarios u ON u.id = v.usuario_id
+            LEFT JOIN clientes c ON c.id = v.cliente_id
+            JOIN detalle_venta dv ON dv.venta_id = v.id
+            JOIN productos pr ON pr.id = dv.producto_id
+            {where}
+            ORDER BY v.id DESC, dv.id
+            """,
+            parametros,
+        ).fetchall()
+    return [LineaVentaExportable(**{clave: fila[clave] for clave in fila.keys()}) for fila in filas]
 
 
 def contar_resumen(

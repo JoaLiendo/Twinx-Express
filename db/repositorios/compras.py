@@ -20,6 +20,7 @@ from domain.compra import (
     CompraDeProducto,
     DetalleCompra,
     ItemCompra,
+    LineaCompraExportable,
     LineaDetalleCompra,
     LineaParaAnular,
     ResumenCompra,
@@ -362,6 +363,35 @@ def listar_resumen(
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta, parametros).fetchall()
     return [_fila_a_resumen(fila) for fila in filas]
+
+
+def listar_lineas_para_exportar(
+    proveedor_id: int | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    estado: str | None = None,
+    producto_id: int | None = None,
+) -> list[LineaCompraExportable]:
+    """Todas las líneas de las compras que cumplen los mismos filtros que `listar_resumen` (sin paginar),
+    en una sola consulta con JOIN. Una compra que coincide por el filtro de producto se exporta completa,
+    igual que la pantalla la lista. Orden estable: compra descendente, líneas en orden de carga."""
+    where, parametros = _filtro_resumen(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            f"""
+            SELECT c.id AS compra_id, c.fecha, pv.nombre AS proveedor_nombre, c.estado,
+                   pr.codigo_barras, pr.nombre AS producto_nombre, d.cantidad, d.costo_unitario_centavos,
+                   d.subtotal_centavos, c.total_centavos, c.motivo_anulacion, c.fecha_anulacion
+            FROM compras c
+            JOIN proveedores pv ON pv.id = c.proveedor_id
+            JOIN detalle_compra d ON d.compra_id = c.id
+            JOIN productos pr ON pr.id = d.producto_id
+            {where}
+            ORDER BY c.id DESC, d.id
+            """,
+            parametros,
+        ).fetchall()
+    return [LineaCompraExportable(**{clave: fila[clave] for clave in fila.keys()}) for fila in filas]
 
 
 def contar_resumen(
