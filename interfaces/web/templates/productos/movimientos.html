@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "reportes/_periodo.html" as periodo %}
+
+{% block titulo %}Movimientos de stock{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Movimientos de stock — {{ kardex.nombre }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    {% call periodo.formulario("/productos/" ~ kardex.producto_id ~ "/movimientos", kardex.fecha_desde or "", kardex.fecha_hasta or "") %}{% endcall %}
+    <a href="{{ '/productos/%d/editar' % kardex.producto_id if kardex.activo else '/productos?mostrar_inactivos=true' }}"
+       class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver al producto</a>
+  </div>
+
+  <dl class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+    <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <dt class="text-xs text-slate-500 dark:text-slate-400">Stock actual</dt>
+      <dd id="kardex-stock-actual" class="text-lg font-semibold tabular-nums">{{ kardex.stock_actual }}{% if not kardex.activo %} <span class="text-xs font-normal text-slate-500">(producto inactivo)</span>{% endif %}</dd>
+    </div>
+    <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <dt class="text-xs text-slate-500 dark:text-slate-400">Saldo inicial reconstruido</dt>
+      <dd id="kardex-saldo-inicial" class="text-lg font-semibold tabular-nums">{{ kardex.saldo_inicial }}</dd>
+    </div>
+    <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <dt class="text-xs text-slate-500 dark:text-slate-400">Entradas / salidas</dt>
+      <dd class="text-lg font-semibold tabular-nums"><span id="kardex-entradas">{{ kardex.total_entradas }}</span> / <span id="kardex-salidas">{{ kardex.total_salidas }}</span></dd>
+    </div>
+    <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <dt class="text-xs text-slate-500 dark:text-slate-400">Saldo final</dt>
+      <dd id="kardex-saldo-final" class="text-lg font-semibold tabular-nums">{{ kardex.saldo_final }}</dd>
+    </div>
+  </dl>
+  <p class="text-xs text-slate-500 dark:text-slate-400">
+    El sistema no guarda un stock inicial histórico: el saldo inicial se reconstruye desde el stock actual restando los movimientos
+    {% if kardex.fecha_desde %}desde {{ kardex.fecha_desde }}{% else %}registrados{% endif %} (incluye el stock cargado al dar de alta el producto).
+    Las operaciones anuladas se muestran con su movimiento original y con su reversión. Solo consulta.
+  </p>
+
+  {% if kardex.movimientos %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto">
+        <table id="tabla-movimientos" class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-3">Fecha</th>
+              <th class="px-5 py-3">Tipo</th>
+              <th class="px-5 py-3">Referencia</th>
+              <th class="px-5 py-3 text-right">Entrada</th>
+              <th class="px-5 py-3 text-right">Salida</th>
+              <th class="px-5 py-3 text-right">Saldo</th>
+              <th class="px-5 py-3">Descripción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in kardex.movimientos %}
+              <tr data-tipo="{{ m.tipo }}" data-referencia="{{ m.referencia }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                <td class="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ m.fecha }}</td>
+                <td class="px-5 py-3">{{ ui.badge(m.tipo, 'exito' if m.cantidad > 0 else 'advertencia') }}</td>
+                <td class="px-5 py-3 whitespace-nowrap">{{ m.referencia }}</td>
+                <td class="px-5 py-3 text-right tabular-nums">{{ m.entrada if m.entrada else '' }}</td>
+                <td class="px-5 py-3 text-right tabular-nums">{{ m.salida if m.salida else '' }}</td>
+                <td class="px-5 py-3 text-right font-semibold tabular-nums">{{ m.saldo }}{% if m.saldo_verificado is sameas false %} <span title="El saldo reconstruido no coincide con el stock resultante guardado en este ajuste" class="text-error">⚠</span>{% endif %}</td>
+                <td class="px-5 py-3 text-slate-600 dark:text-slate-400">{{ m.descripcion }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    {{ ui.estado_vacio("Sin movimientos en el período", "No hay movimientos registrados para este producto en las fechas elegidas.") }}
+  {% endif %}
+</div>
+{% endblock %}

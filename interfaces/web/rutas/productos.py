@@ -14,11 +14,18 @@ from fastapi.responses import JSONResponse, Response
 from domain.ajuste_stock import MOTIVOS_AJUSTE_VALIDOS
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
-from excepciones import ArchivoImagenInvalidoError, DatosInvalidosError
+from excepciones import ArchivoImagenInvalidoError, DatosInvalidosError, ProductoNoEncontradoError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
-from services import servicio_categorias, servicio_exportacion, servicio_importacion, servicio_precios, servicio_stock
+from services import (
+    servicio_categorias,
+    servicio_exportacion,
+    servicio_importacion,
+    servicio_movimientos_stock,
+    servicio_precios,
+    servicio_stock,
+)
 
 router = APIRouter()
 
@@ -406,6 +413,19 @@ def listar_ajustes_de_producto(request: Request, producto_id: int):
     ajustes = servicio_stock.listar_ajustes(producto_id)
     contexto = {**contexto_base(request), "producto": producto, "ajustes": ajustes}
     return templates.TemplateResponse(request, "productos/ajustes.html", contexto)
+
+
+@router.get("/productos/{producto_id}/movimientos", dependencies=[_SOLO_OWNER])
+def ver_movimientos_de_producto(
+    request: Request, producto_id: int, fecha_desde: str | None = None, fecha_hasta: str | None = None
+):
+    """Kardex de solo lectura; también de productos inactivos (`servicio_stock.obtener_por_id` solo ve activos)."""
+    try:
+        kardex = servicio_movimientos_stock.generar_kardex(producto_id, fecha_desde or None, fecha_hasta or None)
+    except ProductoNoEncontradoError:
+        return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
+    contexto = {**contexto_base(request), "kardex": kardex}
+    return templates.TemplateResponse(request, "productos/movimientos.html", contexto)
 
 
 @router.get("/api/productos/buscar-codigo/{codigo_barras}", dependencies=[_CONSULTA])
