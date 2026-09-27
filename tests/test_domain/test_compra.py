@@ -6,7 +6,7 @@ construirse (mismo enfoque que tests/test_domain/test_categoria.py).
 
 import pytest
 
-from domain.compra import Compra, DetalleCompra, ItemCompra
+from domain.compra import Compra, DetalleCompra, ItemCompra, validar_condicion_pago
 from excepciones import DatosInvalidosError
 
 
@@ -64,3 +64,19 @@ def test_detalle_compra_valido_se_crea_sin_error():
     )
     assert detalle.cantidad == 4
     assert detalle.subtotal_centavos == 600
+
+
+def test_compra_condicion_pago_por_defecto_es_contado():
+    compra = Compra(id=1, proveedor_id=2, usuario_id=3, fecha="2026-09-12", total_centavos=0)
+    assert compra.condicion_pago == "CONTADO"
+
+
+class TestValidarCondicionPago:
+    @pytest.mark.parametrize("condicion", ["CONTADO", "CREDITO"])
+    def test_acepta_las_condiciones_validas(self, condicion):
+        validar_condicion_pago(condicion)  # no debe lanzar
+
+    @pytest.mark.parametrize("condicion", ["FIADO", "contado", "", "CONTADO "])
+    def test_rechaza_cualquier_otro_valor(self, condicion):
+        with pytest.raises(DatosInvalidosError):
+            validar_condicion_pago(condicion)

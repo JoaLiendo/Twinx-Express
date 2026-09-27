@@ -14,8 +14,9 @@ from excepciones import DatosInvalidosError
 TIPOS_MOVIMIENTO_VALIDOS = frozenset({"APERTURA", "CIERRE", "INGRESO", "EGRESO"})
 
 # Migración 020: `COBRO_CUENTA` es el INGRESO que respalda un cobro de cuenta
-# corriente; el resto de los movimientos son `MANUAL`.
-ORIGENES_MOVIMIENTO_VALIDOS = frozenset({"MANUAL", "COBRO_CUENTA"})
+# corriente. Migración 025 (V1.9-A): `PAGO_PROVEEDOR` es el EGRESO que respalda
+# un pago a proveedor. El resto de los movimientos son `MANUAL`.
+ORIGENES_MOVIMIENTO_VALIDOS = frozenset({"MANUAL", "COBRO_CUENTA", "PAGO_PROVEEDOR"})
 
 # Los movimientos manuales (a diferencia de apertura/cierre) exigen una
 # descripción que los justifique, ej. "pago a proveedor" o "retiro de efectivo".
@@ -35,10 +36,11 @@ class MovimientoCaja:
     cualquier otro tipo de movimiento, y también para cierres
     anteriores a que este campo existiera.
 
-    `origen` (migración 020) es `MANUAL` salvo el INGRESO de un cobro de
-    cuenta corriente (`COBRO_CUENTA`), que solo crea
-    `services.servicio_cuenta_corriente.registrar_cobro`. Una vez creado,
-    el esquema no permite modificarlo.
+    `origen` es `MANUAL` salvo el INGRESO de un cobro de cuenta corriente
+    (`COBRO_CUENTA`, migración 020, creado por
+    `services.servicio_cuenta_corriente.registrar_cobro`) y el EGRESO de un
+    pago a proveedor (`PAGO_PROVEEDOR`, migración 025). Una vez creado, el
+    esquema no permite modificarlo.
     """
 
     tipo: str
@@ -73,6 +75,8 @@ class MovimientoCaja:
             )
         if self.origen == "COBRO_CUENTA" and self.tipo != "INGRESO":
             raise DatosInvalidosError("Un movimiento de cobro de cuenta solo puede ser un INGRESO.")
+        if self.origen == "PAGO_PROVEEDOR" and self.tipo != "EGRESO":
+            raise DatosInvalidosError("Un movimiento de pago a proveedor solo puede ser un EGRESO.")
         if self.diferencia_centavos is not None and self.tipo != "CIERRE":
             raise DatosInvalidosError(
                 f"Solo un movimiento de tipo CIERRE puede tener diferencia_centavos (recibido: {self.tipo!r})."

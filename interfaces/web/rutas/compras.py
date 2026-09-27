@@ -113,6 +113,7 @@ def crear_compra(
     cantidad: list[int] = Form(...),
     costo_unitario: list[str] = Form(...),
     clave_idempotencia: str = Form(""),
+    condicion_pago: str = Form("CONTADO"),
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
     if not (len(producto_id) == len(cantidad) == len(costo_unitario)):
@@ -128,6 +129,7 @@ def crear_compra(
         items=items,
         observaciones=observaciones or None,
         clave_idempotencia=clave_idempotencia or None,
+        condicion_pago=condicion_pago,
     )
     return redireccionar_con_mensaje(
         f"/compras/{compra.id}", "success", f"Compra #{compra.id} registrada correctamente."

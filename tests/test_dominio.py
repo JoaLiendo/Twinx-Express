@@ -203,6 +203,17 @@ class TestMovimientoCaja:
         with pytest.raises(DatosInvalidosError):
             MovimientoCaja(tipo=tipo, monto_centavos=1000, descripcion=descripcion, diferencia_centavos=100)
 
+    def test_rechaza_origen_invalido(self):
+        with pytest.raises(DatosInvalidosError):
+            MovimientoCaja(tipo="EGRESO", monto_centavos=1000, descripcion="x", origen="INVENTADO")
+
+    def test_pago_proveedor_solo_puede_ser_egreso(self):
+        """V1.9-A/B: `PAGO_PROVEEDOR` es un origen válido del dominio (no solo del esquema)."""
+        movimiento = MovimientoCaja(tipo="EGRESO", monto_centavos=1000, descripcion="pago", origen="PAGO_PROVEEDOR")
+        assert movimiento.origen == "PAGO_PROVEEDOR"
+        with pytest.raises(DatosInvalidosError):
+            MovimientoCaja(tipo="INGRESO", monto_centavos=1000, descripcion="x", origen="PAGO_PROVEEDOR")
+
 
 class TestClasificarDiferencia:
     def test_positiva_es_sobrante(self):

@@ -6,9 +6,11 @@ import threading
 import pytest
 
 from db.repositorios import compras as repositorio_compras
+from db.repositorios import movimientos_proveedor as repositorio_movimientos_proveedor
 from db.repositorios import productos as repositorio_productos
 from domain.compra import ItemCompra
 from excepciones import (
+    ClaveIdempotenciaReutilizadaError,
     DatosInvalidosError,
     ErrorBaseDatos,
     ProductoDuplicadoEnCompraError,
@@ -300,3 +302,125 @@ def test_listar_detalle_con_producto(base_datos_temporal):
     assert len(detalle) == 1
     assert detalle[0].producto_nombre == "Alfajor"
     assert detalle[0].producto_unidad_medida == "UNIDAD"
+
+
+# --- Compra a crédito y cargo automático (V1.9-B) -------------------------------------------------
+
+
+class TestCompraContadoYCredito:
+    def test_condicion_pago_invalida_falla_antes_de_tocar_la_base(self, base_datos_temporal):
+        proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+        usuario = _crear_usuario()
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+
+        with pytest.raises(DatosInvalidosError):
+            servicio_compras.registrar_compra(
+                proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], condicion_pago="FIADO"
+            )
+        assert repositorio_compras.listar_todas() == []
+
+    def test_contado_es_el_default_y_no_genera_movimiento_de_proveedor(self, base_datos_temporal):
+        proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+        usuario = _crear_usuario()
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+
+        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+
+        assert compra.condicion_pago == "CONTADO"
+        assert repositorio_movimientos_proveedor.obtener_saldo(proveedor.id) == 0
+
+    def test_credito_genera_exactamente_un_cargo_correcto(self, base_datos_temporal):
+        proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+        usuario = _crear_usuario()
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+
+        compra = servicio_compras.registrar_compra(
+            proveedor.id, usuario.id, [ItemCompra(producto.id, 10, 120)], condicion_pago="CREDITO"
+        )
+
+        assert compra.condicion_pago == "CREDITO"
+        assert compra.total_centavos == 1200
+        from db.conexion import obtener_conexion
+
+        with obtener_conexion() as conexion:
+            filas = conexion.execute(
+                "SELECT proveedor_id, tipo, monto_centavos, compra_id, usuario_id FROM movimientos_proveedor"
+            ).fetchall()
+        assert len(filas) == 1
+        fila = filas[0]
+        assert (fila["proveedor_id"], fila["tipo"], fila["monto_centavos"], fila["compra_id"], fila["usuario_id"]) == (
+            proveedor.id, "CARGO_COMPRA", 1200, compra.id, usuario.id,
+        )
+        assert repositorio_movimientos_proveedor.obtener_saldo(proveedor.id) == 1200
+
+    def test_credito_con_multiples_lineas_el_cargo_es_por_el_total(self, base_datos_temporal):
+        proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+        usuario = _crear_usuario()
+        p1 = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+        p2 = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 300, 500)
+
+        compra = servicio_compras.registrar_compra(
+            proveedor.id, usuario.id,
+            [ItemCompra(p1.id, 10, 120), ItemCompra(p2.id, 3, 280)],
+            condicion_pago="CREDITO",
+        )
+
+        assert repositorio_movimientos_proveedor.obtener_saldo(proveedor.id) == compra.total_centavos
+
+    def test_m1_si_falla_el_cargo_se_revierte_toda_la_compra(self, base_datos_temporal, monkeypatch):
+        """M1: una compra CREDITO nunca puede persistir sin su cargo -- si la creación del cargo
+        falla (simulado acá; en la base real lo garantiza el trigger + el índice único), la
+        compra, su detalle, el stock y el costo también se revierten."""
+        proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+        usuario = _crear_usuario()
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=5)
+
+        def falla_el_cargo(*args, **kwargs):
+            raise ErrorBaseDatos("fallo simulado en el cargo de proveedor")
+
+        monkeypatch.setattr(repositorio_movimientos_proveedor, "registrar_cargo_en_conexion", falla_el_cargo)
+
+        with pytest.raises(ErrorBaseDatos):
+            servicio_compras.registrar_compra(
+                proveedor.id, usuario.id, [ItemCompra(producto.id, 10, 120)], condicion_pago="CREDITO"
+            )
+
+        assert repositorio_compras.listar_todas() == []
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 5
+        assert servicio_stock.obtener_por_id(producto.id).precio_costo_centavos == 100
+        assert repositorio_movimientos_proveedor.obtener_saldo(proveedor.id) == 0
+
+    def test_m2_reintento_idempotente_de_compra_credito_no_duplica_el_cargo(self, base_datos_temporal):
+        proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+        usuario = _crear_usuario()
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+
+        compra_1 = servicio_compras.registrar_compra(
+            proveedor.id, usuario.id, [ItemCompra(producto.id, 10, 120)],
+            condicion_pago="CREDITO", clave_idempotencia="clave-1",
+        )
+        compra_2 = servicio_compras.registrar_compra(
+            proveedor.id, usuario.id, [ItemCompra(producto.id, 10, 120)],
+            condicion_pago="CREDITO", clave_idempotencia="clave-1",
+        )
+
+        assert compra_1.id == compra_2.id
+        assert len(repositorio_compras.listar_todas()) == 1
+        assert repositorio_movimientos_proveedor.obtener_saldo(proveedor.id) == 1200
+
+    def test_reintento_con_otra_condicion_de_pago_se_rechaza(self, base_datos_temporal):
+        proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+        usuario = _crear_usuario()
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+
+        servicio_compras.registrar_compra(
+            proveedor.id, usuario.id, [ItemCompra(producto.id, 10, 120)],
+            condicion_pago="CONTADO", clave_idempotencia="clave-1",
+        )
+
+        with pytest.raises(ClaveIdempotenciaReutilizadaError):
+            servicio_compras.registrar_compra(
+                proveedor.id, usuario.id, [ItemCompra(producto.id, 10, 120)],
+                condicion_pago="CREDITO", clave_idempotencia="clave-1",
+            )
+        assert repositorio_movimientos_proveedor.obtener_saldo(proveedor.id) == 0

@@ -18,6 +18,7 @@ from math import ceil
 from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import compras as repositorio_compras
+from db.repositorios import movimientos_proveedor as repositorio_movimientos_proveedor
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import proveedores as repositorio_proveedores
@@ -33,6 +34,7 @@ from domain.compra import (
     ResumenCompra,
     UltimaCompraDeProducto,
     decidir_costo_de_linea,
+    validar_condicion_pago,
     validar_motivo_anulacion_compra,
 )
 from domain.auditoria import LONGITUD_MAXIMA_RESUMEN
@@ -42,6 +44,7 @@ from domain.producto import Producto
 from excepciones import (
     MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
     ClaveIdempotenciaReutilizadaError,
+    CompraConPagosPosterioresError,
     CompraNoEncontradaError,
     CompraYaAnuladaError,
     DatosInvalidosError,
@@ -60,6 +63,7 @@ def registrar_compra(
     items: list[ItemCompra],
     observaciones: str | None = None,
     clave_idempotencia: str | None = None,
+    condicion_pago: str = "CONTADO",
 ) -> Compra:
     """Registra un ingreso de mercadería con sus líneas de detalle,
     incrementa el stock de cada producto y actualiza su costo vigente.
@@ -88,9 +92,15 @@ def registrar_compra(
             y reenvía igual ante cualquier reintento (V1.1): un reenvío
             devuelve la compra ya registrada sin duplicar compra, stock ni
             costo.
+        condicion_pago: 'CONTADO' (default, sin cambios respecto de versiones
+            anteriores) o 'CREDITO' (V1.9-B): genera exactamente un
+            `CARGO_COMPRA` al proveedor, por el total, en la misma
+            transacción que la compra -- nunca puede persistir una compra
+            a crédito sin su cargo.
 
     Raises:
-        DatosInvalidosError: si `items` está vacío.
+        DatosInvalidosError: si `items` está vacío o `condicion_pago` no
+            es 'CONTADO' ni 'CREDITO'.
         ProveedorNoEncontradoError: si `proveedor_id` no corresponde a
             ningún proveedor activo.
         ProductoNoEncontradoError: si algún `producto_id` no corresponde
@@ -100,6 +110,7 @@ def registrar_compra(
     """
     if not items:
         raise DatosInvalidosError("Una compra debe tener al menos un ítem.")
+    validar_condicion_pago(condicion_pago)
 
     # `inmediata=True`: mismo motivo que en `servicio_ventas.registrar_venta`
     # (ver auditoría de concurrencia, Stage D) -- esta transacción lee el
@@ -116,9 +127,10 @@ def registrar_compra(
                 lineas_pedidas = sorted(
                     (item.producto_id, item.cantidad, item.costo_unitario_centavos) for item in items
                 )
-                if (existente.proveedor_id, existente.observaciones, lineas_originales) != (
+                if (existente.proveedor_id, existente.observaciones, existente.condicion_pago, lineas_originales) != (
                     proveedor_id,
                     observaciones,
+                    condicion_pago,
                     lineas_pedidas,
                 ):
                     raise ClaveIdempotenciaReutilizadaError(MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS)
@@ -172,15 +184,26 @@ def registrar_compra(
             items_con_subtotal,
             clave_idempotencia=clave_idempotencia,
             eventos_costo=eventos_costo,
+            condicion_pago=condicion_pago,
         )
 
+        # CREDITO: el cargo se crea en la MISMA transacción que la compra -- si falla (ej. una
+        # violación de trigger imprevista), `obtener_conexion` revierte todo: nunca puede quedar
+        # persistida una compra a crédito sin su cargo (V1.9-B).
+        if condicion_pago == "CREDITO":
+            repositorio_movimientos_proveedor.registrar_cargo_en_conexion(
+                conexion, proveedor_id, compra.id, total_centavos, usuario_id
+            )
+
+        sufijo_condicion = " (crédito)" if condicion_pago == "CREDITO" else ""
         repositorio_auditoria.registrar_en_conexion(
             conexion,
             usuario_id,
             "COMPRA_REGISTRADA",
             "COMPRA",
             compra.id,
-            f"Proveedor {proveedor.nombre}: {len(items)} línea(s), total ${centavos_a_texto(total_centavos)}",
+            f"Proveedor {proveedor.nombre}: {len(items)} línea(s), total ${centavos_a_texto(total_centavos)}"
+            f"{sufijo_condicion}",
         )
 
     logger.info(
@@ -191,21 +214,25 @@ def registrar_compra(
 
 
 def _resumen_de_anulacion(
-    compra_id: int, motivo: str, unidades: dict[int, int], decisiones: list[DecisionCosto]
+    compra_id: int, motivo: str, unidades: dict[int, int], decisiones: list[DecisionCosto], es_credito: bool = False
 ) -> str:
-    """Resumen de auditoría de una anulación, compactado si excede el límite de la auditoría."""
+    """Resumen de auditoría de una anulación, compactado si excede el límite de la auditoría.
+
+    `es_credito` (V1.9-B) agrega que la deuda del proveedor fue revertida -- solo si la compra
+    generó un `CARGO_COMPRA`; no se agrega una fila de auditoría aparte para eso."""
+    sufijo_credito = " Deuda revertida." if es_credito else ""
     detalle = " | ".join(
         f"p{d.producto_id}:-{unidades[d.producto_id]} "
         + ("RESTAURADO" if d.restaurar_a_centavos is not None else f"CONSERVADO:{d.causa}")
         for d in decisiones
     )
-    resumen = f"Compra #{compra_id} anulada ({motivo}). Unidades {sum(unidades.values())}. {detalle}"
+    resumen = f"Compra #{compra_id} anulada ({motivo}). Unidades {sum(unidades.values())}. {detalle}{sufijo_credito}"
     if len(resumen) <= LONGITUD_MAXIMA_RESUMEN:
         return resumen
     restaurados = sum(1 for d in decisiones if d.restaurar_a_centavos is not None)
     return (
         f"Compra #{compra_id} anulada ({motivo}). Unidades {sum(unidades.values())} en {len(decisiones)} "
-        f"productos. Costo: {restaurados} RESTAURADO, {len(decisiones) - restaurados} CONSERVADO."
+        f"productos. Costo: {restaurados} RESTAURADO, {len(decisiones) - restaurados} CONSERVADO.{sufijo_credito}"
     )
 
 
@@ -220,11 +247,19 @@ def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuari
     `domain.compra.decidir_costo_de_linea`; si no, se conserva y la causa queda en la auditoría. Una compra
     anterior a la trazabilidad (V1.7) nunca restaura costo: no se infiere ningún evento de precio.
 
+    Compra a crédito (V1.9-B): si el proveedor tiene algún `PAGO` registrado después del `CARGO_COMPRA`
+    de esta compra, la anulación se bloquea por completo antes de tocar stock, costo o el libro --
+    regla conservadora que evita imputar ese pago a una compra en particular (ver auditoría de
+    diseño de V1.9). Si no hay ningún pago posterior, se crea una `REVERSA_COMPRA` por el total, en
+    la misma transacción que revierte stock y costo.
+
     Raises:
         CompraNoEncontradaError: si la compra no existe.
         CompraYaAnuladaError: si ya estaba anulada (no se toca stock, costo ni auditoría de nuevo).
         DatosInvalidosError: motivo inválido, u `OTRO` sin observaciones.
         StockInsuficienteError: si el stock actual de algún producto no alcanza.
+        CompraConPagosPosterioresError: si es a crédito y el proveedor ya tiene un pago posterior
+            al cargo de esta compra (no se modifica nada: ni stock, ni costo, ni el libro).
     """
     observaciones = (observaciones or "").strip() or None
     with obtener_conexion(inmediata=True) as conexion:
@@ -234,6 +269,17 @@ def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuari
         if compra.estado != "ACTIVA":
             raise CompraYaAnuladaError(f"La compra {compra_id} ya fue anulada anteriormente.")
         validar_motivo_anulacion_compra(motivo, observaciones)
+
+        cargo_id = None
+        if compra.condicion_pago == "CREDITO":
+            cargo_id = repositorio_movimientos_proveedor.obtener_id_cargo_de_compra_en_conexion(conexion, compra_id)
+            if cargo_id is not None and repositorio_movimientos_proveedor.existe_pago_posterior_en_conexion(
+                conexion, compra.proveedor_id, cargo_id
+            ):
+                raise CompraConPagosPosterioresError(
+                    f"No se puede anular la compra {compra_id}: el proveedor ya tiene un pago registrado "
+                    "después de esta compra a crédito."
+                )
 
         lineas = repositorio_compras.listar_lineas_para_anular_en_conexion(conexion, compra_id)
         productos = {}
@@ -280,13 +326,23 @@ def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuari
         if not repositorio_compras.anular_compra_en_conexion(conexion, compra_id, motivo, observaciones, usuario_id):
             raise CompraYaAnuladaError(f"La compra {compra_id} ya fue anulada anteriormente.")
 
+        # Reversa en la MISMA transacción: nunca puede quedar ANULADA una compra a crédito con
+        # cargo sin su reversa correspondiente.
+        if cargo_id is not None:
+            repositorio_movimientos_proveedor.registrar_reversa_en_conexion(
+                conexion, compra.proveedor_id, compra_id, compra.total_centavos, usuario_id
+            )
+
         repositorio_auditoria.registrar_en_conexion(
             conexion,
             usuario_id,
             "COMPRA_ANULADA",
             "COMPRA",
             compra_id,
-            _resumen_de_anulacion(compra_id, motivo, {li.producto_id: li.cantidad for li in lineas}, decisiones),
+            _resumen_de_anulacion(
+                compra_id, motivo, {li.producto_id: li.cantidad for li in lineas}, decisiones,
+                es_credito=cargo_id is not None,
+            ),
         )
         anulada = repositorio_compras.obtener_por_id_en_conexion(conexion, compra_id)
 

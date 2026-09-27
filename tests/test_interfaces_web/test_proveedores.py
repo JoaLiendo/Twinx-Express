@@ -243,3 +243,34 @@ class TestMetodosNoPrevistos:
         for metodo, ruta in casos:
             respuesta = solicitud(metodo, ruta, cookies=cookies)
             assert respuesta.status == 405, f"{metodo} {ruta} debería dar 405, dio {respuesta.status}"
+
+
+class TestSaldoEnFicha:
+    """V1.9-B: la ficha del proveedor muestra su saldo pendiente, derivado del libro."""
+
+    def test_proveedor_sin_movimientos_muestra_saldo_cero(self, base_datos_temporal):
+        proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", f"/proveedores/{proveedor.id}", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "Saldo pendiente" in respuesta.texto
+        assert "$0" in respuesta.texto
+
+    def test_proveedor_con_compra_a_credito_muestra_el_saldo(self, base_datos_temporal):
+        from db.repositorios import usuarios as repositorio_usuarios
+        from domain.compra import ItemCompra
+        from services import servicio_compras, servicio_stock
+
+        proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+        cookies = _cookies_owner()
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+        servicio_compras.registrar_compra(
+            proveedor.id, usuario.id, [ItemCompra(producto.id, 100, 1000)], condicion_pago="CREDITO"
+        )  # 100 * 1000 centavos = $1.000,00 de deuda
+
+        respuesta = solicitud("GET", f"/proveedores/{proveedor.id}", cookies=cookies)
+
+        assert "1.000" in respuesta.texto

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import compras as repositorio_compras
+from db.repositorios import movimientos_proveedor as repositorio_movimientos_proveedor
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import proveedores as repositorio_proveedores
@@ -40,12 +41,17 @@ COMPRAS_EN_FICHA = 20
 
 @dataclass(frozen=True)
 class FichaProveedor:
-    """Un proveedor con sus productos vinculados y sus últimas compras (más recientes primero, activas y anuladas)."""
+    """Un proveedor con sus productos vinculados y sus últimas compras (más recientes primero, activas y anuladas).
+
+    `saldo_centavos` (V1.9-B) es la deuda pendiente por compras a crédito, derivada del libro
+    `movimientos_proveedor` (`SUM(CARGO_COMPRA) - SUM(PAGO) - SUM(REVERSA_COMPRA)`), nunca una
+    columna persistida: `0` si el proveedor no tiene ningún movimiento."""
 
     proveedor: Proveedor
     productos: list[ProductoDeProveedor]
     compras: list[ResumenCompra]
     total_compras: int = 0
+    saldo_centavos: int = 0
 
 
 def _auditar(
@@ -125,6 +131,7 @@ def obtener_ficha(proveedor_id: int) -> FichaProveedor:
         productos=repositorio_producto_proveedor.listar_por_proveedor(proveedor_id),
         compras=repositorio_compras.listar_resumen(proveedor_id, limite=COMPRAS_EN_FICHA),
         total_compras=repositorio_compras.contar_resumen(proveedor_id),
+        saldo_centavos=repositorio_movimientos_proveedor.obtener_saldo(proveedor_id),
     )
 
 

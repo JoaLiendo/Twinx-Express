@@ -121,3 +121,97 @@ def test_reactivar_proveedor(base_datos_temporal):
 def test_reactivar_proveedor_inexistente_falla(base_datos_temporal):
     with pytest.raises(ProveedorNoEncontradoError):
         servicio_proveedores.reactivar_proveedor(9999)
+
+
+# --- Saldo de proveedor (V1.9-B) ---------------------------------------------------------------
+# El saldo se deriva siempre del libro `movimientos_proveedor`, nunca de una columna persistida
+# (ver auditoría V1.9): `SUM(CARGO_COMPRA) - SUM(PAGO) - SUM(REVERSA_COMPRA)`.
+
+
+def _crear_usuario():
+    from db.repositorios import usuarios as repositorio_usuarios
+    from domain.usuario import Usuario
+
+    return repositorio_usuarios.crear_usuario(
+        Usuario(nombre_usuario="duenio", nombre_completo="Dueño", password_hash="hash", rol="OWNER")
+    )
+
+
+def test_saldo_sin_movimientos_es_cero(base_datos_temporal):
+    from db.repositorios import movimientos_proveedor as repositorio_movimientos_proveedor
+
+    proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+
+    assert repositorio_movimientos_proveedor.obtener_saldo(proveedor.id) == 0
+    assert servicio_proveedores.obtener_ficha(proveedor.id).saldo_centavos == 0
+
+
+def test_saldo_con_un_cargo(base_datos_temporal):
+    from domain.compra import ItemCompra
+    from services import servicio_compras, servicio_stock
+
+    proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+    usuario = _crear_usuario()
+    producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+
+    servicio_compras.registrar_compra(
+        proveedor.id, usuario.id, [ItemCompra(producto.id, 10, 120)], condicion_pago="CREDITO"
+    )
+
+    assert servicio_proveedores.obtener_ficha(proveedor.id).saldo_centavos == 1200
+
+
+def test_saldo_con_varios_cargos_se_acumula(base_datos_temporal):
+    from domain.compra import ItemCompra
+    from services import servicio_compras, servicio_stock
+
+    proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+    usuario = _crear_usuario()
+    producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+
+    servicio_compras.registrar_compra(
+        proveedor.id, usuario.id, [ItemCompra(producto.id, 10, 120)], condicion_pago="CREDITO"
+    )
+    servicio_compras.registrar_compra(
+        proveedor.id, usuario.id, [ItemCompra(producto.id, 5, 100)], condicion_pago="CREDITO"
+    )
+    servicio_compras.registrar_compra(
+        proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 100)], condicion_pago="CONTADO"
+    )  # no debe sumar al saldo
+
+    assert servicio_proveedores.obtener_ficha(proveedor.id).saldo_centavos == 1200 + 500
+
+
+def test_m6_saldo_con_cargo_y_reversa_se_cancela(base_datos_temporal):
+    """M6: la reversa debe descontarse del saldo igual que un pago -- una expresión que la
+    ignorara (ej. solo `SUM(CARGO) - SUM(PAGO)`) dejaría deuda fantasma tras anular."""
+    from domain.compra import ItemCompra
+    from services import servicio_compras, servicio_stock
+
+    proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+    usuario = _crear_usuario()
+    producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=20)
+
+    compra = servicio_compras.registrar_compra(
+        proveedor.id, usuario.id, [ItemCompra(producto.id, 10, 120)], condicion_pago="CREDITO"
+    )
+    assert servicio_proveedores.obtener_ficha(proveedor.id).saldo_centavos == 1200
+
+    servicio_compras.anular_compra(compra.id, "ERROR_CARGA", None, usuario.id)
+
+    assert servicio_proveedores.obtener_ficha(proveedor.id).saldo_centavos == 0
+
+
+def test_saldo_de_un_proveedor_no_se_mezcla_con_el_de_otro(base_datos_temporal):
+    from domain.compra import ItemCompra
+    from services import servicio_compras, servicio_stock
+
+    prov_a = servicio_proveedores.crear_proveedor("Distribuidora SA")
+    prov_b = servicio_proveedores.crear_proveedor("Mayorista Norte")
+    usuario = _crear_usuario()
+    producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+
+    servicio_compras.registrar_compra(prov_a.id, usuario.id, [ItemCompra(producto.id, 10, 120)], condicion_pago="CREDITO")
+
+    assert servicio_proveedores.obtener_ficha(prov_a.id).saldo_centavos == 1200
+    assert servicio_proveedores.obtener_ficha(prov_b.id).saldo_centavos == 0

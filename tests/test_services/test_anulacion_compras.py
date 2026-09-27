@@ -5,6 +5,7 @@ import pytest
 
 from db.conexion import obtener_conexion
 from db.repositorios import compras as repositorio_compras
+from db.repositorios import movimientos_proveedor as repositorio_movimientos_proveedor
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from domain.compra import (
     CAUSA_COMPRA_HISTORICA,
@@ -18,9 +19,11 @@ from domain.compra import (
     decidir_costo_de_linea,
 )
 from excepciones import (
+    CompraConPagosPosterioresError,
     CompraNoEncontradaError,
     CompraYaAnuladaError,
     DatosInvalidosError,
+    ErrorBaseDatos,
     InventarioDesactualizadoError,
     StockInsuficienteError,
 )
@@ -401,3 +404,133 @@ class TestReportesYReposicion:
         _anular(e, anulada)
 
         assert repositorio_producto_proveedor.listar_principales_con_costo()[e.p.id].ultimo_costo_centavos == 120
+
+
+# --- Anulación de compra a crédito y reversa segura (V1.9-B) ---------------------------------------
+
+
+def _comprar_credito(e, *lineas):
+    return servicio_compras.registrar_compra(
+        e.prov.id, e.owner.id, [ItemCompra(p.id, c, k) for p, c, k in lineas], condicion_pago="CREDITO"
+    )
+
+
+def _saldo(e):
+    return repositorio_movimientos_proveedor.obtener_saldo(e.prov.id)
+
+
+def _simular_pago(e, monto_centavos):
+    """V1.9-C todavía no existe: simula un PAGO con la infraestructura V1.9-A directamente (mismo
+    patrón que `tests/test_db/test_movimientos_proveedor.py`), para probar el bloqueo de anulación."""
+    from db.repositorios import caja as repositorio_caja
+    from domain.caja import MovimientoCaja
+
+    with obtener_conexion(inmediata=True) as conexion:
+        if repositorio_caja.obtener_sesion_abierta_en_conexion(conexion) is None:
+            repositorio_caja.registrar_movimiento_en_conexion(
+                conexion, MovimientoCaja(tipo="APERTURA", monto_centavos=0), usuario_id=e.owner.id
+            )
+        egreso = repositorio_caja.registrar_movimiento_en_conexion(
+            conexion,
+            MovimientoCaja(tipo="EGRESO", monto_centavos=monto_centavos, descripcion="pago", origen="PAGO_PROVEEDOR"),
+            usuario_id=e.owner.id,
+        )
+        cursor = conexion.execute(
+            "INSERT INTO movimientos_proveedor (proveedor_id, tipo, monto_centavos, medio_pago, caja_movimiento_id,"
+            " usuario_id) VALUES (?, 'PAGO', ?, 'EFECTIVO', ?, ?)",
+            (e.prov.id, monto_centavos, egreso.id, e.owner.id),
+        )
+    return cursor.lastrowid
+
+
+class TestAnulacionCompraContado:
+    def test_anular_compra_contado_no_crea_reversa(self, e):
+        """Debe conservar exactamente el comportamiento V1.7-B: sin condición de pago no hay libro."""
+        compra = _comprar(e, (e.p, 5, 150))
+
+        _anular(e, compra)
+
+        assert consultar(e.ruta, "SELECT COUNT(*) FROM movimientos_proveedor")[0][0] == 0
+
+
+class TestAnulacionCompraCredito:
+    def test_sin_pagos_se_permite_y_crea_una_reversa_por_el_total(self, e):
+        compra = _comprar_credito(e, (e.p, 5, 150))
+        assert _saldo(e) == 750
+
+        anulada = _anular(e, compra, "DEVOLUCION_A_PROVEEDOR")
+
+        assert anulada.estado == "ANULADA"
+        assert (_stock(e, e.p), _costo(e, e.p)) == (10, 100)  # V1.7-B intacto
+        assert _saldo(e) == 0  # nunca queda negativo: la reversa cancela exactamente el cargo
+        filas = consultar(
+            e.ruta, "SELECT proveedor_id, tipo, monto_centavos, compra_id FROM movimientos_proveedor WHERE tipo = 'REVERSA_COMPRA'"
+        )
+        assert [tuple(f) for f in filas] == [(e.prov.id, "REVERSA_COMPRA", 750, compra.id)]
+        assert "Deuda revertida" in _auditoria(e, "COMPRA_ANULADA")[0]
+
+    def test_es_atomica_de_punta_a_punta(self, e):
+        """Stock, costo, estado y libro se confirman o se revierten todos juntos."""
+        compra = _comprar_credito(e, (e.p, 5, 150), (e.q, 2, 400))
+
+        _anular(e, compra)
+
+        assert servicio_compras.obtener_por_id(compra.id).estado == "ANULADA"
+        assert (_stock(e, e.p), _stock(e, e.q)) == (10, 5)
+        assert consultar(e.ruta, "SELECT COUNT(*) FROM movimientos_proveedor WHERE tipo = 'REVERSA_COMPRA'")[0][0] == 1
+
+    def test_m3_si_falla_la_reversa_no_queda_nada_modificado(self, e, monkeypatch):
+        """M3: nunca puede quedar una compra ANULADA sin su reversa. Si la reversa falla (simulado
+        acá), toda la anulación se revierte: estado, stock, costo y libro quedan como estaban."""
+        from db.repositorios import movimientos_proveedor as repositorio_movimientos_proveedor_mod
+
+        compra = _comprar_credito(e, (e.p, 5, 150))
+        antes = _foto(e)
+        saldo_antes = _saldo(e)
+
+        def falla_la_reversa(*args, **kwargs):
+            raise ErrorBaseDatos("fallo simulado en la reversa")
+
+        monkeypatch.setattr(repositorio_movimientos_proveedor_mod, "registrar_reversa_en_conexion", falla_la_reversa)
+
+        with pytest.raises(ErrorBaseDatos):
+            _anular(e, compra)
+
+        assert _foto(e) == antes
+        assert _saldo(e) == saldo_antes
+        assert consultar(e.ruta, "SELECT COUNT(*) FROM movimientos_proveedor WHERE tipo = 'REVERSA_COMPRA'")[0][0] == 0
+
+    def test_doble_anulacion_no_crea_una_segunda_reversa(self, e):
+        compra = _comprar_credito(e, (e.p, 5, 150))
+        _anular(e, compra)
+
+        with pytest.raises(CompraYaAnuladaError):
+            _anular(e, compra)
+
+        assert consultar(e.ruta, "SELECT COUNT(*) FROM movimientos_proveedor WHERE tipo = 'REVERSA_COMPRA'")[0][0] == 1
+        assert _saldo(e) == 0
+
+    def test_m4_pago_posterior_al_cargo_bloquea_la_anulacion(self, e):
+        compra = _comprar_credito(e, (e.p, 5, 150))  # cargo por 750
+        _simular_pago(e, 300)  # posterior al cargo
+        antes = _foto(e)
+
+        with pytest.raises(CompraConPagosPosterioresError):
+            _anular(e, compra)
+
+        assert _foto(e) == antes  # compra ACTIVA, stock/costo intactos, sin auditoría nueva
+        assert consultar(e.ruta, "SELECT COUNT(*) FROM movimientos_proveedor WHERE tipo = 'REVERSA_COMPRA'")[0][0] == 0
+
+    def test_m5_pago_anterior_al_cargo_de_otra_compra_no_bloquea_incorrectamente(self, e):
+        """Un pago con id ENTRE los cargos de dos compras a crédito del mismo proveedor bloquea la
+        anulación de la compra cuyo cargo es anterior a ese pago, pero NO la de la compra posterior
+        (cuyo cargo todavía no existía cuando se hizo el pago)."""
+        compra_a = _comprar_credito(e, (e.p, 5, 150))  # cargo más antiguo
+        _simular_pago(e, 100)  # posterior al cargo de A
+        compra_b = _comprar_credito(e, (e.q, 2, 400))  # cargo más nuevo, posterior al pago
+
+        with pytest.raises(CompraConPagosPosterioresError):
+            _anular(e, compra_a)  # el pago SÍ es posterior a su cargo
+
+        _anular(e, compra_b)  # el pago es ANTERIOR al cargo de B: no debe bloquearla
+        assert servicio_compras.obtener_por_id(compra_b.id).estado == "ANULADA"

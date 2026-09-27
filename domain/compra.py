@@ -13,6 +13,19 @@ from dataclasses import dataclass
 from excepciones import DatosInvalidosError
 
 
+# --- Condición de pago (V1.9-B) -------------------------------------------------------------------
+
+CONDICIONES_PAGO_VALIDAS = frozenset({"CONTADO", "CREDITO"})
+
+
+def validar_condicion_pago(condicion_pago: str) -> None:
+    """Valida la condición de pago de una compra antes de registrarla."""
+    if condicion_pago not in CONDICIONES_PAGO_VALIDAS:
+        raise DatosInvalidosError(
+            f"Condición de pago inválida: {condicion_pago!r}. Debe ser una de {sorted(CONDICIONES_PAGO_VALIDAS)}."
+        )
+
+
 @dataclass
 class ItemCompra:
     """Una línea de compra: producto, cantidad y costo unitario pedidos."""
@@ -45,6 +58,7 @@ class Compra:
     observaciones: str | None = None
     estado: str = "ACTIVA"
     costo_trazable: bool = False
+    condicion_pago: str = "CONTADO"
 
 
 @dataclass
@@ -82,6 +96,7 @@ class ResumenCompra:
     motivo_anulacion: str | None = None
     observaciones_anulacion: str | None = None
     fecha_anulacion: str | None = None
+    condicion_pago: str = "CONTADO"
 
 
 @dataclass(frozen=True)

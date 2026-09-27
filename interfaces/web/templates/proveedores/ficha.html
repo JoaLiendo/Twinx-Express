@@ -32,6 +32,7 @@
       <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Teléfono</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.telefono or '—' }}</dd></div>
       <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Email</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.email or '—' }}</dd></div>
       <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Dirección</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.direccion or '—' }}</dd></div>
+      <div id="saldo-proveedor"><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Saldo pendiente</dt><dd class="font-semibold tabular-nums {{ 'text-error' if ficha.saldo_centavos > 0 else 'text-slate-800 dark:text-slate-200' }}">${{ ficha.saldo_centavos | dinero_ar }}</dd></div>
       {% if proveedor.notas %}
         <div class="sm:col-span-2"><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Notas</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.notas }}</dd></div>
       {% endif %}

@@ -28,7 +28,9 @@ from domain.compra import (
 )
 from domain.reportes_operativos import ComprasDeProveedor
 
-_COLUMNAS_COMPRA = "id, proveedor_id, usuario_id, fecha, observaciones, total_centavos, estado, costo_trazable"
+_COLUMNAS_COMPRA = (
+    "id, proveedor_id, usuario_id, fecha, observaciones, total_centavos, estado, costo_trazable, condicion_pago"
+)
 _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centavos, subtotal_centavos"
 
 # Base del historial (Fase 4C): resuelve proveedor y usuario con JOIN y
@@ -41,7 +43,7 @@ _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centav
 # encontrando igual, porque `activo` no es parte de la condición).
 _CONSULTA_RESUMEN_BASE = """
     SELECT
-        c.id, c.fecha, c.observaciones, c.total_centavos,
+        c.id, c.fecha, c.observaciones, c.total_centavos, c.condicion_pago,
         c.estado, c.motivo_anulacion, c.observaciones_anulacion, c.fecha_anulacion,
         p.nombre AS proveedor_nombre,
         u.nombre_completo AS usuario_nombre_completo,
@@ -66,6 +68,7 @@ def _fila_a_resumen(fila: sqlite3.Row) -> ResumenCompra:
         motivo_anulacion=fila["motivo_anulacion"],
         observaciones_anulacion=fila["observaciones_anulacion"],
         fecha_anulacion=fila["fecha_anulacion"],
+        condicion_pago=fila["condicion_pago"],
     )
 
 
@@ -92,6 +95,7 @@ def _fila_a_compra(fila: sqlite3.Row) -> Compra:
         total_centavos=fila["total_centavos"],
         estado=fila["estado"],
         costo_trazable=bool(fila["costo_trazable"]),
+        condicion_pago=fila["condicion_pago"],
     )
 
 
@@ -136,6 +140,7 @@ def registrar_compra_con_detalle(
     items_con_subtotal: list[tuple[ItemCompra, int]],
     clave_idempotencia: str | None = None,
     eventos_costo: dict[int, int] | None = None,
+    condicion_pago: str = "CONTADO",
 ) -> Compra:
     """Inserta la compra y su detalle dentro de la conexión recibida.
 
@@ -150,15 +155,23 @@ def registrar_compra_con_detalle(
     `eventos_costo` mapea `producto_id` al evento de `historial_precios` que produjo el cambio de costo
     de esa línea (V1.7-B): la compra queda marcada `costo_trazable` y cada línea guarda su evento
     (`NULL` si el costo no cambió). Sin `eventos_costo` la compra se registra sin trazabilidad.
+
+    `condicion_pago` ('CONTADO' o 'CREDITO', V1.9-B) no genera acá ningún movimiento de proveedor:
+    el CARGO_COMPRA de una compra a crédito lo crea `services.servicio_compras.registrar_compra`,
+    en la misma transacción, después de esta inserción.
     """
     fila_compra = conexion.execute(
         f"""
         INSERT INTO compras
-            (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia, costo_trazable)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia, costo_trazable,
+             condicion_pago)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         RETURNING {_COLUMNAS_COMPRA}
         """,
-        (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia, int(eventos_costo is not None)),
+        (
+            proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia,
+            int(eventos_costo is not None), condicion_pago,
+        ),
     ).fetchone()
 
     compra_id = fila_compra["id"]

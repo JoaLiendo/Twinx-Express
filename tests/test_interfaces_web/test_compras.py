@@ -462,3 +462,70 @@ class TestPermisos:
         for metodo, ruta in casos:
             respuesta = solicitud(metodo, ruta, cookies=cookies)
             assert respuesta.status == 405, f"{metodo} {ruta} debería dar 405, dio {respuesta.status}"
+
+
+class TestCondicionDePago:
+    """V1.9-B: condición de pago seleccionable en el formulario, visible en listado y detalle."""
+
+    def test_formulario_de_nueva_compra_ofrece_contado_y_credito(self, base_datos_temporal):
+        _proveedor_y_producto()
+        cookies = _cookies_owner()
+
+        respuesta = solicitud("GET", "/compras/nueva", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert 'name="condicion_pago"' in respuesta.texto
+        assert "Contado" in respuesta.texto and "Crédito" in respuesta.texto
+
+    def test_seleccionar_contado_registra_una_compra_contado(self, base_datos_temporal):
+        proveedor, producto = _proveedor_y_producto()
+        cookies = _cookies_owner()
+
+        respuesta = solicitud(
+            "POST", "/compras/nueva", cookies=cookies,
+            formulario={
+                "proveedor_id": str(proveedor.id), "producto_id": [str(producto.id)],
+                "cantidad": ["5"], "costo_unitario": ["120.00"], "condicion_pago": "CONTADO",
+            },
+        )
+
+        assert respuesta.status == 303
+        compra = servicio_compras.listar_todas()[0]
+        assert compra.condicion_pago == "CONTADO"
+
+    def test_seleccionar_credito_registra_cargo_y_se_ve_en_listado_y_detalle(self, base_datos_temporal):
+        proveedor, producto = _proveedor_y_producto()
+        cookies = _cookies_owner()
+
+        respuesta = solicitud(
+            "POST", "/compras/nueva", cookies=cookies,
+            formulario={
+                "proveedor_id": str(proveedor.id), "producto_id": [str(producto.id)],
+                "cantidad": ["5"], "costo_unitario": ["120.00"], "condicion_pago": "CREDITO",
+            },
+        )
+        assert respuesta.status == 303
+        compra = servicio_compras.listar_todas()[0]
+        assert compra.condicion_pago == "CREDITO"
+
+        listado = solicitud("GET", "/compras", cookies=cookies)
+        assert "A crédito" in listado.texto
+
+        detalle = solicitud("GET", f"/compras/{compra.id}", cookies=cookies)
+        assert "A crédito" in detalle.texto
+
+    def test_sin_seleccionar_condicion_el_default_es_contado(self, base_datos_temporal):
+        """El `<select>` no manda nada si el campo se omite del todo (ej. un cliente HTTP viejo):
+        `Form("CONTADO")` en la ruta cubre ese caso, sin cambiar el comportamiento previo a V1.9-B."""
+        proveedor, producto = _proveedor_y_producto()
+        cookies = _cookies_owner()
+
+        solicitud(
+            "POST", "/compras/nueva", cookies=cookies,
+            formulario={
+                "proveedor_id": str(proveedor.id), "producto_id": [str(producto.id)],
+                "cantidad": ["1"], "costo_unitario": ["10.00"],
+            },
+        )
+
+        assert servicio_compras.listar_todas()[0].condicion_pago == "CONTADO"
