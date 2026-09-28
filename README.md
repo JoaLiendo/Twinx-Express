@@ -540,6 +540,35 @@ Sin migraciones (24 en total) ni dependencias nuevas.
 
 **Actualizar desde V1.7.** Sin migraciones: los datos quedan intactos.
 
+## Cuentas a pagar a proveedores (V1.9)
+
+Una migración nueva (025, aditiva; 25 en total), sin dependencias nuevas.
+
+- **Compras CONTADO/CREDITO** (`compras.condicion_pago`). Una compra a crédito genera un
+  `CARGO_COMPRA` automático en `movimientos_proveedor` por el total de la compra. Las compras
+  anteriores a esta migración quedan `CONTADO` por el `DEFAULT` del esquema: no se infiere ninguna
+  deuda retroactiva.
+- **Saldo de proveedor.** Libro append-only `movimientos_proveedor` (mismo patrón que
+  `movimientos_cuenta`, migración 020): `CARGO_COMPRA`, `PAGO` y `REVERSA_COMPRA`. El saldo nunca
+  se guarda: es `sum(CARGO_COMPRA) - sum(PAGO) - sum(REVERSA_COMPRA)`.
+- **Anulación de compra a crédito.** Sin pagos posteriores del proveedor: se permite y genera una
+  `REVERSA_COMPRA` por el total (además de revertir el stock, igual que V1.7). Con al menos un pago
+  posterior (por `id`, no por fecha, sin importar si "correspondía" a esta compra u otra): la
+  anulación se bloquea (`CompraConPagosPosterioresError`), regla conservadora para no dejar el
+  saldo mal calculado.
+- **Pagos a proveedor** (solo OWNER, `services/servicio_pagos_proveedor.py`). En efectivo (origen
+  de caja nuevo `PAGO_PROVEEDOR`, exige caja abierta) o transferencia (no toca caja). Idempotencia
+  por hash canónico del contenido del pago (proveedor, monto, medio, observación).
+  `0 < monto <= saldo`: sobrepago bloqueado (`PagoProveedorInvalidoError`).
+- **Ficha e historial del proveedor.** Saldo actual y libro de movimientos (cargos, pagos y
+  reversas) en la ficha del proveedor.
+- Fuera de alcance: `fecha_vencimiento`/vencimientos, órdenes de compra persistentes, imputación de
+  pagos a compras concretas, saldos a favor y devoluciones a proveedor.
+
+**Actualizar desde V1.8.** Se crea un backup automático y se aplica la migración 025; los datos
+quedan intactos, las compras existentes quedan `CONTADO` y `movimientos_proveedor` arranca vacío
+(sin deuda retroactiva).
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -561,5 +590,6 @@ Sin migraciones (24 en total) ni dependencias nuevas.
 - [x] Cuenta corriente completa, reposición integrada con compras y reportes operativos (V1.6, ver «Cuenta corriente, reposición y reportes (V1.6)»)
 - [x] Rotación de stock, anulación segura de compras y movimientos de stock por producto (V1.7, ver «Rotación, anulación de compras y movimientos de stock (V1.7)»)
 - [x] Compras paginadas y filtrables, historial por producto, exportaciones CSV operativas y protección contra inyección de fórmulas (V1.8, ver «Compras operativas, exportaciones y seguridad (V1.8)»)
+- [x] Cuentas a pagar a proveedores: compras CONTADO/CREDITO, saldo, anulación con reversa y pagos en efectivo/transferencia (V1.9, ver «Cuentas a pagar a proveedores (V1.9)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

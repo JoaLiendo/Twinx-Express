@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.8.0
+Twinx Express 1.9.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -584,3 +584,31 @@ d) AL ACTUALIZAR DESDE LA VERSION 1.7
 e) TODAVIA NO INCLUIDO
    Cuentas a pagar a proveedores y ordenes de compra no estan
    implementadas.
+
+18) NOVEDADES DE LA VERSION 1.9: CUENTAS A PAGAR A PROVEEDORES
+----------------------------------------------------------------------------------
+
+a) COMPRAS DE CONTADO O A CREDITO
+   Al cargar una compra elegis si es de CONTADO (no genera deuda) o a
+   CREDITO (suma al saldo que le debes al proveedor). Las compras
+   anteriores a esta version quedan como CONTADO: no se les inventa
+   ninguna deuda retroactiva.
+
+b) SALDO Y FICHA DEL PROVEEDOR (solo el dueño)
+   La ficha del proveedor ahora muestra cuanto le debes y su historial de
+   cargos y pagos. Podes registrarle un pago en EFECTIVO (descuenta la
+   caja, exige que este abierta) o por TRANSFERENCIA (no toca la caja).
+   No se puede pagar mas de lo que le debes.
+
+c) ANULACION DE COMPRAS A CREDITO
+   Si la compra a credito todavia no tuvo ningun pago, se puede anular
+   como cualquier otra: se revierte tanto el stock como la deuda. Si el
+   proveedor ya tuvo un pago despues de esa compra, la anulacion se
+   bloquea (para no dejar el saldo mal calculado): primero hay que
+   resolverlo manualmente con el proveedor.
+
+d) AL ACTUALIZAR DESDE LA VERSION 1.8
+   KioscoApp crea automaticamente un backup y aplica 1 migracion nueva
+   (25): tus datos quedan tal cual. Las compras que ya tenias cargadas
+   quedan como CONTADO y no aparece ninguna deuda por compras viejas. Si
+   algo sale mal, segui el punto 7.
