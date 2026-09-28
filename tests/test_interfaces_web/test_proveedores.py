@@ -274,3 +274,115 @@ class TestSaldoEnFicha:
         respuesta = solicitud("GET", f"/proveedores/{proveedor.id}", cookies=cookies)
 
         assert "1.000" in respuesta.texto
+
+
+# --- Pagos a proveedor (V1.9-C) --------------------------------------------------------------
+
+
+def _crear_usuario_cashier(nombre_usuario: str = "carlos") -> str:
+    return _crear_usuario_y_loguearse("CASHIER", nombre_usuario)
+
+
+def _proveedor_con_deuda_owner(monto_centavos=1200):
+    from db.repositorios import usuarios as repositorio_usuarios
+    from domain.compra import ItemCompra
+    from services import servicio_compras, servicio_stock
+
+    proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+    cookies = _cookies_owner()
+    usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+    producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
+    servicio_compras.registrar_compra(
+        proveedor.id, usuario.id, [ItemCompra(producto.id, monto_centavos // 100, 100)], condicion_pago="CREDITO"
+    )
+    return proveedor, usuario, cookies
+
+
+class TestPagoAProveedor:
+    def test_boton_registrar_pago_aparece_solo_con_saldo_pendiente(self, base_datos_temporal):
+        proveedor_con_deuda, _usuario, cookies = _proveedor_con_deuda_owner(1200)
+        proveedor_sin_deuda = servicio_proveedores.crear_proveedor("Mayorista Norte")
+
+        respuesta = solicitud("GET", f"/proveedores/{proveedor_sin_deuda.id}", cookies=cookies)
+        assert f"/proveedores/{proveedor_sin_deuda.id}/pagos/nuevo" not in respuesta.texto
+
+        respuesta = solicitud("GET", f"/proveedores/{proveedor_con_deuda.id}", cookies=cookies)
+        assert f"/proveedores/{proveedor_con_deuda.id}/pagos/nuevo" in respuesta.texto
+
+    def test_formulario_de_pago_muestra_saldo_actual(self, base_datos_temporal):
+        proveedor, _usuario, cookies = _proveedor_con_deuda_owner(1200)
+
+        respuesta = solicitud("GET", f"/proveedores/{proveedor.id}/pagos/nuevo", cookies=cookies)
+
+        assert respuesta.status == 200
+        assert "12,00" in respuesta.texto or "12.00" in respuesta.texto or "12" in respuesta.texto
+
+    def test_owner_puede_registrar_pago_por_transferencia(self, base_datos_temporal):
+        proveedor, _usuario, cookies = _proveedor_con_deuda_owner(1200)
+
+        respuesta = solicitud(
+            "POST", f"/proveedores/{proveedor.id}/pagos", cookies=cookies,
+            formulario={"monto": "5.00", "medio_pago": "TRANSFERENCIA"},
+        )
+
+        assert respuesta.status == 303
+        ficha = servicio_proveedores.obtener_ficha(proveedor.id)
+        assert ficha.saldo_centavos == 700
+
+    def test_historial_de_movimientos_visible_en_la_ficha(self, base_datos_temporal):
+        proveedor, _usuario, cookies = _proveedor_con_deuda_owner(1200)
+        solicitud(
+            "POST", f"/proveedores/{proveedor.id}/pagos", cookies=cookies,
+            formulario={"monto": "5.00", "medio_pago": "TRANSFERENCIA"},
+        )
+
+        respuesta = solicitud("GET", f"/proveedores/{proveedor.id}", cookies=cookies)
+
+        assert "Compra a crédito" in respuesta.texto
+        assert "Pago" in respuesta.texto
+
+    def test_error_saldo_insuficiente_no_rompe_y_redirige_con_toast(self, base_datos_temporal):
+        proveedor, _usuario, cookies = _proveedor_con_deuda_owner(1200)
+
+        respuesta = solicitud(
+            "POST", f"/proveedores/{proveedor.id}/pagos", cookies=cookies,
+            formulario={"monto": "999.00", "medio_pago": "TRANSFERENCIA"},
+        )
+
+        assert respuesta.status in (303, 422)  # 303 (toast) para navegador, nunca 500
+        assert servicio_proveedores.obtener_ficha(proveedor.id).saldo_centavos == 1200
+
+    def test_error_efectivo_sin_caja_abierta_no_rompe(self, base_datos_temporal):
+        proveedor, _usuario, cookies = _proveedor_con_deuda_owner(1200)
+
+        respuesta = solicitud(
+            "POST", f"/proveedores/{proveedor.id}/pagos", cookies=cookies,
+            formulario={"monto": "5.00", "medio_pago": "EFECTIVO"},
+        )
+
+        assert respuesta.status in (303, 422)
+        assert servicio_proveedores.obtener_ficha(proveedor.id).saldo_centavos == 1200
+
+    def test_proveedor_sin_deuda_rechaza_cualquier_pago(self, base_datos_temporal):
+        proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
+        cookies = _cookies_owner()
+
+        respuesta = solicitud(
+            "POST", f"/proveedores/{proveedor.id}/pagos", cookies=cookies,
+            formulario={"monto": "1.00", "medio_pago": "TRANSFERENCIA"},
+        )
+
+        assert respuesta.status in (303, 422)
+
+    def test_cashier_no_puede_ver_ni_registrar_pagos(self, base_datos_temporal):
+        proveedor, _usuario, _cookies = _proveedor_con_deuda_owner(1200)
+        token = _crear_usuario_cashier()
+        cookies = {NOMBRE_COOKIE_SESION: token}
+
+        for metodo, ruta in [
+            ("GET", f"/proveedores/{proveedor.id}/pagos/nuevo"),
+            ("POST", f"/proveedores/{proveedor.id}/pagos"),
+        ]:
+            respuesta = solicitud(metodo, ruta, cookies=cookies, formulario={"monto": "5.00", "medio_pago": "TRANSFERENCIA"} if metodo == "POST" else None)
+            assert respuesta.status == 403, f"{metodo} {ruta} debería dar 403 para CASHIER, dio {respuesta.status}"
+        assert servicio_proveedores.obtener_ficha(proveedor.id).saldo_centavos == 1200

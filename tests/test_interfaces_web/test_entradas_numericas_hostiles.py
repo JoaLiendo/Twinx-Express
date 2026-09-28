@@ -13,6 +13,7 @@ import re
 
 import pytest
 
+from domain.compra import ItemCompra
 from domain.venta import ItemVenta
 from interfaces.web.app import app
 from services import servicio_caja, servicio_clientes, servicio_compras, servicio_inventario, servicio_proveedores
@@ -37,8 +38,8 @@ IDS_HOSTILES = [str(2**63), str(10**21), str(2**64)]
 # Tablas cuyo contenido no debe cambiar ante una entrada hostil.
 TABLAS = (
     "ventas", "detalle_venta", "compras", "detalle_compra", "caja_movimientos", "sesiones_caja", "movimientos_cuenta",
-    "ajustes_stock", "auditoria", "inventarios", "inventario_lineas", "productos", "clientes", "proveedores",
-    "producto_proveedor", "historial_precios", "lotes_precios",
+    "movimientos_proveedor", "ajustes_stock", "auditoria", "inventarios", "inventario_lineas", "productos",
+    "clientes", "proveedores", "producto_proveedor", "historial_precios", "lotes_precios",
 )
 
 
@@ -52,6 +53,9 @@ def e(base_datos_temporal, caja_abierta):
     )  # saldo 2 x 100 = 200 centavos
     venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO", usuario_id=owner.id)
     proveedor = servicio_proveedores.crear_proveedor("Prov")
+    servicio_compras.registrar_compra(
+        proveedor.id, owner.id, [ItemCompra(producto.id, 10, 100)], condicion_pago="CREDITO"
+    )  # deuda de 1000 centavos, para poder probar pagos a proveedor
     inventario = servicio_inventario.crear_inventario(owner.id, [producto.id])
     return type(
         "E",
@@ -84,6 +88,13 @@ CASOS = [
     ("caja_egreso", "POST", "/caja/egreso", {"monto": "1.00", "descripcion": "retiro", "clave_idempotencia": "k-egr"}, {"monto": "monto"}),
     ("caja_cerrar", "POST", "/caja/cerrar", {"monto_final": "1.00", "descripcion": ""}, {"monto_final": "monto"}),
     ("cobro", "POST", "/clientes/{cid}/cobro", {"monto": "1.00", "descripcion": "", "clave_idempotencia": "k-cobro"}, {"monto": "monto"}),
+    (
+        "pago_proveedor",
+        "POST",
+        "/proveedores/{prov}/pagos",
+        {"monto": "1.00", "medio_pago": "TRANSFERENCIA", "observacion": "", "clave_idempotencia": "k-pago"},
+        {"monto": "monto"},
+    ),
     (
         "compra",
         "POST",
@@ -180,6 +191,7 @@ RUTAS_CON_ID = [
     ("POST", "/compras/{id}/anular"),
     ("GET", "/proveedores/{id}"),
     ("GET", "/proveedores/{id}/editar"),
+    ("GET", "/proveedores/{id}/pagos/nuevo"),
     ("POST", "/proveedores/{id}/eliminar"),
     ("POST", "/proveedores/{id}/reactivar"),
     ("GET", "/inventario/{id}"),

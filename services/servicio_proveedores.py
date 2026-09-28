@@ -8,7 +8,7 @@ de auditoría en la misma transacción que el cambio.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
@@ -21,7 +21,7 @@ from db.repositorios import usuarios as repositorio_usuarios
 from domain.compra import ResumenCompra
 from domain.producto import Producto
 from domain.producto_proveedor import ProductoDeProveedor, VinculoProveedor, normalizar_codigo_proveedor
-from domain.proveedor import Proveedor
+from domain.proveedor import MovimientoProveedor, Proveedor
 from domain.usuario import exigir_rol
 from excepciones import (
     ProductoNoEncontradoError,
@@ -41,17 +41,20 @@ COMPRAS_EN_FICHA = 20
 
 @dataclass(frozen=True)
 class FichaProveedor:
-    """Un proveedor con sus productos vinculados y sus últimas compras (más recientes primero, activas y anuladas).
+    """Un proveedor con sus productos vinculados, sus últimas compras (más recientes primero,
+    activas y anuladas) y su cuenta a pagar completa.
 
     `saldo_centavos` (V1.9-B) es la deuda pendiente por compras a crédito, derivada del libro
     `movimientos_proveedor` (`SUM(CARGO_COMPRA) - SUM(PAGO) - SUM(REVERSA_COMPRA)`), nunca una
-    columna persistida: `0` si el proveedor no tiene ningún movimiento."""
+    columna persistida: `0` si el proveedor no tiene ningún movimiento. `movimientos` (V1.9-C) es
+    ese mismo libro completo, del más reciente al más antiguo."""
 
     proveedor: Proveedor
     productos: list[ProductoDeProveedor]
     compras: list[ResumenCompra]
     total_compras: int = 0
     saldo_centavos: int = 0
+    movimientos: list[MovimientoProveedor] = field(default_factory=list)
 
 
 def _auditar(
@@ -132,6 +135,7 @@ def obtener_ficha(proveedor_id: int) -> FichaProveedor:
         compras=repositorio_compras.listar_resumen(proveedor_id, limite=COMPRAS_EN_FICHA),
         total_compras=repositorio_compras.contar_resumen(proveedor_id),
         saldo_centavos=repositorio_movimientos_proveedor.obtener_saldo(proveedor_id),
+        movimientos=repositorio_movimientos_proveedor.listar_movimientos(proveedor_id),
     )
 
 

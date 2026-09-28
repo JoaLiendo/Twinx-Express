@@ -12,12 +12,13 @@ la restricción se declara una sola vez a nivel de router.
 
 from fastapi import APIRouter, Depends, Form, Request
 
+from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
 from excepciones import ProveedorNoEncontradoError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
-from services import servicio_proveedores, servicio_stock
+from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
+from services import servicio_caja, servicio_pagos_proveedor, servicio_proveedores, servicio_stock
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
@@ -130,8 +131,46 @@ def ver_proveedor(request: Request, proveedor_id: int):
         **contexto_base(request),
         "ficha": ficha,
         "productos_disponibles": [p for p in servicio_stock.listar_todos() if p.id not in ids_vinculados],
+        "clave_idempotencia_pago": nueva_clave_idempotencia(),
     }
     return templates.TemplateResponse(request, "proveedores/ficha.html", contexto)
+
+
+@router.get("/proveedores/{proveedor_id}/pagos/nuevo")
+def formulario_pago(request: Request, proveedor_id: int):
+    try:
+        ficha = servicio_proveedores.obtener_ficha(proveedor_id)
+    except ProveedorNoEncontradoError:
+        return redireccionar_con_mensaje("/proveedores", "error", "El proveedor no existe.")
+
+    contexto = {
+        **contexto_base(request),
+        "proveedor": ficha.proveedor,
+        "saldo": ficha.saldo_centavos,
+        "caja_abierta": servicio_caja.consultar_estado(),
+        "clave_idempotencia_pago": nueva_clave_idempotencia(),
+    }
+    return templates.TemplateResponse(request, "proveedores/pago.html", contexto)
+
+
+@router.post("/proveedores/{proveedor_id}/pagos")
+def registrar_pago(
+    proveedor_id: int,
+    monto: str = Form(...),
+    medio_pago: str = Form(...),
+    observacion: str = Form(""),
+    clave_idempotencia: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    servicio_pagos_proveedor.registrar_pago(
+        proveedor_id=proveedor_id,
+        monto_centavos=texto_a_centavos(monto),
+        medio_pago=medio_pago,
+        usuario_id=usuario_actual.id,
+        observacion=observacion or None,
+        clave_idempotencia=clave_idempotencia or None,
+    )
+    return redireccionar_con_mensaje(f"/proveedores/{proveedor_id}", "success", "Pago registrado correctamente.")
 
 
 @router.post("/proveedores/{proveedor_id}/productos")

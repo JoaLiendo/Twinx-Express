@@ -23,6 +23,10 @@
           <button type="submit" class="rounded-lg bg-success/10 hover:bg-success/20 transition text-success text-sm font-semibold px-4 py-2">Reactivar</button>
         </form>
       {% endif %}
+      {% if ficha.saldo_centavos > 0 %}
+        <a href="/proveedores/{{ proveedor.id }}/pagos/nuevo" id="boton-pagar-proveedor"
+           class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">Registrar pago</a>
+      {% endif %}
     </div>
   </div>
 
@@ -165,6 +169,54 @@
         Mostrando las últimas {{ ficha.compras | length }} de {{ ficha.total_compras }} compras.
         <a id="ver-todas-las-compras" href="/compras?proveedor_id={{ ficha.proveedor.id }}" class="font-medium text-primary hover:text-primary-hover">Ver todas →</a>
       </p>
+    {% endif %}
+  </section>
+
+  <section class="space-y-3" aria-labelledby="titulo-cuenta">
+    <h2 id="titulo-cuenta" class="text-base font-semibold text-slate-900 dark:text-slate-100">Cuenta a pagar</h2>
+
+    {% if ficha.movimientos %}
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+        <div class="overflow-x-auto">
+          <table id="tabla-movimientos-proveedor" class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                <th class="px-5 py-3">Fecha</th>
+                <th class="px-5 py-3">Tipo</th>
+                <th class="px-5 py-3">Referencia</th>
+                <th class="px-5 py-3">Medio</th>
+                <th class="px-5 py-3">Observación</th>
+                <th class="px-5 py-3 text-right">Importe</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for movimiento in ficha.movimientos %}
+                <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                  <td class="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ movimiento.fecha }}</td>
+                  <td class="px-5 py-3 whitespace-nowrap">
+                    {% if movimiento.tipo == 'CARGO_COMPRA' %}{{ ui.badge('Compra a crédito', 'advertencia') }}
+                    {% elif movimiento.tipo == 'PAGO' %}{{ ui.badge('Pago', 'exito') }}
+                    {% else %}{{ ui.badge('Reversa de compra', 'neutral') }}{% endif %}
+                  </td>
+                  <td class="px-5 py-3 text-slate-600 dark:text-slate-400">
+                    {% if movimiento.compra_id %}
+                      <a href="/compras/{{ movimiento.compra_id }}" class="font-medium text-primary hover:text-primary-hover">Compra #{{ movimiento.compra_id }}</a>
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="px-5 py-3 text-slate-600 dark:text-slate-400">{{ movimiento.medio_pago | title if movimiento.medio_pago else '—' }}</td>
+                  <td class="px-5 py-3 text-slate-600 dark:text-slate-400">{{ movimiento.observacion or '—' }}</td>
+                  <td class="px-5 py-3 text-right font-semibold tabular-nums
+                             {{ 'text-slate-900 dark:text-slate-100' if movimiento.tipo == 'CARGO_COMPRA' else 'text-success' }}">
+                    {{ '+' if movimiento.tipo == 'CARGO_COMPRA' else '−' }}${{ movimiento.monto_centavos | dinero_ar }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% else %}
+      {{ ui.estado_vacio("Sin movimientos", "Este proveedor todavía no tiene compras a crédito ni pagos.") }}
     {% endif %}
   </section>
 

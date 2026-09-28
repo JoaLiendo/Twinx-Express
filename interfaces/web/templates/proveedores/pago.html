@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block titulo %}Pago — {{ proveedor.nombre }}{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Registrar pago</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto space-y-6">
+
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Proveedor</p>
+    <p class="mt-1 text-base font-semibold text-slate-900 dark:text-slate-100">{{ proveedor.nombre }}</p>
+    <div class="mt-4 flex items-baseline justify-between">
+      <span class="text-sm font-medium text-slate-500 dark:text-slate-400">Saldo actual (monto máximo pagable)</span>
+      <span id="pago-saldo-actual" class="text-2xl font-bold tracking-tight tabular-nums text-error">${{ saldo | dinero_ar }}</span>
+    </div>
+  </div>
+
+  {% if not caja_abierta %}
+    <div id="aviso-caja-cerrada" class="rounded-lg bg-warning/10 border border-warning/20 text-warning text-sm font-medium px-3.5 py-2.5">
+      No hay una caja abierta: un pago en efectivo lo va a requerir. Un pago por transferencia no necesita caja.
+    </div>
+  {% endif %}
+
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <form method="post" action="/proveedores/{{ proveedor.id }}/pagos" class="space-y-5" id="form-pago-proveedor"
+          data-saldo-centavos="{{ saldo }}">
+      <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia_pago }}" />
+
+      <div>
+        <label for="pago-monto" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Monto a pagar</label>
+        <div class="flex gap-2">
+          <input type="text" inputmode="decimal" id="pago-monto" name="monto" required autofocus autocomplete="off" placeholder="0.00"
+                 class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                        focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+          <button type="button" id="pago-total" data-total="{{ saldo | dinero }}"
+                  class="shrink-0 rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-sm font-semibold px-3.5 py-2.5
+                         dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Pagar el total</button>
+        </div>
+      </div>
+
+      <div class="flex items-baseline justify-between text-sm">
+        <span class="font-medium text-slate-500 dark:text-slate-400">Saldo resultante (estimado)</span>
+        <span id="pago-saldo-resultante" aria-live="polite" class="font-semibold tabular-nums text-slate-900 dark:text-slate-100">—</span>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Medio de pago</label>
+        <select name="medio_pago" id="pago-medio"
+                class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
+                       dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+          <option value="EFECTIVO">Efectivo</option>
+          <option value="TRANSFERENCIA">Transferencia</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="pago-observacion" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Observación (opcional)</label>
+        <input type="text" id="pago-observacion" name="observacion" maxlength="250"
+               class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+      </div>
+
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" id="pago-confirmar"
+                class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm
+                       disabled:opacity-50 disabled:cursor-not-allowed">
+          Confirmar pago
+        </button>
+        <a href="/proveedores/{{ proveedor.id }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/dinero_cobro.js"></script>
+<script>
+  // Solo previsualización (UX): el servidor valida siempre `0 < monto <= saldo`, la caja abierta
+  // para efectivo y todo lo demás (services.servicio_pagos_proveedor.registrar_pago).
+  (function () {
+    const formulario = document.getElementById('form-pago-proveedor');
+    const montoInput = document.getElementById('pago-monto');
+    const resultanteEl = document.getElementById('pago-saldo-resultante');
+    const botonTotal = document.getElementById('pago-total');
+    const saldoCentavos = Number(formulario.dataset.saldoCentavos);
+
+    function formatear(centavos) {
+      const unidades = Math.floor(centavos / 100);
+      return '$' + unidades + '.' + String(centavos % 100).padStart(2, '0');
+    }
+
+    function actualizar() {
+      const texto = montoInput.value;
+      const resultado = window.DineroCobro.textoACentavos(texto);
+      resultanteEl.className = 'font-semibold tabular-nums text-slate-900 dark:text-slate-100';
+      if (!resultado.ok) {
+        resultanteEl.textContent = '—';
+        return;
+      }
+      if (resultado.centavos <= 0) {
+        resultanteEl.textContent = 'El monto debe ser mayor a cero';
+        resultanteEl.className = 'font-semibold text-error';
+      } else if (resultado.centavos > saldoCentavos) {
+        resultanteEl.textContent = 'El monto supera el saldo';
+        resultanteEl.className = 'font-semibold text-error';
+      } else {
+        resultanteEl.textContent = formatear(saldoCentavos - resultado.centavos);
+      }
+    }
+
+    montoInput.addEventListener('input', actualizar);
+    botonTotal.addEventListener('click', function () {
+      montoInput.value = botonTotal.dataset.total;
+      actualizar();
+      montoInput.focus();
+    });
+  })();
+</script>
+{% endblock %}

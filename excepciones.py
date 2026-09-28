@@ -216,6 +216,11 @@ class CompraYaAnuladaError(ErrorAplicacion):
     """La compra ya fue anulada anteriormente: no se puede anular dos veces."""
 
 
+class PagoProveedorInvalidoError(DatosInvalidosError):
+    """El pago a proveedor no cumple las reglas comerciales (V1.9-C): medio inválido, o monto
+    fuera de `0 < monto <= saldo`. Mismo criterio que `CobroInvalidoError` para clientes."""
+
+
 class CompraConPagosPosterioresError(ErrorAplicacion):
     """La compra a crédito no puede anularse: el proveedor ya tiene un pago registrado después del
     cargo que generó esta compra (V1.9-B). Regla conservadora: no se intenta imputar el pago a
