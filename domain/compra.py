@@ -8,7 +8,9 @@ una compra ya confirmada y persistida (cabecera); `DetalleCompra`, una
 línea ya persistida de esa compra.
 """
 
+import re
 from dataclasses import dataclass
+from datetime import date
 
 from excepciones import DatosInvalidosError
 
@@ -24,6 +26,38 @@ def validar_condicion_pago(condicion_pago: str) -> None:
         raise DatosInvalidosError(
             f"Condición de pago inválida: {condicion_pago!r}. Debe ser una de {sorted(CONDICIONES_PAGO_VALIDAS)}."
         )
+
+
+_FECHA_VENCIMIENTO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", re.ASCII)
+_MENSAJE_FORMATO_VENCIMIENTO = "La fecha de vencimiento debe tener el formato AAAA-MM-DD y ser una fecha real."
+
+
+def validar_fecha_vencimiento(condicion_pago: str, fecha_compra: str, fecha_vencimiento: str | None) -> None:
+    """Valida el vencimiento de una compra (V1.10-C), sin tocar la base de datos.
+
+    `fecha_compra` es la fecha que queda persistida en la compra (`AAAA-MM-DD` o `AAAA-MM-DD HH:MM:SS`):
+    solo cuenta su día. Quien invoca debe pasar ESA misma fecha y no el "hoy" de otro reloj, así el
+    dominio y el CHECK del esquema (`fecha_vencimiento >= date(fecha)`) comparan siempre lo mismo, aun si
+    el día cambia entre la validación y la escritura.
+
+    Reglas: una compra al contado no tiene vencimiento; una a crédito puede no tenerlo (`None`) o tener una
+    fecha calendario real, no anterior al día de la compra. No hay tope de días.
+
+    Raises:
+        DatosInvalidosError: si se viola alguna regla.
+    """
+    if fecha_vencimiento is None:
+        return
+    if condicion_pago != "CREDITO":
+        raise DatosInvalidosError("Una compra al contado no puede tener fecha de vencimiento.")
+    if not _FECHA_VENCIMIENTO.fullmatch(fecha_vencimiento):
+        raise DatosInvalidosError(_MENSAJE_FORMATO_VENCIMIENTO)
+    try:
+        vencimiento = date.fromisoformat(fecha_vencimiento)
+    except ValueError:
+        raise DatosInvalidosError(_MENSAJE_FORMATO_VENCIMIENTO) from None
+    if vencimiento < date.fromisoformat(fecha_compra[:10]):
+        raise DatosInvalidosError("La fecha de vencimiento no puede ser anterior a la fecha de la compra.")
 
 
 @dataclass
@@ -59,6 +93,7 @@ class Compra:
     estado: str = "ACTIVA"
     costo_trazable: bool = False
     condicion_pago: str = "CONTADO"
+    fecha_vencimiento: str | None = None
 
 
 @dataclass
@@ -97,6 +132,7 @@ class ResumenCompra:
     observaciones_anulacion: str | None = None
     fecha_anulacion: str | None = None
     condicion_pago: str = "CONTADO"
+    fecha_vencimiento: str | None = None
 
 
 @dataclass(frozen=True)

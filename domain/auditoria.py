@@ -20,6 +20,7 @@ ACCIONES_VALIDAS = frozenset(
         "AJUSTE_STOCK",
         "COMPRA_REGISTRADA",
         "COMPRA_ANULADA",
+        "VENCIMIENTO_COMPRA_MODIFICADO",
         "VENTA_ANULADA",
         "CAJA_APERTURA",
         "CAJA_CIERRE",

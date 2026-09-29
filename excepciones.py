@@ -216,6 +216,11 @@ class CompraYaAnuladaError(ErrorAplicacion):
     """La compra ya fue anulada anteriormente: no se puede anular dos veces."""
 
 
+class VencimientoNoEditableError(ErrorAplicacion):
+    """El vencimiento de la compra no puede editarse: solo existe en compras a crédito ACTIVAS
+    (ver `services.servicio_compras.actualizar_vencimiento_compra`)."""
+
+
 class PagoProveedorInvalidoError(DatosInvalidosError):
     """El pago a proveedor no cumple las reglas comerciales (V1.9-C): medio inválido, o monto
     fuera de `0 < monto <= saldo`. Mismo criterio que `CobroInvalidoError` para clientes."""

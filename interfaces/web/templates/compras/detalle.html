@@ -37,6 +37,12 @@
         <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Condición de pago</p>
         <p class="mt-1 font-medium text-slate-900 dark:text-slate-100">{{ ui.badge('A crédito', 'info') if compra.condicion_pago == 'CREDITO' else 'Contado' }}</p>
       </div>
+      {% if compra.condicion_pago == 'CREDITO' %}
+      <div>
+        <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Vencimiento</p>
+        <p id="compra-vencimiento" class="mt-1 font-medium text-slate-900 dark:text-slate-100">{{ compra.fecha_vencimiento or 'Sin vencimiento' }}</p>
+      </div>
+      {% endif %}
     </div>
     {% if compra.observaciones %}
       <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -83,6 +89,10 @@
 
   <div class="flex flex-wrap items-center justify-between gap-3">
     <a href="/compras" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver al listado</a>
+    {% if compra.estado == 'ACTIVA' and compra.condicion_pago == 'CREDITO' %}
+      <a href="/compras/{{ compra.id }}/vencimiento" id="editar-vencimiento"
+         class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 transition text-sm font-medium px-4 py-2">Editar vencimiento</a>
+    {% endif %}
     {% if compra.estado == 'ACTIVA' %}
       <a href="/compras/{{ compra.id }}/anular" id="anular-compra"
          class="inline-flex items-center gap-1.5 rounded-lg border border-error/30 text-error hover:bg-error/5 transition text-sm font-medium px-4 py-2">Anular compra</a>

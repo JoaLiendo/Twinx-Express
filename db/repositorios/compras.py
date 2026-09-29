@@ -29,7 +29,8 @@ from domain.compra import (
 from domain.reportes_operativos import ComprasDeProveedor
 
 _COLUMNAS_COMPRA = (
-    "id, proveedor_id, usuario_id, fecha, observaciones, total_centavos, estado, costo_trazable, condicion_pago"
+    "id, proveedor_id, usuario_id, fecha, observaciones, total_centavos, estado, costo_trazable, condicion_pago, "
+    "fecha_vencimiento"
 )
 _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centavos, subtotal_centavos"
 
@@ -43,7 +44,7 @@ _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centav
 # encontrando igual, porque `activo` no es parte de la condición).
 _CONSULTA_RESUMEN_BASE = """
     SELECT
-        c.id, c.fecha, c.observaciones, c.total_centavos, c.condicion_pago,
+        c.id, c.fecha, c.observaciones, c.total_centavos, c.condicion_pago, c.fecha_vencimiento,
         c.estado, c.motivo_anulacion, c.observaciones_anulacion, c.fecha_anulacion,
         p.nombre AS proveedor_nombre,
         u.nombre_completo AS usuario_nombre_completo,
@@ -69,6 +70,7 @@ def _fila_a_resumen(fila: sqlite3.Row) -> ResumenCompra:
         observaciones_anulacion=fila["observaciones_anulacion"],
         fecha_anulacion=fila["fecha_anulacion"],
         condicion_pago=fila["condicion_pago"],
+        fecha_vencimiento=fila["fecha_vencimiento"],
     )
 
 
@@ -96,6 +98,7 @@ def _fila_a_compra(fila: sqlite3.Row) -> Compra:
         estado=fila["estado"],
         costo_trazable=bool(fila["costo_trazable"]),
         condicion_pago=fila["condicion_pago"],
+        fecha_vencimiento=fila["fecha_vencimiento"],
     )
 
 
@@ -131,6 +134,13 @@ def listar_lineas_en_conexion(conexion: sqlite3.Connection, compra_id: int) -> l
     return [(fila["producto_id"], fila["cantidad"], fila["costo_unitario_centavos"]) for fila in filas]
 
 
+def obtener_fecha_hora_actual_en_conexion(conexion: sqlite3.Connection) -> str:
+    """Fecha y hora local con el mismo formato que el `DEFAULT` de `compras.fecha`. Se lee UNA vez por
+    transacción y esa misma fecha se valida y se guarda, así el dominio y el CHECK del vencimiento
+    (`fecha_vencimiento >= date(fecha)`) nunca discrepan por un cambio de día entre ambos pasos."""
+    return conexion.execute("SELECT datetime('now', 'localtime')").fetchone()[0]
+
+
 def registrar_compra_con_detalle(
     conexion: sqlite3.Connection,
     proveedor_id: int,
@@ -141,6 +151,8 @@ def registrar_compra_con_detalle(
     clave_idempotencia: str | None = None,
     eventos_costo: dict[int, int] | None = None,
     condicion_pago: str = "CONTADO",
+    fecha: str | None = None,
+    fecha_vencimiento: str | None = None,
 ) -> Compra:
     """Inserta la compra y su detalle dentro de la conexión recibida.
 
@@ -159,18 +171,22 @@ def registrar_compra_con_detalle(
     `condicion_pago` ('CONTADO' o 'CREDITO', V1.9-B) no genera acá ningún movimiento de proveedor:
     el CARGO_COMPRA de una compra a crédito lo crea `services.servicio_compras.registrar_compra`,
     en la misma transacción, después de esta inserción.
+
+    `fecha` (ver `obtener_fecha_hora_actual_en_conexion`) y `fecha_vencimiento` ya vienen validados por el
+    servicio (`domain.compra.validar_fecha_vencimiento`); el CHECK del esquema es solo la última defensa.
+    Sin `fecha` rige el `DEFAULT` de la columna.
     """
     fila_compra = conexion.execute(
         f"""
         INSERT INTO compras
             (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia, costo_trazable,
-             condicion_pago)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+             condicion_pago, fecha_vencimiento, fecha)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now', 'localtime')))
         RETURNING {_COLUMNAS_COMPRA}
         """,
         (
             proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia,
-            int(eventos_costo is not None), condicion_pago,
+            int(eventos_costo is not None), condicion_pago, fecha_vencimiento, fecha,
         ),
     ).fetchone()
 
@@ -256,6 +272,19 @@ def anular_compra_en_conexion(
         WHERE id = ? AND estado = 'ACTIVA'
         """,
         (motivo, observaciones, usuario_id, compra_id),
+    )
+    return cursor.rowcount == 1
+
+
+def actualizar_vencimiento_en_conexion(
+    conexion: sqlite3.Connection, compra_id: int, fecha_vencimiento: str | None
+) -> bool:
+    """Cambia el vencimiento de una compra a crédito `ACTIVA` (`None` lo quita). El `WHERE` es la barrera
+    final: devuelve `False` si la compra ya no cumple (anulada o al contado). Solo toca esa columna; no
+    hace *commit* (forma parte de `services.servicio_compras.actualizar_vencimiento_compra`)."""
+    cursor = conexion.execute(
+        "UPDATE compras SET fecha_vencimiento = ? WHERE id = ? AND estado = 'ACTIVA' AND condicion_pago = 'CREDITO'",
+        (fecha_vencimiento, compra_id),
     )
     return cursor.rowcount == 1
 

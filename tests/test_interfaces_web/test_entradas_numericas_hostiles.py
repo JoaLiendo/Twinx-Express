@@ -189,6 +189,8 @@ RUTAS_CON_ID = [
     ("GET", "/compras/{id}"),
     ("GET", "/compras/{id}/anular"),
     ("POST", "/compras/{id}/anular"),
+    ("GET", "/compras/{id}/vencimiento"),
+    ("POST", "/compras/{id}/vencimiento"),
     ("GET", "/proveedores/{id}"),
     ("GET", "/proveedores/{id}/editar"),
     ("GET", "/proveedores/{id}/pagos/nuevo"),

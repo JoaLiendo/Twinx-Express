@@ -114,6 +114,7 @@ def crear_compra(
     costo_unitario: list[str] = Form(...),
     clave_idempotencia: str = Form(""),
     condicion_pago: str = Form("CONTADO"),
+    fecha_vencimiento: str = Form(""),
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
     if not (len(producto_id) == len(cantidad) == len(costo_unitario)):
@@ -130,6 +131,7 @@ def crear_compra(
         observaciones=observaciones or None,
         clave_idempotencia=clave_idempotencia or None,
         condicion_pago=condicion_pago,
+        fecha_vencimiento=fecha_vencimiento or None,
     )
     return redireccionar_con_mensaje(
         f"/compras/{compra.id}", "success", f"Compra #{compra.id} registrada correctamente."
@@ -148,6 +150,45 @@ def ver_compra(request: Request, compra_id: int):
         "detalle": servicio_compras.listar_detalle_con_producto(compra_id),
     }
     return templates.TemplateResponse(request, "compras/detalle.html", contexto)
+
+
+@router.get("/compras/{compra_id}/vencimiento")
+def formulario_editar_vencimiento(request: Request, compra_id: int):
+    compra = servicio_compras.obtener_resumen_por_id(compra_id)
+    if compra is None:
+        return redireccionar_con_mensaje("/compras", "error", "La compra no existe.")
+    if compra.estado != "ACTIVA" or compra.condicion_pago != "CREDITO":
+        return redireccionar_con_mensaje(
+            f"/compras/{compra_id}", "error", "Solo se puede editar el vencimiento de una compra a crédito activa."
+        )
+
+    contexto = {**contexto_base(request), "compra": compra}
+    return templates.TemplateResponse(request, "compras/vencimiento.html", contexto)
+
+
+async def _vencimiento_del_formulario(request: Request) -> str | None:
+    """Vencimiento enviado por el formulario de edición: fecha, o `None` si el campo viene vacío (quitarlo).
+    Un `Form(...)` no distingue "vacío" de "ausente" (ambos darían 422 en un navegador que envía el campo
+    en blanco), y un POST sin el campo nunca debe borrar el dato por accidente: acá ausente es un error."""
+    formulario = await request.form()
+    valor = formulario.get("fecha_vencimiento")
+    if not isinstance(valor, str):
+        raise DatosInvalidosError("Falta la fecha de vencimiento en el formulario.")
+    return valor or None
+
+
+@router.post("/compras/{compra_id}/vencimiento")
+def accion_editar_vencimiento(
+    compra_id: int,
+    fecha_vencimiento: str | None = Depends(_vencimiento_del_formulario),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    modificada = servicio_compras.actualizar_vencimiento_compra(compra_id, fecha_vencimiento, usuario_actual.id)
+    if not modificada:
+        return redireccionar_con_mensaje(
+            f"/compras/{compra_id}", "warning", "Sin cambios: el vencimiento ya tenía ese valor."
+        )
+    return redireccionar_con_mensaje(f"/compras/{compra_id}", "success", "Vencimiento actualizado correctamente.")
 
 
 @router.get("/compras/{compra_id}/anular")

@@ -35,6 +35,7 @@ from domain.compra import (
     UltimaCompraDeProducto,
     decidir_costo_de_linea,
     validar_condicion_pago,
+    validar_fecha_vencimiento,
     validar_motivo_anulacion_compra,
 )
 from domain.auditoria import LONGITUD_MAXIMA_RESUMEN
@@ -52,6 +53,7 @@ from excepciones import (
     ProductoNoEncontradoError,
     ProveedorNoEncontradoError,
     StockInsuficienteError,
+    VencimientoNoEditableError,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,7 @@ def registrar_compra(
     observaciones: str | None = None,
     clave_idempotencia: str | None = None,
     condicion_pago: str = "CONTADO",
+    fecha_vencimiento: str | None = None,
 ) -> Compra:
     """Registra un ingreso de mercadería con sus líneas de detalle,
     incrementa el stock de cada producto y actualiza su costo vigente.
@@ -97,10 +100,14 @@ def registrar_compra(
             `CARGO_COMPRA` al proveedor, por el total, en la misma
             transacción que la compra -- nunca puede persistir una compra
             a crédito sin su cargo.
+        fecha_vencimiento: (V1.10-C) `AAAA-MM-DD` opcional, solo para compras a crédito: no puede ser
+            anterior al día de la compra ni existir en una compra al contado. Es informativa: no cambia
+            el total, el cargo ni ningún saldo. Se compara contra la fecha que queda persistida (leída
+            una vez dentro de la transacción), no contra otro reloj.
 
     Raises:
-        DatosInvalidosError: si `items` está vacío o `condicion_pago` no
-            es 'CONTADO' ni 'CREDITO'.
+        DatosInvalidosError: si `items` está vacío, `condicion_pago` no es 'CONTADO' ni 'CREDITO', o el
+            vencimiento es inválido (ver `domain.compra.validar_fecha_vencimiento`).
         ProveedorNoEncontradoError: si `proveedor_id` no corresponde a
             ningún proveedor activo.
         ProductoNoEncontradoError: si algún `producto_id` no corresponde
@@ -127,14 +134,15 @@ def registrar_compra(
                 lineas_pedidas = sorted(
                     (item.producto_id, item.cantidad, item.costo_unitario_centavos) for item in items
                 )
-                if (existente.proveedor_id, existente.observaciones, existente.condicion_pago, lineas_originales) != (
-                    proveedor_id,
-                    observaciones,
-                    condicion_pago,
-                    lineas_pedidas,
-                ):
+                if (
+                    existente.proveedor_id, existente.observaciones, existente.condicion_pago,
+                    existente.fecha_vencimiento, lineas_originales,
+                ) != (proveedor_id, observaciones, condicion_pago, fecha_vencimiento, lineas_pedidas):
                     raise ClaveIdempotenciaReutilizadaError(MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS)
                 return existente
+
+        fecha_compra = repositorio_compras.obtener_fecha_hora_actual_en_conexion(conexion)
+        validar_fecha_vencimiento(condicion_pago, fecha_compra, fecha_vencimiento)
 
         proveedor = repositorio_proveedores.obtener_por_id_en_conexion(conexion, proveedor_id)
         if proveedor is None:
@@ -185,6 +193,8 @@ def registrar_compra(
             clave_idempotencia=clave_idempotencia,
             eventos_costo=eventos_costo,
             condicion_pago=condicion_pago,
+            fecha=fecha_compra,
+            fecha_vencimiento=fecha_vencimiento,
         )
 
         # CREDITO: el cargo se crea en la MISMA transacción que la compra -- si falla (ej. una
@@ -195,7 +205,9 @@ def registrar_compra(
                 conexion, proveedor_id, compra.id, total_centavos, usuario_id
             )
 
-        sufijo_condicion = " (crédito)" if condicion_pago == "CREDITO" else ""
+        sufijo_condicion = ""
+        if condicion_pago == "CREDITO":
+            sufijo_condicion = f" (crédito, vence {fecha_vencimiento})" if fecha_vencimiento else " (crédito)"
         repositorio_auditoria.registrar_en_conexion(
             conexion,
             usuario_id,
@@ -348,6 +360,61 @@ def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuari
 
     logger.info("Compra anulada: id=%s motivo=%s usuario_id=%s", compra_id, motivo, usuario_id)
     return anulada
+
+
+def _texto_vencimiento(fecha_vencimiento: str | None) -> str:
+    return fecha_vencimiento or "sin vencimiento"
+
+
+def actualizar_vencimiento_compra(compra_id: int, fecha_vencimiento: str | None, usuario_id: int) -> bool:
+    """Asigna, cambia o quita (`None`) el vencimiento de una compra a crédito ACTIVA (V1.10-C).
+
+    Es un dato informativo: no toca el total, el `CARGO_COMPRA`, pagos, reversas, saldo, stock ni costo.
+    Por eso no se condiciona a si la deuda "ya está paga" (eso sería una estimación FIFO). Corre en
+    `BEGIN IMMEDIATE` y relee la compra dentro de la transacción, así una anulación concurrente no puede
+    dejarla editada. Se valida contra la fecha persistida de la compra (`validar_fecha_vencimiento`).
+
+    Devuelve `True` si cambió algo; con el mismo valor que ya tenía es un no-op (`False`): sin UPDATE ni
+    auditoría. Un cambio real deja una única fila `VENCIMIENTO_COMPRA_MODIFICADO`, atómica con el UPDATE.
+
+    Raises:
+        CompraNoEncontradaError: si la compra no existe.
+        VencimientoNoEditableError: si la compra es al contado o está anulada.
+        DatosInvalidosError: si la fecha es inválida o anterior al día de la compra.
+    """
+    with obtener_conexion(inmediata=True) as conexion:
+        compra = repositorio_compras.obtener_por_id_en_conexion(conexion, compra_id)
+        if compra is None:
+            raise CompraNoEncontradaError(f"No existe una compra con id {compra_id}.")
+        if compra.estado != "ACTIVA":
+            raise VencimientoNoEditableError(
+                f"La compra {compra_id} está anulada: su vencimiento ya no se puede modificar."
+            )
+        if compra.condicion_pago != "CREDITO":
+            raise VencimientoNoEditableError(
+                f"La compra {compra_id} es al contado: solo las compras a crédito tienen vencimiento."
+            )
+        validar_fecha_vencimiento(compra.condicion_pago, compra.fecha, fecha_vencimiento)
+        if fecha_vencimiento == compra.fecha_vencimiento:
+            return False
+
+        if not repositorio_compras.actualizar_vencimiento_en_conexion(conexion, compra_id, fecha_vencimiento):
+            raise VencimientoNoEditableError(f"El vencimiento de la compra {compra_id} ya no se puede modificar.")
+        repositorio_auditoria.registrar_en_conexion(
+            conexion,
+            usuario_id,
+            "VENCIMIENTO_COMPRA_MODIFICADO",
+            "COMPRA",
+            compra_id,
+            f"Compra #{compra_id}: vencimiento {_texto_vencimiento(compra.fecha_vencimiento)} "
+            f"→ {_texto_vencimiento(fecha_vencimiento)}",
+        )
+
+    logger.info(
+        "Vencimiento de compra modificado: id=%s usuario_id=%s anterior=%s nuevo=%s",
+        compra_id, usuario_id, compra.fecha_vencimiento, fecha_vencimiento,
+    )
+    return True
 
 
 def obtener_por_id(compra_id: int) -> Compra | None:

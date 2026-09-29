@@ -81,6 +81,14 @@
             </select>
           </div>
           <div>
+            <label for="fecha-vencimiento" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Fecha de vencimiento <span class="font-normal text-slate-400">(opcional, solo a crédito)</span></label>
+            <input type="date" name="fecha_vencimiento" id="fecha-vencimiento"
+                   class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
+                          disabled:opacity-50 disabled:cursor-not-allowed
+                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+          </div>
+          <div>
             <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Observaciones (opcional)</label>
             <input type="text" name="observaciones"
                    class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
@@ -131,4 +139,20 @@
 
 {% block scripts %}
 <script src="/static/js/compra_form.js"></script>
+<script>
+  // Solo UX: el vencimiento existe únicamente en compras a crédito (un campo deshabilitado no se envía).
+  // El servidor valida igual: una compra al contado con fecha se rechaza.
+  (function () {
+    const condicion = document.querySelector('select[name="condicion_pago"]');
+    const vencimiento = document.getElementById('fecha-vencimiento');
+    if (!condicion || !vencimiento) return;
+    function sincronizar() {
+      const credito = condicion.value === 'CREDITO';
+      vencimiento.disabled = !credito;
+      if (!credito) vencimiento.value = '';
+    }
+    condicion.addEventListener('change', sincronizar);
+    sincronizar();
+  })();
+</script>
 {% endblock %}
