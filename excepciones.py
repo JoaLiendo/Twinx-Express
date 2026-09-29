@@ -227,6 +227,13 @@ class CompraConPagosPosterioresError(ErrorAplicacion):
     ninguna compra en particular ni decidir si correspondía a otra -- se bloquea la anulación."""
 
 
+class LibroProveedorInconsistenteError(ErrorAplicacion):
+    """El libro de cuenta a pagar de un proveedor contiene hechos imposibles bajo las reglas del sistema
+    (V1.10-B): cargo o reversa duplicados, reversa sin cargo o de una compra ya pagada en parte, pago que
+    supera el saldo de ese punto causal, ids desordenados o montos inválidos. El motor de lectura de
+    `domain.cuentas_a_pagar` nunca lo corrige ni lo oculta: lo informa."""
+
+
 class ClienteNoEncontradoError(ErrorAplicacion):
     """No existe un cliente con el id solicitado."""
 
