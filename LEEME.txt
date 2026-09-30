@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.9.0
+Twinx Express 1.10.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -612,3 +612,41 @@ d) AL ACTUALIZAR DESDE LA VERSION 1.8
    (25): tus datos quedan tal cual. Las compras que ya tenias cargadas
    quedan como CONTADO y no aparece ninguna deuda por compras viejas. Si
    algo sale mal, segui el punto 7.
+
+19) NOVEDADES DE LA VERSION 1.10: VENCIMIENTOS Y DEUDA A PROVEEDORES
+----------------------------------------------------------------------------------
+
+a) FECHA DE VENCIMIENTO EN COMPRAS A CREDITO
+   Al cargar una compra a credito podes indicar cuando vence (es
+   opcional). Despues la podes cambiar o quitar con "Editar vencimiento"
+   desde el detalle de la compra; queda registrado en la auditoria. Es un
+   dato informativo: no cambia el total, el stock ni lo que le debes al
+   proveedor. En el listado de compras aparece la columna "Vence".
+
+b) FICHA DEL PROVEEDOR: DEUDA Y VENCIMIENTOS
+   La ficha muestra cuanto le debes (saldo total, el real), cuanto esta
+   vencido, cuanto vence en los proximos 7 dias, cuanto esta vigente y
+   cuanto no tiene vencimiento, ademas del proximo vencimiento y las
+   compras a credito que siguen abiertas.
+
+c) IMPORTANTE: ESTOS IMPORTES SON ESTIMADOS
+   Los pagos a un proveedor NO se asignan a una factura o compra
+   concreta. Para repartir lo que debes entre las compras, Twinx Express
+   supone que cada pago cubre primero la compra mas antigua (FIFO). Por
+   eso el pendiente de cada compra y los importes vencido / proximo /
+   vigente figuran como "Estimado por antiguedad (FIFO)". Lo unico real y
+   exacto es el saldo total del proveedor.
+
+d) REPORTE DE DEUDA A PROVEEDORES (solo el dueño)
+   En Reportes > Deuda a proveedores ves, por proveedor, el saldo y su
+   reparto por vencimiento, con filtros por proveedor y situacion, y el
+   boton "Exportar CSV". Solo aparecen proveedores con deuda. Si la
+   cuenta de algun proveedor tiene datos inconsistentes, se marca como
+   "Datos inconsistentes" y no se muestran importes por vencimiento para
+   ese proveedor: no se corrige nada automaticamente.
+
+e) AL ACTUALIZAR DESDE LA VERSION 1.9
+   KioscoApp crea automaticamente un backup y aplica 1 migracion nueva
+   (26): tus datos quedan tal cual. Las compras que ya tenias cargadas
+   quedan sin vencimiento (no se inventa ninguna fecha) y los saldos de
+   tus proveedores no cambian. Si algo sale mal, segui el punto 7.

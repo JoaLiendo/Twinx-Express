@@ -25,8 +25,8 @@ def _cookies_de_dueno() -> dict[str, str]:
     return {NOMBRE_COOKIE_SESION: servicio_auth.iniciar_sesion("ana", "clave-correcta-123").token}
 
 
-def test_la_version_definida_es_1_9_0():
-    assert VERSION == "1.9.0"
+def test_la_version_definida_es_1_10_0():
+    assert VERSION == "1.10.0"
     assert NOMBRE_APLICACION == "Twinx Express"
     assert re.fullmatch(r"\d+\.\d+\.\d+", VERSION)
 

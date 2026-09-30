@@ -110,6 +110,13 @@ class TestFichaResumen:
 
         assert 'id="tabla-compras-proveedor"' in html and 'id="tabla-movimientos-proveedor"' in html
 
+    def test_los_titulos_de_seccion_no_se_repiten(self, e):
+        _comprar(e, e.a, 10000, dias=3)
+
+        titulos = re.findall(r"<h2[^>]*>(.*?)</h2>", _ficha(e), re.S)
+
+        assert len(titulos) == len(set(titulos)), titulos
+
     def test_nunca_habla_de_saldo_de_la_compra(self, e):
         _comprar(e, e.a, 10000, dias=3)
 

@@ -569,6 +569,35 @@ Una migración nueva (025, aditiva; 25 en total), sin dependencias nuevas.
 quedan intactos, las compras existentes quedan `CONTADO` y `movimientos_proveedor` arranca vacío
 (sin deuda retroactiva).
 
+## Vencimientos y deuda a proveedores (V1.10)
+
+Una migración nueva (026, aditiva; 26 en total), sin dependencias nuevas.
+
+- **`compras.fecha_vencimiento`** (`AAAA-MM-DD`, opcional, solo compras a crédito; nunca anterior al
+  día de la compra). Alta al registrar la compra y edición auditada
+  (`VENCIMIENTO_COMPRA_MODIFICADO`) mientras la compra esté activa. Es informativa: no toca el
+  total, el stock, el costo ni el libro. Las compras existentes quedan `NULL`: no se infiere ninguna
+  fecha.
+- **FIFO causal de lectura** (`domain/cuentas_a_pagar.py`). Los pagos a proveedor no se imputan a
+  compras concretas (ver V1.9). Para repartir el saldo entre compras se reproduce el libro en orden
+  causal (por `id`) y cada pago cubre primero lo más antiguo. El resultado es una **estimación**
+  ("Estimado por antigüedad (FIFO)"): no se persiste y no es una imputación contable real. El saldo
+  total del proveedor sigue siendo el agregado real del libro.
+- **Clasificación** por compra: `VENCIDA`, `PROXIMA_A_VENCER` (hoy a hoy + 7 días), `PENDIENTE`
+  (vigente), `SIN_VENCIMIENTO`, `PAGADA`, `ANULADA`; y buckets por proveedor que suman exactamente el
+  saldo.
+- **Reporte `/reportes/deuda-proveedores`** (solo OWNER) con filtros por proveedor y situación y
+  exportación CSV (`/reportes/deuda-proveedores/exportar`). Solo lista proveedores con deuda. Un libro
+  imposible se informa como «Datos inconsistentes», sin cifras FIFO y sin modificar datos.
+- **Integración**: la ficha del proveedor muestra saldo, vencida/próxima/vigente/sin vencimiento,
+  próximo vencimiento y compras a crédito abiertas con su pendiente estimado; el listado de compras
+  tiene la columna «Vence» y el detalle muestra el pendiente estimado de compras a crédito activas.
+- Fuera de alcance: órdenes de compra, imputación persistente de pagos a compras, notificaciones,
+  saldos a favor y devoluciones a proveedor.
+
+**Actualizar desde V1.9.** Se crea un backup automático y se aplica la migración 026; los datos quedan
+intactos, las compras existentes quedan sin vencimiento y los saldos de proveedores no cambian.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -591,5 +620,6 @@ quedan intactos, las compras existentes quedan `CONTADO` y `movimientos_proveedo
 - [x] Rotación de stock, anulación segura de compras y movimientos de stock por producto (V1.7, ver «Rotación, anulación de compras y movimientos de stock (V1.7)»)
 - [x] Compras paginadas y filtrables, historial por producto, exportaciones CSV operativas y protección contra inyección de fórmulas (V1.8, ver «Compras operativas, exportaciones y seguridad (V1.8)»)
 - [x] Cuentas a pagar a proveedores: compras CONTADO/CREDITO, saldo, anulación con reversa y pagos en efectivo/transferencia (V1.9, ver «Cuentas a pagar a proveedores (V1.9)»)
+- [x] Vencimientos de compras a crédito, deuda a proveedores estimada por antigüedad (FIFO), reporte y CSV (V1.10, ver «Vencimientos y deuda a proveedores (V1.10)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado
