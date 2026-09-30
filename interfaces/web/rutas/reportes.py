@@ -10,13 +10,21 @@ Los reportes operativos (V1.6-C: caja por sesión, compras por proveedor, cuenta
 bajo `/reportes/...`, con la misma protección (solo OWNER) y también solo de lectura.
 """
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Request
 
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, respuesta_csv
-from services import servicio_exportacion_csv, servicio_proveedores, servicio_reportes, servicio_stock
+from services import (
+    servicio_deuda_proveedores,
+    servicio_exportacion_csv,
+    servicio_proveedores,
+    servicio_reportes,
+    servicio_stock,
+)
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
@@ -53,15 +61,19 @@ def ver_reporte_caja(request: Request, fecha_desde: str | None = None, fecha_has
     return templates.TemplateResponse(request, "reportes/caja.html", contexto)
 
 
+def _id_proveedor(proveedor_id: str) -> int | None:
+    texto_proveedor = proveedor_id.strip()
+    try:
+        return int(texto_proveedor) if texto_proveedor else None
+    except ValueError:
+        raise DatosInvalidosError("El proveedor elegido no es válido.") from None
+
+
 @router.get("/reportes/compras")
 def ver_reporte_compras(
     request: Request, fecha_desde: str | None = None, fecha_hasta: str | None = None, proveedor_id: str = ""
 ):
-    texto_proveedor = proveedor_id.strip()
-    try:
-        id_proveedor = int(texto_proveedor) if texto_proveedor else None
-    except ValueError:
-        raise DatosInvalidosError("El proveedor elegido no es válido.") from None
+    id_proveedor = _id_proveedor(proveedor_id)
     reporte = servicio_reportes.generar_reporte_compras(**_periodo(fecha_desde, fecha_hasta), proveedor_id=id_proveedor)
     contexto = {
         **contexto_base(request),
@@ -100,3 +112,26 @@ def ver_reporte_rotacion(request: Request, fecha_desde: str | None = None, fecha
     reporte = servicio_reportes.generar_reporte_rotacion(**_periodo(fecha_desde, fecha_hasta))
     contexto = {**contexto_base(request), "reporte": reporte, "seccion": "rotacion"}
     return templates.TemplateResponse(request, "reportes/rotacion.html", contexto)
+
+
+@router.get("/reportes/deuda-proveedores")
+def ver_reporte_deuda_proveedores(request: Request, proveedor_id: str = "", situacion: str = ""):
+    reporte = servicio_deuda_proveedores.generar_reporte_deuda_proveedores(_id_proveedor(proveedor_id), situacion)
+    filtros = {clave: valor for clave, valor in (("proveedor_id", reporte.proveedor_id), ("situacion", reporte.situacion)) if valor}
+    contexto = {
+        **contexto_base(request),
+        "reporte": reporte,
+        "proveedores": servicio_proveedores.listar_todos(),
+        "criterio_fifo": servicio_deuda_proveedores.CRITERIO_FIFO,
+        "url_exportar": "/reportes/deuda-proveedores/exportar" + (f"?{urlencode(filtros)}" if filtros else ""),
+        "seccion": "deuda-proveedores",
+    }
+    return templates.TemplateResponse(request, "reportes/deuda_proveedores.html", contexto)
+
+
+@router.get("/reportes/deuda-proveedores/exportar")
+def exportar_deuda_proveedores(proveedor_id: str = "", situacion: str = ""):
+    """CSV del mismo dataset de la pantalla de deuda a proveedores (mismos filtros y mismo servicio)."""
+    return respuesta_csv(
+        servicio_exportacion_csv.csv_deuda_proveedores(_id_proveedor(proveedor_id), situacion), "deuda_proveedores"
+    )

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Reporte de deuda a proveedores{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Reportes · Deuda a proveedores</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+  {% include "reportes/_navegacion.html" %}
+
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <form method="get" action="/reportes/deuda-proveedores" class="flex flex-wrap items-end gap-2">
+      <div>
+        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Proveedor</label>
+        <select name="proveedor_id" class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          <option value="">Todos</option>
+          {% for proveedor in proveedores %}
+            <option value="{{ proveedor.id }}"{{ ' selected' if reporte.proveedor_id == proveedor.id else '' }}>{{ proveedor.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Situación</label>
+        <select name="situacion" class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          {% for valor, etiqueta in [('', 'Todas'), ('vencida', 'Con deuda vencida'), ('proxima', 'Con próxima a vencer'), ('sin_vencimiento', 'Con deuda sin vencimiento')] %}
+            <option value="{{ valor }}"{{ ' selected' if reporte.situacion == valor else '' }}>{{ etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">Filtrar</button>
+    </form>
+    <a href="{{ url_exportar }}" data-accion="exportar-csv"
+       class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-medium px-4 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">Exportar CSV</a>
+  </div>
+
+  <p class="text-xs text-slate-500 dark:text-slate-400" id="nota-fifo">
+    El saldo total es el del libro del proveedor. Vencida, próxima, vigente y sin vencimiento: <strong>{{ criterio_fifo }}</strong>
+    (se supone que cada pago cubre primero lo más antiguo; no es una imputación real de pagos a compras).
+    Solo se listan proveedores con deuda.
+  </p>
+
+  {% if reporte.cantidad_inconsistentes %}
+    <p class="text-sm rounded-lg border border-error/30 bg-error/10 text-error px-4 py-3" id="aviso-inconsistentes" role="alert">
+      {{ reporte.cantidad_inconsistentes }} proveedor(es) con datos inconsistentes en su cuenta: no se muestran importes por vencimiento y no se incluyen en los totales.
+    </p>
+  {% endif %}
+
+  {% if reporte.filas %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto">
+        <table id="tabla-deuda-proveedores" class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-3">Proveedor</th>
+              <th class="px-5 py-3 text-right">Saldo total</th>
+              <th class="px-5 py-3 text-right">Vencida</th>
+              <th class="px-5 py-3 text-right">Próxima</th>
+              <th class="px-5 py-3 text-right">Vigente</th>
+              <th class="px-5 py-3 text-right">Sin vencimiento</th>
+              <th class="px-5 py-3">Última compra</th>
+              <th class="px-5 py-3">Último pago</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for fila in reporte.filas %}
+              <tr data-proveedor="{{ fila.proveedor_id }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                <td class="px-5 py-3 font-medium text-slate-900 dark:text-slate-100">
+                  <a href="/proveedores/{{ fila.proveedor_id }}" class="text-primary hover:text-primary-hover">{{ fila.nombre }}</a>
+                  {% if not fila.activo %}{{ ui.badge('Inactivo', 'neutral') }}{% endif %}
+                </td>
+                <td class="px-5 py-3 text-right font-semibold tabular-nums">{% if fila.saldo_total_centavos is none %}—{% else %}${{ fila.saldo_total_centavos | dinero_ar }}{% endif %}</td>
+                {% if fila.consistente %}
+                  <td class="px-5 py-3 text-right tabular-nums {{ 'text-error font-semibold' if fila.vencida_centavos else '' }}">${{ fila.vencida_centavos | dinero_ar }}</td>
+                  <td class="px-5 py-3 text-right tabular-nums">${{ fila.proxima_centavos | dinero_ar }}</td>
+                  <td class="px-5 py-3 text-right tabular-nums">${{ fila.vigente_centavos | dinero_ar }}</td>
+                  <td class="px-5 py-3 text-right tabular-nums">${{ fila.sin_vencimiento_centavos | dinero_ar }}</td>
+                {% else %}
+                  <td class="px-5 py-3 text-right" colspan="4">{{ ui.badge('Datos inconsistentes', 'alerta') }}</td>
+                {% endif %}
+                <td class="px-5 py-3 tabular-nums">{{ fila.ultima_compra or '—' }}</td>
+                <td class="px-5 py-3 tabular-nums">{{ fila.ultimo_pago or '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="border-t border-slate-200 dark:border-slate-700 font-semibold">
+              <td class="px-5 py-3">Total</td>
+              <td class="px-5 py-3 text-right tabular-nums" id="total-saldo">${{ reporte.total_saldo_centavos | dinero_ar }}</td>
+              <td class="px-5 py-3 text-right tabular-nums" id="total-vencida">${{ reporte.total_vencida_centavos | dinero_ar }}</td>
+              <td class="px-5 py-3 text-right tabular-nums" id="total-proxima">${{ reporte.total_proxima_centavos | dinero_ar }}</td>
+              <td class="px-5 py-3 text-right tabular-nums" id="total-vigente">${{ reporte.total_vigente_centavos | dinero_ar }}</td>
+              <td class="px-5 py-3 text-right tabular-nums" id="total-sin-vencimiento">${{ reporte.total_sin_vencimiento_centavos | dinero_ar }}</td>
+              <td class="px-5 py-3" colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    {{ ui.estado_vacio("Sin deuda a proveedores", "Ningún proveedor tiene deuda con el proveedor y la situación elegidos.") }}
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,5 +1,5 @@
 """Exportaciones CSV de los datos operativos (V1.8-B): compras, ventas, deuda de clientes, rotación de stock
-y kardex.
+y kardex; y (V1.10-D) deuda a proveedores.
 
 Política uniforme, la misma del catálogo de productos (`services.servicio_exportacion`): UTF-8 con BOM
 (`utf-8-sig`, para que Excel en Windows respete tildes y ñ), separador coma y quoting del módulo `csv`
@@ -21,7 +21,13 @@ from collections.abc import Iterable, Sequence
 from domain.celdas_seguras import Numero, neutralizar_texto
 from domain.dinero import centavos_a_texto
 from domain.reportes_operativos import ProductoRotacion
-from services import servicio_compras, servicio_movimientos_stock, servicio_reportes, servicio_ventas
+from services import (
+    servicio_compras,
+    servicio_deuda_proveedores,
+    servicio_movimientos_stock,
+    servicio_reportes,
+    servicio_ventas,
+)
 
 
 def numero(valor: int | None) -> Numero:
@@ -112,6 +118,31 @@ def csv_deuda_clientes() -> bytes:
         (
             (numero(fila.cliente_id), fila.cliente_nombre, "ACTIVO" if fila.activo else "INACTIVO", dinero(fila.saldo_centavos))
             for fila in servicio_reportes.generar_reporte_deuda().filas
+        ),
+    )
+
+
+COLUMNAS_DEUDA_PROVEEDORES = (
+    "proveedor_id", "proveedor", "saldo", "vencida", "proxima", "vigente", "sin_vencimiento", "ultima_compra",
+    "ultimo_pago", "criterio",
+)
+
+
+def csv_deuda_proveedores(proveedor_id: int | None, situacion: str | None) -> bytes:
+    """El mismo dataset de `/reportes/deuda-proveedores` con sus filtros. `criterio` aclara que el reparto por
+    vencimiento es una estimación FIFO; una fila de libro inconsistente sale sin importes FIFO (y sin saldo si
+    este tampoco es creíble) y con `criterio` = "Datos inconsistentes", nunca con cifras inventadas."""
+    reporte = servicio_deuda_proveedores.generar_reporte_deuda_proveedores(proveedor_id, situacion)
+    return generar_csv(
+        COLUMNAS_DEUDA_PROVEEDORES,
+        (
+            (
+                numero(fila.proveedor_id), fila.nombre, dinero(fila.saldo_total_centavos), dinero(fila.vencida_centavos),
+                dinero(fila.proxima_centavos), dinero(fila.vigente_centavos), dinero(fila.sin_vencimiento_centavos),
+                fila.ultima_compra, fila.ultimo_pago,
+                servicio_deuda_proveedores.CRITERIO_FIFO if fila.consistente else servicio_deuda_proveedores.MARCA_INCONSISTENTE,
+            )
+            for fila in reporte.filas
         ),
     )
 
