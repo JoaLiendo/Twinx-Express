@@ -43,6 +43,82 @@
     </dl>
   </div>
 
+{% set etiqueta_estado = {'VENCIDA': ('Vencida', 'alerta'), 'PROXIMA_A_VENCER': ('Próxima a vencer', 'advertencia'), 'PENDIENTE': ('Vigente', 'info'), 'SIN_VENCIMIENTO': ('Sin vencimiento', 'neutral')} %}
+  {% set cuenta = ficha.cuenta %}
+  <section class="space-y-3" id="cuenta-a-pagar" aria-labelledby="titulo-cuenta-a-pagar">
+    <h2 id="titulo-cuenta-a-pagar" class="text-base font-semibold text-slate-900 dark:text-slate-100">Cuenta a pagar</h2>
+    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <dl class="grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-sm">
+        <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Saldo total</dt>
+          <dd id="cuenta-saldo" class="text-lg font-semibold tabular-nums {{ 'text-error' if cuenta.saldo_centavos > 0 else 'text-slate-800 dark:text-slate-200' }}">{% if cuenta.saldo_confiable %}${{ cuenta.saldo_centavos | dinero_ar }}{% else %}—{% endif %}</dd></div>
+        {% if cuenta.consistente %}
+          <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Vencida</dt>
+            <dd id="cuenta-vencida" class="font-semibold tabular-nums {{ 'text-error' if cuenta.vencida_centavos else 'text-slate-800 dark:text-slate-200' }}">${{ cuenta.vencida_centavos | dinero_ar }}</dd></div>
+          <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Próxima a vencer (7 días)</dt>
+            <dd id="cuenta-proxima" class="font-semibold tabular-nums text-slate-800 dark:text-slate-200">${{ cuenta.proxima_centavos | dinero_ar }}</dd></div>
+          <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Vigente</dt>
+            <dd id="cuenta-vigente" class="font-semibold tabular-nums text-slate-800 dark:text-slate-200">${{ cuenta.vigente_centavos | dinero_ar }}</dd></div>
+          <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Sin vencimiento</dt>
+            <dd id="cuenta-sin-vencimiento" class="font-semibold tabular-nums text-slate-800 dark:text-slate-200">${{ cuenta.sin_vencimiento_centavos | dinero_ar }}</dd></div>
+          <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Próximo vencimiento</dt>
+            <dd id="cuenta-proximo-vencimiento" class="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{% if cuenta.proximo_vencimiento %}{{ cuenta.proximo_vencimiento.fecha.isoformat() }} · ${{ cuenta.proximo_vencimiento.importe_centavos | dinero_ar }}{% else %}Sin próximo vencimiento{% endif %}</dd></div>
+        {% endif %}
+      </dl>
+      {% if cuenta.consistente %}
+        <p class="mt-4 text-xs text-slate-500 dark:text-slate-400" id="nota-fifo-cuenta">
+          El saldo total es el real. Los importes por vencimiento y por compra son <strong>{{ criterio_fifo }}</strong>:
+          se supone que cada pago cubre primero lo más antiguo.
+        </p>
+      {% else %}
+        <p id="cuenta-inconsistente" role="alert" class="mt-4 text-sm rounded-lg border border-error/30 bg-error/10 text-error px-4 py-3">
+          Datos inconsistentes: el libro de este proveedor tiene movimientos imposibles, por eso no se muestran importes por vencimiento ni compras abiertas.
+          {% if cuenta.saldo_confiable %}El saldo total sigue siendo el del libro.{% endif %}
+        </p>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if cuenta.consistente %}
+  <section class="space-y-3" id="compras-abiertas" aria-labelledby="titulo-compras-abiertas">
+    <h2 id="titulo-compras-abiertas" class="text-base font-semibold text-slate-900 dark:text-slate-100">Compras a crédito abiertas</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400">{{ criterio_fifo }}: el pendiente de cada compra es una estimación, no una imputación real de pagos.</p>
+    {% if cuenta.compras_abiertas %}
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+        <div class="overflow-x-auto">
+          <table id="tabla-compras-abiertas" class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                <th class="px-5 py-3">Compra #</th>
+                <th class="px-5 py-3">Fecha</th>
+                <th class="px-5 py-3 text-right">Total</th>
+                <th class="px-5 py-3">Vencimiento</th>
+                <th class="px-5 py-3 text-right">Pendiente estimado</th>
+                <th class="px-5 py-3">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for abierta in cuenta.compras_abiertas %}
+                {% set etiqueta, variante = etiqueta_estado[abierta.estado_vencimiento] %}
+                <tr data-compra="{{ abierta.compra_id }}" data-estado="{{ abierta.estado_vencimiento }}" class="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer dark:border-slate-800 dark:hover:bg-slate-800/60"
+                    onclick="window.location.href='/compras/{{ abierta.compra_id }}'">
+                  <td data-columna="compra" class="px-5 py-3 font-medium"><a href="/compras/{{ abierta.compra_id }}" class="text-primary hover:text-primary-hover">#{{ abierta.compra_id }}</a></td>
+                  <td data-columna="fecha" class="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ abierta.fecha }}</td>
+                  <td data-columna="total" class="px-5 py-3 text-right tabular-nums">${{ abierta.total_centavos | dinero_ar }}</td>
+                  <td data-columna="vencimiento" class="px-5 py-3 whitespace-nowrap">{{ abierta.fecha_vencimiento.isoformat() if abierta.fecha_vencimiento else 'Sin vencimiento' }}</td>
+                  <td data-columna="pendiente" class="px-5 py-3 text-right font-semibold tabular-nums">${{ abierta.pendiente_estimado_centavos | dinero_ar }}</td>
+                  <td data-columna="estado" class="px-5 py-3">{{ ui.badge(etiqueta, variante) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% else %}
+      <p id="sin-compras-abiertas" class="text-sm text-slate-500 dark:text-slate-400">Sin compras a crédito abiertas.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="space-y-3" aria-labelledby="titulo-productos">
     <h2 id="titulo-productos" class="text-base font-semibold text-slate-900 dark:text-slate-100">Productos que provee</h2>
 

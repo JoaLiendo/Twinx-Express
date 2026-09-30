@@ -48,8 +48,9 @@ def leer_libros_de_proveedores(proveedor_id: int | None = None) -> list[LibroDeP
                 MovimientoLibro(fila["id"], fila["tipo"], fila["compra_id"], fila["monto_centavos"])
             )
         compras: dict[int, list[CompraParaVencimiento]] = defaultdict(list)
+        fechas: dict[int, dict[int, str]] = defaultdict(dict)
         for fila in conexion.execute(
-            "SELECT id, proveedor_id, estado, total_centavos, fecha_vencimiento FROM compras"
+            "SELECT id, proveedor_id, estado, total_centavos, fecha_vencimiento, substr(fecha, 1, 10) AS dia FROM compras"
             " WHERE condicion_pago = 'CREDITO' AND (? IS NULL OR proveedor_id = ?) ORDER BY id",
             (proveedor_id, proveedor_id),
         ):
@@ -57,6 +58,7 @@ def leer_libros_de_proveedores(proveedor_id: int | None = None) -> list[LibroDeP
             compras[fila["proveedor_id"]].append(
                 CompraParaVencimiento(fila["id"], vencimiento, fila["estado"], fila["total_centavos"])
             )
+            fechas[fila["proveedor_id"]][fila["id"]] = fila["dia"]
         ultimas_compras = dict(conexion.execute(
             "SELECT proveedor_id, substr(fecha, 1, 10) FROM compras WHERE id IN"
             " (SELECT MAX(id) FROM compras WHERE estado = 'ACTIVA' AND (? IS NULL OR proveedor_id = ?)"
@@ -79,6 +81,7 @@ def leer_libros_de_proveedores(proveedor_id: int | None = None) -> list[LibroDeP
             compras=tuple(compras[fila["id"]]),
             ultima_compra=ultimas_compras.get(fila["id"]),
             ultimo_pago=ultimos_pagos.get(fila["id"]),
+            fechas_compras=fechas[fila["id"]],
         )
         for fila in proveedores
     ]

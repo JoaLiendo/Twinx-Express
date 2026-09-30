@@ -18,7 +18,7 @@ from excepciones import ProveedorNoEncontradoError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
-from services import servicio_caja, servicio_pagos_proveedor, servicio_proveedores, servicio_stock
+from services import servicio_caja, servicio_deuda_proveedores, servicio_pagos_proveedor, servicio_proveedores, servicio_stock
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
@@ -132,6 +132,7 @@ def ver_proveedor(request: Request, proveedor_id: int):
         "ficha": ficha,
         "productos_disponibles": [p for p in servicio_stock.listar_todos() if p.id not in ids_vinculados],
         "clave_idempotencia_pago": nueva_clave_idempotencia(),
+        "criterio_fifo": servicio_deuda_proveedores.CRITERIO_FIFO,
     }
     return templates.TemplateResponse(request, "proveedores/ficha.html", contexto)
 

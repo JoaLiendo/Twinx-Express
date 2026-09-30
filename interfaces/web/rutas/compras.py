@@ -25,7 +25,13 @@ from interfaces.web.utilidades import (
     redireccionar_con_mensaje,
     respuesta_csv,
 )
-from services import servicio_compras, servicio_exportacion_csv, servicio_proveedores, servicio_stock
+from services import (
+    servicio_compras,
+    servicio_deuda_proveedores,
+    servicio_exportacion_csv,
+    servicio_proveedores,
+    servicio_stock,
+)
 from services.servicio_stock import ListaReposicion
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
@@ -144,10 +150,16 @@ def ver_compra(request: Request, compra_id: int):
     if compra is None:
         return redireccionar_con_mensaje("/compras", "error", "La compra no existe.")
 
+    cuenta = None
+    if compra.condicion_pago == "CREDITO" and compra.estado == "ACTIVA":
+        cuenta = servicio_deuda_proveedores.generar_cuenta_proveedor(servicio_compras.obtener_por_id(compra_id).proveedor_id)
     contexto = {
         **contexto_base(request),
         "compra": compra,
         "detalle": servicio_compras.listar_detalle_con_producto(compra_id),
+        "cuenta": cuenta,
+        "pendiente_estimado": cuenta.pendiente_de(compra_id) if cuenta else None,
+        "criterio_fifo": servicio_deuda_proveedores.CRITERIO_FIFO,
     }
     return templates.TemplateResponse(request, "compras/detalle.html", contexto)
 

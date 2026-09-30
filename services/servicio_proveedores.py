@@ -19,6 +19,7 @@ from db.repositorios import productos as repositorio_productos
 from db.repositorios import proveedores as repositorio_proveedores
 from db.repositorios import usuarios as repositorio_usuarios
 from domain.compra import ResumenCompra
+from domain.deuda_proveedores import CuentaProveedor, cuenta_vacia
 from domain.producto import Producto
 from domain.producto_proveedor import ProductoDeProveedor, VinculoProveedor, normalizar_codigo_proveedor
 from domain.proveedor import MovimientoProveedor, Proveedor
@@ -29,6 +30,7 @@ from excepciones import (
     VinculoProveedorExistenteError,
     VinculoProveedorNoEncontradoError,
 )
+from services import servicio_deuda_proveedores
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,8 @@ class FichaProveedor:
     `saldo_centavos` (V1.9-B) es la deuda pendiente por compras a crédito, derivada del libro
     `movimientos_proveedor` (`SUM(CARGO_COMPRA) - SUM(PAGO) - SUM(REVERSA_COMPRA)`), nunca una
     columna persistida: `0` si el proveedor no tiene ningún movimiento. `movimientos` (V1.9-C) es
-    ese mismo libro completo, del más reciente al más antiguo."""
+    ese mismo libro completo, del más reciente al más antiguo. `cuenta` (V1.10-E) es el resumen de cuentas a
+    pagar (saldo real y estimaciones FIFO); `saldo_centavos` sale de esa misma lectura consistente."""
 
     proveedor: Proveedor
     productos: list[ProductoDeProveedor]
@@ -55,6 +58,7 @@ class FichaProveedor:
     total_compras: int = 0
     saldo_centavos: int = 0
     movimientos: list[MovimientoProveedor] = field(default_factory=list)
+    cuenta: CuentaProveedor = field(default_factory=cuenta_vacia)
 
 
 def _auditar(
@@ -129,13 +133,15 @@ def obtener_ficha(proveedor_id: int) -> FichaProveedor:
     proveedor = repositorio_proveedores.obtener_por_id_incluyendo_inactivos(proveedor_id)
     if proveedor is None:
         raise ProveedorNoEncontradoError(f"No existe un proveedor con id {proveedor_id}.")
+    cuenta = servicio_deuda_proveedores.generar_cuenta_proveedor(proveedor_id)
     return FichaProveedor(
         proveedor=proveedor,
         productos=repositorio_producto_proveedor.listar_por_proveedor(proveedor_id),
         compras=repositorio_compras.listar_resumen(proveedor_id, limite=COMPRAS_EN_FICHA),
         total_compras=repositorio_compras.contar_resumen(proveedor_id),
-        saldo_centavos=repositorio_movimientos_proveedor.obtener_saldo(proveedor_id),
+        saldo_centavos=cuenta.saldo_centavos,
         movimientos=repositorio_movimientos_proveedor.listar_movimientos(proveedor_id),
+        cuenta=cuenta,
     )
 
 

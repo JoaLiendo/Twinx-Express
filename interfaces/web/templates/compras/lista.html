@@ -89,6 +89,7 @@
               <th class="px-5 py-3">Proveedor</th>
               <th class="px-5 py-3">Usuario</th>
               <th class="px-5 py-3">Condición</th>
+              <th class="px-5 py-3">Vence</th>
               <th class="px-5 py-3 text-right">Líneas</th>
               <th class="px-5 py-3 text-right">Total</th>
             </tr>
@@ -102,6 +103,7 @@
                 <td class="px-5 py-3.5 font-medium text-slate-800 dark:text-slate-200">{{ compra.proveedor_nombre }}</td>
                 <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ compra.usuario_nombre_completo }}</td>
                 <td class="px-5 py-3.5">{{ ui.badge('A crédito', 'info') if compra.condicion_pago == 'CREDITO' else '—' }}</td>
+                <td data-columna="vence" class="px-5 py-3.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{% if compra.condicion_pago == 'CREDITO' %}{{ compra.fecha_vencimiento or 'Sin vencimiento' }}{% else %}—{% endif %}</td>
                 <td class="px-5 py-3.5 text-right text-slate-600 dark:text-slate-400 tabular-nums">{{ compra.cantidad_lineas }}</td>
                 <td class="px-5 py-3.5 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">${{ compra.total_centavos | dinero_ar }}</td>
               </tr>

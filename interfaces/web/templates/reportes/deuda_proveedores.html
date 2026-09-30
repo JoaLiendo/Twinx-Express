@@ -45,6 +45,12 @@
     </p>
   {% endif %}
 
+  {% if reporte.excluidos_por_inconsistencia %}
+    <p class="text-sm rounded-lg border border-error/30 bg-error/10 text-error px-4 py-3" id="aviso-excluidos" role="alert">
+      {{ reporte.excluidos_por_inconsistencia }} proveedor(es) con datos inconsistentes no se pudieron clasificar y quedaron fuera de este filtro. Quitá el filtro de situación para verlos.
+    </p>
+  {% endif %}
+
   {% if reporte.filas %}
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
       <div class="overflow-x-auto">

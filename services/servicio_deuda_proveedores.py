@@ -11,8 +11,12 @@ from datetime import date
 
 from db.repositorios import cuentas_a_pagar as repositorio_cuentas_a_pagar
 from domain.deuda_proveedores import (
+    CuentaProveedor,
     ReporteDeudaProveedores,
+    construir_cuenta,
     construir_fila,
+    cuenta_inconsistente,
+    cuenta_vacia,
     cumple_situacion,
     es_listable,
     fila_inconsistente,
@@ -40,12 +44,35 @@ def generar_reporte_deuda_proveedores(
     situacion_valida = validar_situacion(situacion)
     hoy = hoy or date.today()
     filas = []
+    excluidos = 0
     for libro in repositorio_cuentas_a_pagar.leer_libros_de_proveedores(proveedor_id):
         try:
             fila = construir_fila(libro, hoy)
         except LibroProveedorInconsistenteError as error:
             logger.warning("Libro inconsistente del proveedor %s en el reporte de deuda: %s", libro.proveedor_id, error)
             fila = fila_inconsistente(libro)
-        if es_listable(fila) and cumple_situacion(fila, situacion_valida):
+        if not es_listable(fila):
+            continue
+        if cumple_situacion(fila, situacion_valida):
             filas.append(fila)
-    return ReporteDeudaProveedores(proveedor_id, situacion_valida, tuple(filas))
+        elif not fila.consistente:
+            excluidos += 1
+    return ReporteDeudaProveedores(proveedor_id, situacion_valida, tuple(filas), excluidos)
+
+
+def generar_cuenta_proveedor(proveedor_id: int, hoy: date | None = None) -> CuentaProveedor:
+    """Cuenta a pagar de un proveedor (ficha y detalle de compra): saldo real del libro y, como estimación
+    por antigüedad (FIFO), su reparto por vencimiento, sus compras a crédito abiertas y su próximo
+    vencimiento. Con un libro inconsistente devuelve solo el saldo agregado y registra un warning.
+
+    Lee libro y compras en una misma transacción (`leer_libros_de_proveedores`), el mismo motor que el
+    reporte. `hoy` es solo para tests."""
+    libros = repositorio_cuentas_a_pagar.leer_libros_de_proveedores(proveedor_id)
+    if not libros:
+        return cuenta_vacia()
+    libro = libros[0]
+    try:
+        return construir_cuenta(libro, hoy or date.today())
+    except LibroProveedorInconsistenteError as error:
+        logger.warning("Libro inconsistente del proveedor %s en su cuenta a pagar: %s", proveedor_id, error)
+        return cuenta_inconsistente(libro.saldo_centavos)
