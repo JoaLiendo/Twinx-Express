@@ -6,15 +6,24 @@
 
 ## V1.11 — Trazabilidad de ajustes de stock
 
-- **V1.11-A (en curso)**: nuevos motivos manuales de pérdida (`VENCIMIENTO`, `ROTURA`, `ROBO`,
+- **V1.11-A (cerrado)**: nuevos motivos manuales de pérdida (`VENCIMIENTO`, `ROTURA`, `ROBO`,
   `FALLA_FABRICA`, todos solo-resta); `MERMA`/`PERDIDA`/`OTRO` pasan a legacy (solo lectura de
   historial); `RECUENTO` sigue siendo el código interno del ajuste de inventario físico (se
   muestra como "Ajuste de inventario" en UI); snapshot nullable de `costo_unitario_centavos` por
   ajuste (migración 027).
-- **V1.11-B (a definir)**: reversas explícitas de un ajuste manual erróneo (sin reinterpretar un
-  `RECUENTO` como corrección). Diseño preparado en V1.11-A pero no implementado.
+- **V1.11-B (cerrado)**: reversas explícitas y auditables de un ajuste manual erróneo (motivo
+  `REVERSA`, `reversa_de_id`, una por original, solo OWNER; migración 028). RECUENTO no se revierte.
+- **V1.11-C (cerrado)**: stock inicial trazable. Un alta con stock > 0 (web, importación CSV/XLSX,
+  CLI) registra un movimiento `STOCK_INICIAL` en `ajustes_stock` (usuario y costo solo si existen
+  realmente; migración 029). Productos históricos sin inferencias. Kardex: "Stock inicial".
+- **V1.11-D (cerrado)**: reporte de pérdidas de stock (`/reportes/perdidas` + CSV): filtros por
+  fecha, producto y motivo; costo histórico, responsable y reversa; totales vigentes, valor conocido
+  a costo y filas con costo histórico desconocido (nunca valorizadas).
 
-## V1.12 — a definir
+## V1.12 — partidas / lotes (a definir)
+
+- Asociar el stock de nuevas compras y altas a existencias causales. El origen de una partida podrá
+  referenciar `ajustes_stock` (STOCK_INICIAL, RECUENTO positivo) igual que una línea de compra.
 
 ## V1.13 — a definir
 

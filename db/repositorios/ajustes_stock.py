@@ -10,7 +10,8 @@ con el descuento/incremento real de `productos.stock_actual` en
 import sqlite3
 
 from db.conexion import obtener_conexion
-from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario
+from domain.ajuste_stock import MOTIVOS_PERDIDA, AjusteStock, AjusteStockConUsuario
+from domain.reportes_operativos import FilaPerdida
 
 _COLUMNAS = (
     "id, producto_id, usuario_id, motivo, delta, stock_anterior, stock_resultante, observaciones, fecha, "
@@ -152,3 +153,73 @@ def listar_por_producto(producto_id: int) -> list[AjusteStockConUsuario]:
         )
         for fila in filas
     ]
+
+
+_PARAMETROS_MOTIVOS_PERDIDA = {f"motivo_perdida_{i}": motivo for i, motivo in enumerate(sorted(MOTIVOS_PERDIDA))}
+_FILTRO_PERDIDA = (
+    f"a.motivo IN ({', '.join(':' + nombre for nombre in _PARAMETROS_MOTIVOS_PERDIDA)}) AND a.delta < 0"
+)
+
+
+def listar_perdidas_en_rango(
+    inicio: str, fin_exclusivo: str, producto_id: int | None, motivo: str | None
+) -> list[FilaPerdida]:
+    """Ajustes de pérdida (ver `domain.ajuste_stock.MOTIVOS_PERDIDA`) de `[inicio, fin_exclusivo)`, más
+    reciente primero, con producto, responsable y su reversa (si tiene) resueltos en UNA consulta (sin N+1).
+    Las reversas mismas no aparecen (motivo REVERSA): neutralizan a su original vía `reversa_id`."""
+    consulta = f"""
+        SELECT
+            a.id, a.fecha, a.producto_id, p.codigo_barras, p.nombre AS producto_nombre, a.motivo,
+            -a.delta AS cantidad, a.costo_unitario_centavos, u.nombre_completo AS usuario_nombre_completo,
+            a.observaciones, r.id AS reversa_id, r.fecha AS reversa_fecha,
+            ru.nombre_completo AS reversa_usuario_nombre_completo
+        FROM ajustes_stock a
+        JOIN productos p ON p.id = a.producto_id
+        LEFT JOIN usuarios u ON u.id = a.usuario_id
+        LEFT JOIN ajustes_stock r ON r.reversa_de_id = a.id
+        LEFT JOIN usuarios ru ON ru.id = r.usuario_id
+        WHERE {_FILTRO_PERDIDA}
+          AND a.fecha >= :inicio AND a.fecha < :fin
+          AND (:producto_id IS NULL OR a.producto_id = :producto_id)
+          AND (:motivo IS NULL OR a.motivo = :motivo)
+        ORDER BY a.fecha DESC, a.id DESC
+    """
+    parametros = {
+        **_PARAMETROS_MOTIVOS_PERDIDA,
+        "inicio": inicio,
+        "fin": fin_exclusivo,
+        "producto_id": producto_id,
+        "motivo": motivo,
+    }
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta, parametros).fetchall()
+    return [
+        FilaPerdida(
+            ajuste_id=fila["id"],
+            fecha=fila["fecha"],
+            producto_id=fila["producto_id"],
+            codigo_barras=fila["codigo_barras"],
+            producto_nombre=fila["producto_nombre"],
+            motivo=fila["motivo"],
+            cantidad=fila["cantidad"],
+            costo_unitario_centavos=fila["costo_unitario_centavos"],
+            usuario_nombre_completo=fila["usuario_nombre_completo"],
+            observaciones=fila["observaciones"],
+            reversa_id=fila["reversa_id"],
+            reversa_fecha=fila["reversa_fecha"],
+            reversa_usuario_nombre_completo=fila["reversa_usuario_nombre_completo"],
+        )
+        for fila in filas
+    ]
+
+
+def listar_productos_con_perdidas() -> list[tuple[int, str]]:
+    """`(id, nombre)` de los productos (activos o no) con algún ajuste de pérdida: opciones del filtro."""
+    consulta = f"""
+        SELECT DISTINCT p.id, p.nombre
+        FROM ajustes_stock a JOIN productos p ON p.id = a.producto_id
+        WHERE {_FILTRO_PERDIDA}
+        ORDER BY p.nombre, p.id
+    """
+    with obtener_conexion() as conexion:
+        return [(fila["id"], fila["nombre"]) for fila in conexion.execute(consulta, _PARAMETROS_MOTIVOS_PERDIDA)]

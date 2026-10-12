@@ -160,6 +160,8 @@ CASOS = [
     ("reporte_compras", "GET", "/reportes/compras", {"proveedor_id": "{prov}"}, {"proveedor_id": "entero"}),
     ("reporte_deuda_proveedores", "GET", "/reportes/deuda-proveedores", {"proveedor_id": "{prov}"}, {"proveedor_id": "entero"}),
     ("deuda_proveedores_exportar", "GET", "/reportes/deuda-proveedores/exportar", {"proveedor_id": "{prov}"}, {"proveedor_id": "entero"}),
+    ("reporte_perdidas", "GET", "/reportes/perdidas", {"producto_id": "{pid}"}, {"producto_id": "entero"}),
+    ("perdidas_exportar", "GET", "/reportes/perdidas/exportar", {"producto_id": "{pid}"}, {"producto_id": "entero"}),
     ("productos_listado", "GET", "/productos", {"categoria_id": "1"}, {"categoria_id": "entero"}),
     ("auditoria_listado", "GET", "/auditoria", {"usuario_id": "1"}, {"usuario_id": "entero"}),
     ("historial_cliente", "GET", "/ventas/historial", {"cliente_id": "1"}, {"cliente_id": "entero"}),

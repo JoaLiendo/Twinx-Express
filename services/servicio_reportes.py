@@ -16,17 +16,22 @@ import re
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
+from db.repositorios import ajustes_stock as repositorio_ajustes_stock
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import clientes as repositorio_clientes
 from db.repositorios import compras as repositorio_compras
 from db.repositorios import ventas as repositorio_ventas
+from domain.ajuste_stock import MOTIVOS_PERDIDA
 from domain.reportes_operativos import (
     ESTADO_SIN_VENTAS,
     CobranzaDeCliente,
     ComprasDeProveedor,
     DeudorCuenta,
     ProductoRotacion,
+    ReportePerdidas,
     ResumenSesionCaja,
+    resumir_perdidas,
+    resumir_perdidas_por_motivo,
 )
 from domain.venta import ProductoMasVendido, ResumenVenta, Venta
 from excepciones import DatosInvalidosError
@@ -468,3 +473,42 @@ def generar_reporte_rotacion(
         for fila in repositorio_ventas.listar_rotacion_en_rango(inicio, fin)
     ]
     return ReporteRotacion(desde, hasta, filas)
+
+
+def generar_reporte_perdidas(
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    producto_id: int | None = None,
+    motivo: str | None = None,
+) -> ReportePerdidas:
+    """Pérdidas de stock del período (V1.11-D): ajustes de pérdida con su costo histórico, responsable y
+    estado de reversa, más el total y un resumen por motivo.
+
+    Reglas (ver `domain.ajuste_stock.MOTIVOS_PERDIDA` y `domain.reportes_operativos.resumir_perdidas`):
+    STOCK_INICIAL, RECUENTO, REVERSA y OTRO nunca son pérdida; un ajuste revertido se lista con su reversa
+    pero no suma; una fila sin costo histórico se cuenta aparte y nunca se valoriza (ni con el costo
+    actual). Mismo rango por defecto que los demás reportes operativos. Dos consultas fijas: la de las
+    filas y ninguna por fila.
+
+    Raises:
+        DatosInvalidosError: fechas inválidas o `motivo` que no es de pérdida.
+    """
+    motivo = motivo or None
+    if motivo is not None and motivo not in MOTIVOS_PERDIDA:
+        raise DatosInvalidosError(f"Motivo de pérdida inválido: {motivo!r}.")
+    desde, hasta, inicio, fin = _limites_del_periodo(fecha_desde, fecha_hasta)
+    filas = repositorio_ajustes_stock.listar_perdidas_en_rango(inicio, fin, producto_id, motivo)
+    return ReportePerdidas(
+        fecha_desde=desde,
+        fecha_hasta=hasta,
+        producto_id=producto_id,
+        motivo=motivo,
+        filas=filas,
+        total=resumir_perdidas(filas),
+        por_motivo=resumir_perdidas_por_motivo(filas),
+    )
+
+
+def listar_productos_con_perdidas() -> list[tuple[int, str]]:
+    """Opciones del filtro por producto del reporte de pérdidas."""
+    return repositorio_ajustes_stock.listar_productos_con_perdidas()

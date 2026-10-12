@@ -44,6 +44,12 @@ MOTIVO_STOCK_INICIAL = "STOCK_INICIAL"
 # sirven para sumar, a diferencia de un RECUENTO, que puede ir en cualquier sentido.
 MOTIVOS_MANUALES_PERMITIDOS = frozenset({"VENCIMIENTO", "ROTURA", "ROBO", "FALLA_FABRICA"})
 
+# V1.11-D (reporte de pérdidas): los cuatro motivos vigentes más los legacy que por definición
+# describen una pérdida (MERMA, PERDIDA). `OTRO` no: no dice qué pasó. STOCK_INICIAL, RECUENTO y
+# REVERSA tampoco (origen, inventario y corrección, no pérdidas). Una pérdida cuenta solo con
+# delta < 0: antes de V1.11-A estos motivos admitían sumar stock, y una suma nunca es una pérdida.
+MOTIVOS_PERDIDA = MOTIVOS_MANUALES_PERMITIDOS | frozenset({"MERMA", "PERDIDA"})
+
 # `OTRO` es el único motivo legacy que no describía por sí mismo qué pasó -- por eso exigía una
 # justificación. Ya no se ofrece para ajustes nuevos, pero una fila histórica con `OTRO` sigue
 # necesitando su observación al reconstruirse (mismo criterio que ya usa

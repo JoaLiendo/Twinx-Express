@@ -400,3 +400,45 @@ class TestValidarMotivoAnulacion:
 
     def test_motivo_distinto_de_otro_no_exige_observaciones(self):
         validar_motivo_anulacion("ERROR_CARGA", None)  # no debe lanzar
+
+
+class TestResumirPerdidas:
+    """V1.11-D: reglas puras de totales del reporte de pérdidas (`domain.reportes_operativos`)."""
+
+    def _fila(self, motivo="ROTURA", cantidad=2, costo=100, reversa_id=None):
+        from domain.reportes_operativos import FilaPerdida
+
+        return FilaPerdida(
+            ajuste_id=1, fecha="2026-10-01 10:00:00", producto_id=1, codigo_barras="c", producto_nombre="P",
+            motivo=motivo, cantidad=cantidad, costo_unitario_centavos=costo, usuario_nombre_completo="U",
+            observaciones=None, reversa_id=reversa_id,
+        )
+
+    def test_suma_solo_vigentes_y_valoriza_solo_costo_conocido(self):
+        from domain.reportes_operativos import resumir_perdidas
+
+        filas = [self._fila(cantidad=2, costo=100), self._fila(cantidad=3, costo=None), self._fila(cantidad=7, reversa_id=9)]
+
+        resumen = resumir_perdidas(filas)
+
+        assert (resumen.filas_vigentes, resumen.cantidad, resumen.valor_conocido_centavos) == (2, 5, 200)
+        assert (resumen.filas_costo_desconocido, resumen.cantidad_costo_desconocido, resumen.filas_revertidas) == (1, 3, 1)
+
+    def test_costo_cero_conocido_vale_cero_y_no_es_desconocido(self):
+        from domain.reportes_operativos import resumir_perdidas
+
+        resumen = resumir_perdidas([self._fila(costo=0)])
+
+        assert (resumen.valor_conocido_centavos, resumen.filas_costo_desconocido) == (0, 0)
+
+    def test_por_motivo_ordenado_por_cantidad(self):
+        from domain.reportes_operativos import resumir_perdidas_por_motivo
+
+        resumenes = resumir_perdidas_por_motivo([self._fila("ROBO", 1), self._fila("VENCIMIENTO", 5), self._fila("ROBO", 1)])
+
+        assert [(r.motivo, r.cantidad) for r in resumenes] == [("VENCIMIENTO", 5), ("ROBO", 2)]
+
+    def test_motivos_de_perdida(self):
+        from domain.ajuste_stock import MOTIVOS_PERDIDA
+
+        assert MOTIVOS_PERDIDA == {"VENCIMIENTO", "ROTURA", "ROBO", "FALLA_FABRICA", "MERMA", "PERDIDA"}

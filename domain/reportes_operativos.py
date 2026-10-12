@@ -1,4 +1,5 @@
-"""Filas de los reportes operativos (caja por sesión, compras por proveedor, cuenta corriente).
+"""Filas de los reportes operativos (caja por sesión, compras por proveedor, cuenta corriente, rotación,
+pérdidas de stock).
 
 Son proyecciones de solo lectura armadas con consultas agregadas en `db/`: nunca modifican una caja,
 una compra ni una cuenta. Los importes son centavos (`int`).
@@ -123,3 +124,86 @@ class ProductoRotacion:
     @property
     def estado(self) -> str:
         return ESTADO_CON_VENTAS if self.unidades_vendidas > 0 else ESTADO_SIN_VENTAS
+
+
+@dataclass(frozen=True)
+class FilaPerdida:
+    """Un ajuste de pérdida de stock (V1.11-D): `cantidad` son las unidades perdidas (positivo).
+
+    `costo_unitario_centavos` es el snapshot histórico del ajuste; `None` = costo histórico desconocido
+    (ajustes anteriores a V1.11-A): esa fila no se valoriza nunca, ni con el costo actual. Si el ajuste
+    tiene una reversa (`reversa_id`), quedó neutralizado: se muestra, pero no es una pérdida vigente.
+    """
+
+    ajuste_id: int
+    fecha: str
+    producto_id: int
+    codigo_barras: str
+    producto_nombre: str
+    motivo: str
+    cantidad: int
+    costo_unitario_centavos: int | None
+    usuario_nombre_completo: str | None
+    observaciones: str | None
+    reversa_id: int | None = None
+    reversa_fecha: str | None = None
+    reversa_usuario_nombre_completo: str | None = None
+
+    @property
+    def revertida(self) -> bool:
+        return self.reversa_id is not None
+
+    @property
+    def costo_conocido(self) -> bool:
+        return self.costo_unitario_centavos is not None
+
+    @property
+    def perdida_centavos(self) -> int | None:
+        return None if self.costo_unitario_centavos is None else self.cantidad * self.costo_unitario_centavos
+
+
+@dataclass(frozen=True)
+class ResumenPerdidas:
+    """Totales de pérdidas VIGENTES (sin las revertidas). `valor_conocido_centavos` suma solo filas con
+    costo histórico conocido; las de costo desconocido se cuentan aparte y nunca se valorizan. `motivo`
+    es `None` en el total general."""
+
+    motivo: str | None
+    filas_vigentes: int
+    cantidad: int
+    valor_conocido_centavos: int
+    filas_costo_desconocido: int
+    cantidad_costo_desconocido: int
+    filas_revertidas: int
+
+
+def resumir_perdidas(filas: list[FilaPerdida], motivo: str | None = None) -> ResumenPerdidas:
+    vigentes = [fila for fila in filas if not fila.revertida]
+    desconocidas = [fila for fila in vigentes if not fila.costo_conocido]
+    return ResumenPerdidas(
+        motivo=motivo,
+        filas_vigentes=len(vigentes),
+        cantidad=sum(fila.cantidad for fila in vigentes),
+        valor_conocido_centavos=sum(fila.perdida_centavos for fila in vigentes if fila.costo_conocido),
+        filas_costo_desconocido=len(desconocidas),
+        cantidad_costo_desconocido=sum(fila.cantidad for fila in desconocidas),
+        filas_revertidas=len(filas) - len(vigentes),
+    )
+
+
+def resumir_perdidas_por_motivo(filas: list[FilaPerdida]) -> list[ResumenPerdidas]:
+    """Un resumen por motivo presente, de mayor a menor cantidad perdida vigente."""
+    motivos = sorted({fila.motivo for fila in filas})
+    resumenes = [resumir_perdidas([f for f in filas if f.motivo == motivo], motivo) for motivo in motivos]
+    return sorted(resumenes, key=lambda resumen: (-resumen.cantidad, resumen.motivo))
+
+
+@dataclass(frozen=True)
+class ReportePerdidas:
+    fecha_desde: str
+    fecha_hasta: str
+    producto_id: int | None
+    motivo: str | None
+    filas: list[FilaPerdida]
+    total: ResumenPerdidas
+    por_motivo: list[ResumenPerdidas]

@@ -6,7 +6,8 @@ Cliente delgado: solo lee los parámetros de la URL, llama a
 (eso vive en `services.servicio_reportes` -- ver su docstring para las
 métricas que este módulo deliberadamente no calcula todavía).
 
-Los reportes operativos (V1.6-C: caja por sesión, compras por proveedor, cuenta corriente y rotación de stock) viven
+Los reportes operativos (V1.6-C: caja por sesión, compras por proveedor, cuenta corriente y rotación de stock;
+V1.11-D: pérdidas de stock) viven
 bajo `/reportes/...`, con la misma protección (solo OWNER) y también solo de lectura.
 """
 
@@ -14,6 +15,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
 
+from domain.ajuste_stock import MOTIVOS_PERDIDA
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import requiere_rol
 from interfaces.web.plantillas import templates
@@ -134,4 +136,53 @@ def exportar_deuda_proveedores(proveedor_id: str = "", situacion: str = ""):
     """CSV del mismo dataset de la pantalla de deuda a proveedores (mismos filtros y mismo servicio)."""
     return respuesta_csv(
         servicio_exportacion_csv.csv_deuda_proveedores(_id_proveedor(proveedor_id), situacion), "deuda_proveedores"
+    )
+
+
+def _id_producto(producto_id: str) -> int | None:
+    texto_producto = producto_id.strip()
+    try:
+        return int(texto_producto) if texto_producto else None
+    except ValueError:
+        raise DatosInvalidosError("El producto elegido no es válido.") from None
+
+
+@router.get("/reportes/perdidas")
+def ver_reporte_perdidas(
+    request: Request,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    producto_id: str = "",
+    motivo: str = "",
+):
+    reporte = servicio_reportes.generar_reporte_perdidas(
+        **_periodo(fecha_desde, fecha_hasta), producto_id=_id_producto(producto_id), motivo=motivo
+    )
+    filtros = {
+        "fecha_desde": reporte.fecha_desde,
+        "fecha_hasta": reporte.fecha_hasta,
+        "producto_id": reporte.producto_id or "",
+        "motivo": reporte.motivo or "",
+    }
+    contexto = {
+        **contexto_base(request),
+        "reporte": reporte,
+        "productos": servicio_reportes.listar_productos_con_perdidas(),
+        "motivos": sorted(MOTIVOS_PERDIDA),
+        "url_exportar": "/reportes/perdidas/exportar?" + urlencode({k: v for k, v in filtros.items() if v}),
+        "seccion": "perdidas",
+    }
+    return templates.TemplateResponse(request, "reportes/perdidas.html", contexto)
+
+
+@router.get("/reportes/perdidas/exportar")
+def exportar_reporte_perdidas(
+    fecha_desde: str | None = None, fecha_hasta: str | None = None, producto_id: str = "", motivo: str = ""
+):
+    """CSV del mismo dataset de la pantalla de pérdidas (mismos filtros y mismo servicio)."""
+    return respuesta_csv(
+        servicio_exportacion_csv.csv_perdidas(
+            **_periodo(fecha_desde, fecha_hasta), producto_id=_id_producto(producto_id), motivo=motivo or None
+        ),
+        "perdidas",
     )

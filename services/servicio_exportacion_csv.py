@@ -20,7 +20,7 @@ from collections.abc import Iterable, Sequence
 
 from domain.celdas_seguras import Numero, neutralizar_texto
 from domain.dinero import centavos_a_texto
-from domain.reportes_operativos import ProductoRotacion
+from domain.reportes_operativos import FilaPerdida, ProductoRotacion
 from services import (
     servicio_compras,
     servicio_deuda_proveedores,
@@ -187,3 +187,27 @@ def csv_kardex(producto_id: int, fecha_desde: str | None, fecha_hasta: str | Non
         for m in kardex.movimientos
     )
     return generar_csv(COLUMNAS_KARDEX, [inicial, *movimientos])
+
+
+COLUMNAS_PERDIDAS = (
+    "fecha", "codigo_barras", "producto", "motivo", "cantidad", "costo_unitario", "perdida_a_costo",
+    "costo_historico", "responsable", "observaciones", "estado", "revertido_por", "fecha_reversa",
+)
+
+
+def _fila_perdida(fila: FilaPerdida) -> tuple[str | None, ...]:
+    return (
+        fila.fecha, fila.codigo_barras, fila.producto_nombre, fila.motivo, numero(fila.cantidad),
+        dinero(fila.costo_unitario_centavos), dinero(fila.perdida_centavos),
+        "CONOCIDO" if fila.costo_conocido else "DESCONOCIDO", fila.usuario_nombre_completo, fila.observaciones,
+        "REVERTIDA" if fila.revertida else "VIGENTE", fila.reversa_usuario_nombre_completo, fila.reversa_fecha,
+    )
+
+
+def csv_perdidas(
+    fecha_desde: str | None, fecha_hasta: str | None, producto_id: int | None, motivo: str | None
+) -> bytes:
+    """El mismo dataset de `/reportes/perdidas` con sus filtros. Una fila sin costo histórico sale con
+    `costo_unitario`/`perdida_a_costo` vacíos y `costo_historico` = DESCONOCIDO: nunca con un costo inventado."""
+    reporte = servicio_reportes.generar_reporte_perdidas(fecha_desde, fecha_hasta, producto_id, motivo)
+    return generar_csv(COLUMNAS_PERDIDAS, (_fila_perdida(fila) for fila in reporte.filas))
