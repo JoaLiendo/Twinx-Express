@@ -95,10 +95,10 @@ class TestAjusteManualDeStock:
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
 
         primero = servicio_stock.ajustar_stock(
-            producto.id, delta=-3, motivo="MERMA", usuario_id=owner.id, clave_idempotencia="aj-1"
+            producto.id, delta=-3, motivo="ROTURA", usuario_id=owner.id, clave_idempotencia="aj-1"
         )
         segundo = servicio_stock.ajustar_stock(
-            producto.id, delta=-3, motivo="MERMA", usuario_id=owner.id, clave_idempotencia="aj-1"
+            producto.id, delta=-3, motivo="ROTURA", usuario_id=owner.id, clave_idempotencia="aj-1"
         )
 
         assert segundo.id == primero.id
@@ -109,11 +109,11 @@ class TestAjusteManualDeStock:
         owner = _crear_owner()
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=3)
         servicio_stock.ajustar_stock(
-            producto.id, delta=-3, motivo="MERMA", usuario_id=owner.id, clave_idempotencia="aj-1"
+            producto.id, delta=-3, motivo="ROTURA", usuario_id=owner.id, clave_idempotencia="aj-1"
         )
 
         reintento = servicio_stock.ajustar_stock(
-            producto.id, delta=-3, motivo="MERMA", usuario_id=owner.id, clave_idempotencia="aj-1"
+            producto.id, delta=-3, motivo="ROTURA", usuario_id=owner.id, clave_idempotencia="aj-1"
         )
 
         assert reintento.delta == -3
@@ -127,7 +127,7 @@ class TestAjusteManualDeStock:
         def ajustar():
             barrera.wait()
             servicio_stock.ajustar_stock(
-                producto.id, delta=-4, motivo="MERMA", usuario_id=owner.id, clave_idempotencia="aj-1"
+                producto.id, delta=-4, motivo="ROTURA", usuario_id=owner.id, clave_idempotencia="aj-1"
             )
 
         hilos = [threading.Thread(target=ajustar) for _ in range(2)]
@@ -143,8 +143,8 @@ class TestAjusteManualDeStock:
         owner = _crear_owner()
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
 
-        servicio_stock.ajustar_stock(producto.id, -1, "MERMA", owner.id, clave_idempotencia="aj-1")
-        servicio_stock.ajustar_stock(producto.id, -1, "MERMA", owner.id, clave_idempotencia="aj-2")
+        servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id, clave_idempotencia="aj-1")
+        servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id, clave_idempotencia="aj-2")
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 8
         assert _contar("ajustes_stock") == 2

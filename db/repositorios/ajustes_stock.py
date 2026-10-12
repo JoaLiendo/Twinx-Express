@@ -13,7 +13,8 @@ from db.conexion import obtener_conexion
 from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario
 
 _COLUMNAS = (
-    "id, producto_id, usuario_id, motivo, delta, stock_anterior, stock_resultante, observaciones, fecha, inventario_id"
+    "id, producto_id, usuario_id, motivo, delta, stock_anterior, stock_resultante, observaciones, fecha, "
+    "inventario_id, costo_unitario_centavos"
 )
 
 
@@ -29,6 +30,7 @@ def _fila_a_ajuste(fila: sqlite3.Row) -> AjusteStock:
         observaciones=fila["observaciones"],
         fecha=fila["fecha"],
         inventario_id=fila["inventario_id"],
+        costo_unitario_centavos=fila["costo_unitario_centavos"],
     )
 
 
@@ -61,8 +63,8 @@ def registrar_ajuste_en_conexion(
     consulta = f"""
         INSERT INTO ajustes_stock
             (producto_id, usuario_id, motivo, delta, stock_anterior, stock_resultante, observaciones,
-             clave_idempotencia, inventario_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             clave_idempotencia, inventario_id, costo_unitario_centavos)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING {_COLUMNAS}
     """
     parametros = (
@@ -75,6 +77,7 @@ def registrar_ajuste_en_conexion(
         ajuste.observaciones,
         clave_idempotencia,
         ajuste.inventario_id,
+        ajuste.costo_unitario_centavos,
     )
     fila = conexion.execute(consulta, parametros).fetchone()
     return _fila_a_ajuste(fila)

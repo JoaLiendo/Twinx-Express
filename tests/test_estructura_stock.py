@@ -127,7 +127,7 @@ def test_en_tiempo_de_ejecucion_todo_cambio_de_stock_sale_de_la_sentencia_autori
     servicio_ventas.anular_venta(venta.id, "ERROR_CARGA", None, owner.id)
     proveedor = servicio_proveedores.crear_proveedor("P")
     servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 3, 10)])
-    servicio_stock.ajustar_stock(producto.id, -1, "MERMA", owner.id)
+    servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id)
     inventario = servicio_inventario.crear_inventario(owner.id, [producto.id])
     servicio_inventario.registrar_conteo(inventario.id, producto.id, 40, owner.id)
     servicio_inventario.confirmar_inventario(inventario.id, owner.id)

@@ -314,7 +314,7 @@ def test_el_ajuste_manual_sigue_exigiendo_un_producto_activo(e):
     servicio_stock.eliminar_producto(e.c.id)
 
     with pytest.raises(ProductoNoEncontradoError):
-        servicio_stock.ajustar_stock(e.c.id, -1, "MERMA", e.owner.id)
+        servicio_stock.ajustar_stock(e.c.id, -1, "ROTURA", e.owner.id)
 
 
 # --- REGLA CRÍTICA: movimientos posteriores al conteo ----------------------------------------------------------
@@ -354,7 +354,7 @@ def test_compra_posterior_al_conteo_rechaza(e):
 def test_ajuste_manual_posterior_al_conteo_rechaza(e):
     inventario = _abrir(e, e.a)
     _contar(e, inventario, e.a, 9)
-    servicio_stock.ajustar_stock(e.a.id, -1, "MERMA", e.owner.id)
+    servicio_stock.ajustar_stock(e.a.id, -1, "ROTURA", e.owner.id)
 
     _assert_rechazo_sin_efectos(e, inventario, [(e.a, 9)])
 

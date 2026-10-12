@@ -905,7 +905,7 @@ class TestAnularVenta:
         def ajustar():
             barrera.wait()
             try:
-                servicio_stock.ajustar_stock(producto.id, delta=-2, motivo="MERMA", usuario_id=owner.id)
+                servicio_stock.ajustar_stock(producto.id, delta=-2, motivo="ROTURA", usuario_id=owner.id)
             except Exception as error:  # noqa: BLE001
                 errores.append(("ajustar", error))
 

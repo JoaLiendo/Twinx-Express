@@ -205,7 +205,7 @@ def test_los_escritores_reales_de_stock_incrementan_la_version(base_datos_tempor
     proveedor = servicio_proveedores.crear_proveedor("P")
     servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 3, 10)])
     assert version() == 3
-    servicio_stock.ajustar_stock(producto.id, -1, "MERMA", owner.id)
+    servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id)
     assert version() == 4
     # cambios que no son de stock: precio (por edición) y baja/reactivación
     servicio_stock.actualizar_producto(producto.id, producto.codigo_barras, "Nuevo nombre", 20, 300, 2)

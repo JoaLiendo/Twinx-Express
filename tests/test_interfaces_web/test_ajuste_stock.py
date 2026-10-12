@@ -5,6 +5,8 @@ criterio que alta/edición/eliminación de productos, ver
 
 from urllib.parse import unquote
 
+import pytest
+
 from db.conexion import obtener_conexion
 from db.repositorios import usuarios as repositorio_usuarios
 from domain.usuario import Usuario
@@ -74,25 +76,29 @@ class TestSubmitAjustar:
             "POST",
             f"/productos/{producto.id}/ajustar",
             cookies=cookies,
-            formulario={"motivo": "MERMA", "direccion": "restar", "cantidad": "3"},
+            formulario={"motivo": "ROTURA", "direccion": "restar", "cantidad": "3"},
         )
 
         assert respuesta.status == 303
         assert "tipo=success" in respuesta.header("location")
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 7
 
-    def test_sumar_incrementa_el_stock(self, base_datos_temporal):
+    def test_sumar_es_rechazado_para_un_motivo_de_perdida(self, base_datos_temporal):
+        """Desde V1.11-A los cuatro motivos manuales vigentes son de pérdida: ninguno suma stock
+        (ver `domain.ajuste_stock.MOTIVOS_MANUALES_PERMITIDOS`). Un incremento solo lo genera un
+        RECUENTO de inventario, que no pasa por este formulario."""
         producto = _crear_producto(stock_actual=10)
         _, cookies = _crear_usuario_logueado("OWNER", "duenio")
 
-        solicitud(
+        respuesta = solicitud(
             "POST",
             f"/productos/{producto.id}/ajustar",
             cookies=cookies,
-            formulario={"motivo": "RECUENTO", "direccion": "sumar", "cantidad": "5"},
+            formulario={"motivo": "ROTURA", "direccion": "sumar", "cantidad": "5"},
         )
 
-        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 15
+        assert "tipo=error" in respuesta.header("location")
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
 
     def test_registra_el_usuario_autenticado_como_autor_del_ajuste(self, base_datos_temporal):
         producto = _crear_producto(stock_actual=10)
@@ -102,7 +108,7 @@ class TestSubmitAjustar:
             "POST",
             f"/productos/{producto.id}/ajustar",
             cookies=cookies,
-            formulario={"motivo": "MERMA", "direccion": "restar", "cantidad": "1"},
+            formulario={"motivo": "ROTURA", "direccion": "restar", "cantidad": "1"},
         )
 
         with obtener_conexion() as conexion:
@@ -119,7 +125,7 @@ class TestSubmitAjustar:
             "POST",
             f"/productos/{producto.id}/ajustar",
             cookies=cookies,
-            formulario={"motivo": "MERMA", "direccion": "restar", "cantidad": "3"},
+            formulario={"motivo": "ROTURA", "direccion": "restar", "cantidad": "3"},
         )
 
         assert respuesta.status == 403
@@ -131,17 +137,18 @@ class TestSubmitAjustar:
         respuesta = solicitud(
             "POST",
             f"/productos/{producto.id}/ajustar",
-            formulario={"motivo": "MERMA", "direccion": "restar", "cantidad": "3"},
+            formulario={"motivo": "ROTURA", "direccion": "restar", "cantidad": "3"},
         )
 
         assert respuesta.status == 303
         assert respuesta.header("location").startswith("/login")
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
 
-    def test_otro_sin_observaciones_es_rechazado_en_el_servidor(self, base_datos_temporal):
-        """La regla vive en `domain.ajuste_stock`: el servidor la aplica
-        aunque el HTML/JS del formulario intente evitarla del lado del
-        cliente (no se confía en JavaScript para reglas de negocio)."""
+    @pytest.mark.parametrize("motivo", ["OTRO", "MERMA", "PERDIDA"])
+    def test_motivos_legacy_son_rechazados_en_el_servidor(self, base_datos_temporal, motivo):
+        """Desde V1.11-A `MERMA`/`PERDIDA`/`OTRO` quedan legacy: el `<select>` del formulario ya no
+        los ofrece, pero el servidor los rechaza igual aunque lleguen por fuera del HTML (no se
+        confía en el cliente para reglas de negocio, ver `domain.ajuste_stock.validar_motivo_manual`)."""
         producto = _crear_producto(stock_actual=10)
         _, cookies = _crear_usuario_logueado("OWNER", "duenio")
 
@@ -149,14 +156,14 @@ class TestSubmitAjustar:
             "POST",
             f"/productos/{producto.id}/ajustar",
             cookies=cookies,
-            formulario={"motivo": "OTRO", "direccion": "restar", "cantidad": "1", "observaciones": ""},
+            formulario={"motivo": motivo, "direccion": "restar", "cantidad": "1", "observaciones": "explicación"},
         )
 
         assert respuesta.status == 303
         assert "tipo=error" in respuesta.header("location")
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
 
-    def test_otro_con_observaciones_es_aceptado(self, base_datos_temporal):
+    def test_falla_fabrica_es_aceptado(self, base_datos_temporal):
         producto = _crear_producto(stock_actual=10)
         _, cookies = _crear_usuario_logueado("OWNER", "duenio")
 
@@ -164,11 +171,12 @@ class TestSubmitAjustar:
             "POST",
             f"/productos/{producto.id}/ajustar",
             cookies=cookies,
-            formulario={"motivo": "OTRO", "direccion": "restar", "cantidad": "1", "observaciones": "explicación"},
+            formulario={"motivo": "FALLA_FABRICA", "direccion": "restar", "cantidad": "1"},
         )
 
         assert respuesta.status == 303
         assert "tipo=success" in respuesta.header("location")
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
 
     def test_cantidad_cero_es_rechazada(self, base_datos_temporal):
         producto = _crear_producto(stock_actual=10)
@@ -178,7 +186,7 @@ class TestSubmitAjustar:
             "POST",
             f"/productos/{producto.id}/ajustar",
             cookies=cookies,
-            formulario={"motivo": "MERMA", "direccion": "restar", "cantidad": "0"},
+            formulario={"motivo": "ROTURA", "direccion": "restar", "cantidad": "0"},
         )
 
         assert respuesta.status == 303
@@ -196,7 +204,7 @@ class TestSubmitAjustar:
             "POST",
             f"/productos/{producto.id}/ajustar",
             cookies=cookies,
-            formulario={"motivo": "MERMA", "direccion": "otro", "cantidad": "3"},
+            formulario={"motivo": "ROTURA", "direccion": "otro", "cantidad": "3"},
         )
 
         assert respuesta.status == 303
@@ -214,7 +222,7 @@ class TestSubmitAjustar:
             "POST",
             f"/productos/{producto.id}/ajustar",
             cookies=cookies,
-            formulario={"motivo": "MERMA", "direccion": "restar", "cantidad": "5"},
+            formulario={"motivo": "ROTURA", "direccion": "restar", "cantidad": "5"},
         )
 
         assert respuesta.status == 303
@@ -228,7 +236,7 @@ class TestSubmitAjustar:
             "POST",
             "/productos/9999/ajustar",
             cookies=cookies,
-            formulario={"motivo": "MERMA", "direccion": "restar", "cantidad": "1"},
+            formulario={"motivo": "ROTURA", "direccion": "restar", "cantidad": "1"},
         )
 
         assert respuesta.status == 303
@@ -243,13 +251,13 @@ class TestHistorialAjustes:
             "POST",
             f"/productos/{producto.id}/ajustar",
             cookies=cookies,
-            formulario={"motivo": "MERMA", "direccion": "restar", "cantidad": "3"},
+            formulario={"motivo": "ROTURA", "direccion": "restar", "cantidad": "3"},
         )
 
         respuesta = solicitud("GET", f"/productos/{producto.id}/ajustes", cookies=cookies)
 
         assert respuesta.status == 200
-        assert "MERMA" in respuesta.texto
+        assert "ROTURA" in respuesta.texto
 
     def test_cashier_recibe_403(self, base_datos_temporal):
         producto = _crear_producto()

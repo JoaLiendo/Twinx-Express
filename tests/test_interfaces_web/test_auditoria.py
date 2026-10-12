@@ -137,18 +137,18 @@ class TestAjusteCompraAnulacion:
         usuario = _usuario()
         producto = _producto()
 
-        servicio_stock.ajustar_stock(producto.id, -3, "MERMA", usuario.id)
+        servicio_stock.ajustar_stock(producto.id, -3, "ROTURA", usuario.id)
 
         (e,) = _entradas()
         assert e["accion"] == "AJUSTE_STOCK" and e["usuario_id"] == usuario.id
-        assert "MERMA" in e["resumen"] and "-3" in e["resumen"] and "10 → 7" in e["resumen"]
+        assert "ROTURA" in e["resumen"] and "-3" in e["resumen"] and "10 → 7" in e["resumen"]
 
     def test_el_reintento_de_un_ajuste_no_duplica_la_auditoria(self, base_datos_temporal):
         usuario = _usuario()
         producto = _producto()
 
-        servicio_stock.ajustar_stock(producto.id, -3, "MERMA", usuario.id, clave_idempotencia="k")
-        servicio_stock.ajustar_stock(producto.id, -3, "MERMA", usuario.id, clave_idempotencia="k")
+        servicio_stock.ajustar_stock(producto.id, -3, "ROTURA", usuario.id, clave_idempotencia="k")
+        servicio_stock.ajustar_stock(producto.id, -3, "ROTURA", usuario.id, clave_idempotencia="k")
 
         assert _acciones() == ["AJUSTE_STOCK"]
 
@@ -157,7 +157,7 @@ class TestAjusteCompraAnulacion:
         producto = _producto(stock=1)
 
         with pytest.raises(StockInsuficienteError):
-            servicio_stock.ajustar_stock(producto.id, -5, "MERMA", usuario.id)
+            servicio_stock.ajustar_stock(producto.id, -5, "ROTURA", usuario.id)
 
         assert _entradas() == []
 
@@ -171,7 +171,7 @@ class TestAjusteCompraAnulacion:
         monkeypatch.setattr(modulo_servicio_stock.repositorio_auditoria, "registrar_en_conexion", auditoria_que_falla)
 
         with pytest.raises(ErrorBaseDatos):
-            servicio_stock.ajustar_stock(producto.id, -3, "MERMA", usuario.id)
+            servicio_stock.ajustar_stock(producto.id, -3, "ROTURA", usuario.id)
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
         assert _consultar("SELECT COUNT(*) FROM ajustes_stock")[0][0] == 0
@@ -292,7 +292,7 @@ class TestUsuarios:
         servicio_usuarios.resetear_password(nuevo.id, "otra-clave-secreta-888", actor_id=owner.id)
         hash_guardado = _consultar("SELECT password_hash FROM usuarios WHERE id = %d" % nuevo.id)[0][0]
         producto = _producto(owner.id)
-        servicio_stock.ajustar_stock(producto.id, -1, "MERMA", owner.id, clave_idempotencia="CLAVE-IDEMPOTENCIA-XYZ")
+        servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id, clave_idempotencia="CLAVE-IDEMPOTENCIA-XYZ")
         servicio_caja.abrir_caja(0, usuario_id=owner.id)
         servicio_caja.registrar_egreso(100, "x", usuario_id=owner.id, clave_idempotencia="OTRA-CLAVE-ABC")
 
@@ -319,7 +319,7 @@ class TestPantalla:
         otro = _usuario("otro")
         servicio_stock.registrar_producto("1", "Producto uno", 1, 2, usuario_id=otro.id)
         producto = _producto(otro.id, codigo="2", nombre="Producto dos")
-        servicio_stock.ajustar_stock(producto.id, -1, "MERMA", otro.id)
+        servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", otro.id)
 
         todas = solicitud("GET", "/auditoria", cookies=cookies)
         por_accion = solicitud("GET", "/auditoria?accion=AJUSTE_STOCK", cookies=cookies)
@@ -328,7 +328,7 @@ class TestPantalla:
         vacios = solicitud("GET", "/auditoria?accion=&usuario_id=&fecha_desde=&fecha_hasta=", cookies=cookies)
 
         assert "Producto uno" in todas.texto and "AJUSTE_STOCK" in todas.texto
-        assert "Producto uno" not in por_accion.texto and "MERMA" in por_accion.texto
+        assert "Producto uno" not in por_accion.texto and "ROTURA" in por_accion.texto
         assert "Nombre otro" in por_usuario.texto
         assert "Sin registros" in futuro.texto
         assert "Producto uno" in vacios.texto

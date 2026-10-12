@@ -190,7 +190,7 @@ class TestOtrasOperacionesAuditadas:
         csv = b"codigo_barras,nombre,precio_costo,precio_venta,stock_actual,stock_minimo\n999,Nuevo,1,2,0,0\n"
 
         operaciones = {
-            "ajuste": lambda: servicio_stock.ajustar_stock(producto.id, -1, "MERMA", owner.id),
+            "ajuste": lambda: servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id),
             "compra": lambda: servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 5, 120)]),
             "anulacion": lambda: servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id),
             "caja": lambda: servicio_caja.registrar_egreso(1_000, "pago", usuario_id=owner.id),
@@ -224,7 +224,7 @@ class TestNingunaOperacionAuditadaQuedaSinRastro:
         servicio_caja.registrar_egreso(200, "pago", usuario_id=owner.id)
         producto = _producto(usuario_id=owner.id)
         servicio_stock.actualizar_producto(producto.id, producto.codigo_barras, "Nuevo nombre", 100, 300, 0, usuario_id=owner.id)
-        servicio_stock.ajustar_stock(producto.id, -1, "MERMA", owner.id)
+        servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id)
         servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 5, 120)])
         venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
         servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
@@ -263,7 +263,7 @@ class TestNingunaOperacionAuditadaQuedaSinRastro:
         producto = _producto(stock=1)
 
         with pytest.raises(StockInsuficienteError):
-            servicio_stock.ajustar_stock(producto.id, -5, "MERMA", owner.id)
+            servicio_stock.ajustar_stock(producto.id, -5, "ROTURA", owner.id)
         with pytest.raises(CodigoBarrasDuplicadoError):
             _producto(usuario_id=owner.id)
 

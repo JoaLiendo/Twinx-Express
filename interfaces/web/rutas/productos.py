@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
-from domain.ajuste_stock import MOTIVOS_AJUSTE_VALIDOS
+from domain.ajuste_stock import MOTIVOS_MANUALES_PERMITIDOS
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
 from excepciones import ArchivoImagenInvalidoError, DatosInvalidosError, ProductoNoEncontradoError
@@ -365,7 +365,7 @@ def formulario_ajustar_stock(request: Request, producto_id: int):
     contexto = {
         **contexto_base(request),
         "producto": producto,
-        "motivos": sorted(MOTIVOS_AJUSTE_VALIDOS),
+        "motivos": sorted(MOTIVOS_MANUALES_PERMITIDOS),
         "clave_idempotencia": nueva_clave_idempotencia(),
     }
     return templates.TemplateResponse(request, "productos/ajustar.html", contexto)

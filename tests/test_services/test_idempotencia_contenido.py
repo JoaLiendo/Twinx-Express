@@ -71,10 +71,10 @@ class TestAjusteContenidoDistinto:
     def test_ajuste_con_otra_cantidad_y_la_misma_clave_se_rechaza_sin_tocar_stock(self, base_datos_temporal):
         owner = _owner()
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
-        servicio_stock.ajustar_stock(producto.id, -2, "MERMA", owner.id, clave_idempotencia="k")
+        servicio_stock.ajustar_stock(producto.id, -2, "ROTURA", owner.id, clave_idempotencia="k")
 
         with pytest.raises(ClaveIdempotenciaReutilizadaError):
-            servicio_stock.ajustar_stock(producto.id, -5, "MERMA", owner.id, clave_idempotencia="k")
+            servicio_stock.ajustar_stock(producto.id, -5, "ROTURA", owner.id, clave_idempotencia="k")
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 8
         assert _contar("ajustes_stock") == 1
@@ -82,10 +82,10 @@ class TestAjusteContenidoDistinto:
     def test_ajuste_con_otro_motivo_y_la_misma_clave_se_rechaza(self, base_datos_temporal):
         owner = _owner()
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
-        servicio_stock.ajustar_stock(producto.id, -2, "MERMA", owner.id, clave_idempotencia="k")
+        servicio_stock.ajustar_stock(producto.id, -2, "ROTURA", owner.id, clave_idempotencia="k")
 
         with pytest.raises(ClaveIdempotenciaReutilizadaError):
-            servicio_stock.ajustar_stock(producto.id, -2, "ROTURA", owner.id, clave_idempotencia="k")
+            servicio_stock.ajustar_stock(producto.id, -2, "VENCIMIENTO", owner.id, clave_idempotencia="k")
 
 
 class TestCompraContenidoDistinto:

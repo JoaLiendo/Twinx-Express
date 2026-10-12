@@ -1,6 +1,8 @@
 """Pruebas de integración de db.repositorios.ajustes_stock: persistencia
 y lectura del historial de ajustes manuales de stock."""
 
+import pytest
+
 from db.conexion import obtener_conexion
 from db.repositorios import ajustes_stock as repositorio_ajustes
 from db.repositorios import productos as repositorio_productos
@@ -28,7 +30,7 @@ def test_registrar_ajuste_en_conexion_persiste_los_datos(base_datos_temporal):
     ajuste = AjusteStock(
         producto_id=producto.id,
         usuario_id=usuario.id,
-        motivo="MERMA",
+        motivo="ROTURA",
         delta=-3,
         stock_anterior=10,
         stock_resultante=7,
@@ -41,10 +43,73 @@ def test_registrar_ajuste_en_conexion_persiste_los_datos(base_datos_temporal):
     assert resultado.id is not None
     assert resultado.producto_id == producto.id
     assert resultado.usuario_id == usuario.id
-    assert resultado.motivo == "MERMA"
+    assert resultado.motivo == "ROTURA"
     assert resultado.delta == -3
     assert resultado.stock_anterior == 10
     assert resultado.stock_resultante == 7
+    assert resultado.costo_unitario_centavos is None
+
+
+def test_registrar_ajuste_con_falla_fabrica_es_valido(base_datos_temporal):
+    producto = _crear_producto()
+    usuario = _crear_usuario()
+    ajuste = AjusteStock(
+        producto_id=producto.id,
+        usuario_id=usuario.id,
+        motivo="FALLA_FABRICA",
+        delta=-1,
+        stock_anterior=10,
+        stock_resultante=9,
+    )
+
+    with obtener_conexion() as conexion:
+        resultado = repositorio_ajustes.registrar_ajuste_en_conexion(conexion, ajuste)
+
+    assert resultado.motivo == "FALLA_FABRICA"
+
+
+@pytest.mark.parametrize("motivo", ["MERMA", "PERDIDA", "OTRO"])
+def test_motivos_legacy_siguen_siendo_persistibles_y_legibles(base_datos_temporal, motivo):
+    """El CHECK de `ajustes_stock.motivo` sigue aceptando los motivos legacy (filas históricas);
+    la restricción de que ya no se ofrezcan/acepten para ajustes NUEVOS es de
+    `services.servicio_stock.ajustar_stock` (`domain.ajuste_stock.validar_motivo_manual`), no del
+    esquema -- ver migración 027."""
+    producto = _crear_producto()
+    usuario = _crear_usuario()
+    ajuste = AjusteStock(
+        producto_id=producto.id,
+        usuario_id=usuario.id,
+        motivo=motivo,
+        delta=-1,
+        stock_anterior=10,
+        stock_resultante=9,
+        observaciones="justificación" if motivo == "OTRO" else None,
+    )
+
+    with obtener_conexion() as conexion:
+        repositorio_ajustes.registrar_ajuste_en_conexion(conexion, ajuste)
+
+    resultado = repositorio_ajustes.listar_por_producto(producto.id)
+    assert resultado[0].motivo == motivo
+
+
+def test_registrar_ajuste_persiste_costo_unitario_centavos(base_datos_temporal):
+    producto = _crear_producto()
+    usuario = _crear_usuario()
+    ajuste = AjusteStock(
+        producto_id=producto.id,
+        usuario_id=usuario.id,
+        motivo="ROTURA",
+        delta=-1,
+        stock_anterior=10,
+        stock_resultante=9,
+        costo_unitario_centavos=150,
+    )
+
+    with obtener_conexion() as conexion:
+        resultado = repositorio_ajustes.registrar_ajuste_en_conexion(conexion, ajuste)
+
+    assert resultado.costo_unitario_centavos == 150
 
 
 def test_registrar_ajuste_no_calcula_nada_persiste_tal_cual(base_datos_temporal):

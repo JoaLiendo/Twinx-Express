@@ -516,28 +516,20 @@ def test_baja_fisica_de_producto_sin_imagen_no_falla(base_datos_temporal, direct
 
 
 class TestAjustarStock:
-    """Ajuste manual de stock (merma/rotura/vencimiento/pérdida/robo/
-    recuento): corrige `stock_actual` sin pasar por una venta ni una
-    compra, dejando un registro histórico en `ajustes_stock`."""
-
-    def test_ajuste_positivo_incrementa_el_stock(self, base_datos_temporal):
-        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
-        usuario = _crear_usuario()
-
-        ajuste = servicio_stock.ajustar_stock(
-            producto.id, delta=5, motivo="RECUENTO", usuario_id=usuario.id
-        )
-
-        assert ajuste.stock_anterior == 10
-        assert ajuste.stock_resultante == 15
-        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 15
+    """Ajuste manual de stock (vencimiento/rotura/robo/falla de fábrica):
+    corrige `stock_actual` sin pasar por una venta ni una compra, dejando
+    un registro histórico en `ajustes_stock`. Desde V1.11-A los únicos
+    motivos manuales vigentes son de pérdida (restan stock); un
+    incremento solo lo genera un RECUENTO de inventario, que no pasa
+    por esta función (ver `TestAplicarAjusteEnConexion` y
+    `services.servicio_inventario.confirmar_inventario`)."""
 
     def test_ajuste_negativo_decrementa_el_stock(self, base_datos_temporal):
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
         usuario = _crear_usuario()
 
         ajuste = servicio_stock.ajustar_stock(
-            producto.id, delta=-4, motivo="MERMA", usuario_id=usuario.id
+            producto.id, delta=-4, motivo="ROTURA", usuario_id=usuario.id
         )
 
         assert ajuste.stock_anterior == 10
@@ -560,7 +552,7 @@ class TestAjustarStock:
         usuario = _crear_usuario()
 
         with pytest.raises(StockInsuficienteError):
-            servicio_stock.ajustar_stock(producto.id, delta=-5, motivo="MERMA", usuario_id=usuario.id)
+            servicio_stock.ajustar_stock(producto.id, delta=-5, motivo="ROTURA", usuario_id=usuario.id)
 
         # nada quedó modificado: ni el stock ni el historial.
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 3
@@ -572,7 +564,7 @@ class TestAjustarStock:
         usuario = _crear_usuario()
 
         with pytest.raises(ProductoNoEncontradoError):
-            servicio_stock.ajustar_stock(9999, delta=-1, motivo="MERMA", usuario_id=usuario.id)
+            servicio_stock.ajustar_stock(9999, delta=-1, motivo="ROTURA", usuario_id=usuario.id)
 
     def test_ajuste_persiste_usuario_motivo_y_delta(self, base_datos_temporal):
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
@@ -586,6 +578,54 @@ class TestAjustarStock:
         assert ajuste.motivo == "ROBO"
         assert ajuste.delta == -2
         assert ajuste.observaciones == "visto en cámara"
+
+    def test_falla_fabrica_es_un_motivo_valido(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        ajuste = servicio_stock.ajustar_stock(producto.id, delta=-1, motivo="FALLA_FABRICA", usuario_id=usuario.id)
+
+        assert ajuste.motivo == "FALLA_FABRICA"
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 9
+
+    @pytest.mark.parametrize("motivo", ["MERMA", "PERDIDA", "OTRO"])
+    def test_motivos_legacy_son_rechazados_para_ajustes_nuevos(self, base_datos_temporal, motivo):
+        """`MERMA`/`PERDIDA`/`OTRO` siguen siendo legibles en el historial
+        (filas ya existentes), pero ya no se aceptan para un ajuste nuevo."""
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        with pytest.raises(DatosInvalidosError):
+            servicio_stock.ajustar_stock(
+                producto.id, delta=-1, motivo=motivo, usuario_id=usuario.id, observaciones="x"
+            )
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    def test_recuento_es_rechazado_como_motivo_manual(self, base_datos_temporal):
+        """RECUENTO solo lo genera `servicio_inventario.confirmar_inventario`."""
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        with pytest.raises(DatosInvalidosError):
+            servicio_stock.ajustar_stock(producto.id, delta=-1, motivo="RECUENTO", usuario_id=usuario.id)
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    @pytest.mark.parametrize("motivo", ["VENCIMIENTO", "ROTURA", "ROBO", "FALLA_FABRICA"])
+    def test_motivos_de_perdida_rechazan_delta_positivo(self, base_datos_temporal, motivo):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        with pytest.raises(DatosInvalidosError):
+            servicio_stock.ajustar_stock(producto.id, delta=3, motivo=motivo, usuario_id=usuario.id)
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    def test_snapshot_de_costo_congela_el_costo_vigente_del_producto(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        ajuste = servicio_stock.ajustar_stock(producto.id, delta=-1, motivo="ROTURA", usuario_id=usuario.id)
+
+        assert ajuste.costo_unitario_centavos == 100
 
     def test_fallo_al_persistir_el_ajuste_no_deja_el_stock_modificado(self, base_datos_temporal, monkeypatch):
         """Atomicidad: si el INSERT del historial falla, el UPDATE de
@@ -604,7 +644,7 @@ class TestAjustarStock:
         monkeypatch.setattr(repositorio_ajustes, "registrar_ajuste_en_conexion", falla)
 
         with pytest.raises(Exception):
-            servicio_stock.ajustar_stock(producto.id, delta=-3, motivo="MERMA", usuario_id=usuario.id)
+            servicio_stock.ajustar_stock(producto.id, delta=-3, motivo="ROTURA", usuario_id=usuario.id)
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
 
@@ -622,7 +662,7 @@ class TestAjustarStock:
         def ajustar():
             barrera.wait()
             try:
-                servicio_stock.ajustar_stock(producto.id, delta=-5, motivo="MERMA", usuario_id=usuario.id)
+                servicio_stock.ajustar_stock(producto.id, delta=-5, motivo="ROTURA", usuario_id=usuario.id)
             except Exception as error:  # noqa: BLE001 -- se inspecciona más abajo, no se ignora
                 errores.append(error)
 
@@ -643,6 +683,43 @@ class TestAjustarStock:
         with obtener_conexion() as conexion:
             total = conexion.execute("SELECT COUNT(*) AS n FROM ajustes_stock").fetchone()["n"]
         assert total == 2
+
+
+class TestAplicarAjusteEnConexion:
+    """Núcleo compartido por el ajuste manual y por RECUENTO de inventario
+    (`services.servicio_inventario.confirmar_inventario`). A diferencia de
+    `ajustar_stock`, no restringe motivo ni dirección: esas reglas son
+    específicas del ajuste manual (`domain.ajuste_stock.validar_motivo_manual`)."""
+
+    def test_delta_positivo_incrementa_el_stock(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        with obtener_conexion(inmediata=True) as conexion:
+            from db.repositorios import productos as repositorio_productos
+
+            producto_en_conexion = repositorio_productos.obtener_por_id_en_conexion(conexion, producto.id)
+            ajuste = servicio_stock.aplicar_ajuste_en_conexion(
+                conexion, producto_en_conexion, 5, "RECUENTO", usuario.id
+            )
+
+        assert ajuste.stock_anterior == 10
+        assert ajuste.stock_resultante == 15
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 15
+
+    def test_recuento_congela_el_costo_vigente(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        usuario = _crear_usuario()
+
+        with obtener_conexion(inmediata=True) as conexion:
+            from db.repositorios import productos as repositorio_productos
+
+            producto_en_conexion = repositorio_productos.obtener_por_id_en_conexion(conexion, producto.id)
+            ajuste = servicio_stock.aplicar_ajuste_en_conexion(
+                conexion, producto_en_conexion, -2, "RECUENTO", usuario.id
+            )
+
+        assert ajuste.costo_unitario_centavos == 100
 
 
 class TestCalcularValorizacionInventario:

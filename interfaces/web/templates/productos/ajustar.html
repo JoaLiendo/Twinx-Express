@@ -15,7 +15,7 @@
 
       <div>
         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Motivo</label>
-        <select name="motivo" id="select-motivo" required
+        <select name="motivo" required
                 class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                        focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
@@ -28,12 +28,13 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Dirección</label>
+          <!-- Todos los motivos manuales vigentes son de pérdida (ver domain.ajuste_stock.MOTIVOS_MANUALES_PERMITIDOS):
+               ninguno suma stock, así que la única dirección ofrecida es "Restar". -->
           <select name="direccion" required
                   class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
             <option value="restar">Restar</option>
-            <option value="sumar">Sumar</option>
           </select>
         </div>
         <div>
@@ -46,14 +47,12 @@
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-          Observaciones <span id="observaciones-requeridas" class="hidden text-error">(obligatorio para motivo "OTRO")</span>
-        </label>
-        <textarea name="observaciones" id="textarea-observaciones" rows="3"
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Observaciones</label>
+        <textarea name="observaciones" rows="3"
                   class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                  placeholder="Opcional, salvo para motivo &quot;OTRO&quot;"></textarea>
+                  placeholder="Opcional"></textarea>
       </div>
 
       <div class="flex items-center gap-3 pt-2">
@@ -65,24 +64,4 @@
     </form>
   </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  // Ayuda visual únicamente -- la regla real (OTRO exige observaciones)
-  // se valida siempre en el servidor (services.servicio_stock.ajustar_stock),
-  // esto solo evita un viaje al servidor para el caso más común.
-  const selectMotivo = document.getElementById('select-motivo');
-  const textareaObservaciones = document.getElementById('textarea-observaciones');
-  const avisoObligatorio = document.getElementById('observaciones-requeridas');
-
-  function actualizarObligatoriedad() {
-    const esOtro = selectMotivo.value === 'OTRO';
-    textareaObservaciones.required = esOtro;
-    avisoObligatorio.classList.toggle('hidden', !esOtro);
-  }
-
-  selectMotivo.addEventListener('change', actualizarObligatoriedad);
-  actualizarObligatoriedad();
-</script>
 {% endblock %}

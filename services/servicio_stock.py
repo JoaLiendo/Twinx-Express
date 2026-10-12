@@ -14,7 +14,7 @@ from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import ajustes_stock as repositorio_ajustes_stock
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
-from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario
+from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario, validar_motivo_manual
 from domain.dinero import MAXIMO_ENTERO
 from domain.producto import Producto
 from excepciones import (
@@ -518,6 +518,8 @@ def aplicar_ajuste_en_conexion(
     escribe el nuevo stock por el único punto autorizado (`actualizar_stock_en_conexion`), registra
     el ajuste con `stock_anterior`/`stock_resultante` y deja la auditoría `AJUSTE_STOCK`, todo en
     la transacción del llamador. `inventario_id` marca el ajuste como RECUENTO de un inventario.
+    Congela `producto.precio_costo_centavos` (el costo vigente en este mismo instante, dentro de
+    la transacción) como snapshot del ajuste -- ver `domain.ajuste_stock.AjusteStock.costo_unitario_centavos`.
 
     Raises:
         StockInsuficienteError: si el ajuste dejaría el stock en negativo.
@@ -543,6 +545,7 @@ def aplicar_ajuste_en_conexion(
         stock_resultante=nuevo_stock,
         observaciones=observaciones,
         inventario_id=inventario_id,
+        costo_unitario_centavos=producto.precio_costo_centavos,
     )
     ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(
         conexion, ajuste, clave_idempotencia=clave_idempotencia
@@ -584,12 +587,18 @@ def ajustar_stock(
     stock, así el reintento de un ajuste ya aplicado nunca falla por
     "stock insuficiente".
 
+    `motivo` (V1.11-A) debe ser uno de `domain.ajuste_stock.MOTIVOS_MANUALES_PERMITIDOS`:
+    ni un motivo legacy (`MERMA`/`PERDIDA`/`OTRO`) ni `RECUENTO` (ese lo genera únicamente
+    `services.servicio_inventario.confirmar_inventario`, vía `aplicar_ajuste_en_conexion`
+    directamente, sin pasar por esta función). Al ser todos de pérdida, `delta` debe ser negativo.
+
     Raises:
         ProductoNoEncontradoError: si no existe un producto activo con ese id.
         StockInsuficienteError: si el ajuste dejaría el stock en negativo.
         DatosInvalidosError: si `motivo`/`delta`/`observaciones` son inválidos
-            (ver `domain.ajuste_stock.AjusteStock`).
+            (ver `domain.ajuste_stock.AjusteStock` y `domain.ajuste_stock.validar_motivo_manual`).
     """
+    validar_motivo_manual(motivo, delta)
     with obtener_conexion(inmediata=True) as conexion:
         if clave_idempotencia is not None:
             existente = repositorio_ajustes_stock.obtener_por_clave_idempotencia_en_conexion(

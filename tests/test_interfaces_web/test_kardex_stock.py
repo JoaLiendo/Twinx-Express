@@ -4,7 +4,9 @@ import contextlib
 
 import pytest
 
+from db.conexion import obtener_conexion
 from db.repositorios import movimientos_stock as repositorio_movimientos
+from db.repositorios import productos as repositorio_productos
 from domain.compra import ItemCompra
 from domain.venta import ItemVenta
 from excepciones import DatosInvalidosError, ProductoNoEncontradoError
@@ -52,6 +54,18 @@ def _fechar(e, tabla, fila_id, columna, fecha):
     escribir(e.ruta, f"UPDATE {tabla} SET {columna} = ? WHERE id = ?", (fecha, fila_id))
 
 
+def _ajuste_positivo_legacy(e, producto, delta, motivo, observaciones=None):
+    """Un AJUSTE manual con delta positivo (motivo `OTRO`, legacy) ya no se puede generar vía
+    `servicio_stock.ajustar_stock` desde V1.11-A (los motivos manuales vigentes solo restan, ver
+    `domain.ajuste_stock.MOTIVOS_MANUALES_PERMITIDOS`): se simula una fila histórica de antes de
+    esa versión llamando directamente al núcleo compartido con RECUENTO."""
+    with obtener_conexion(inmediata=True) as conexion:
+        prod = repositorio_productos.obtener_por_id_en_conexion(conexion, producto.id)
+        return servicio_stock.aplicar_ajuste_en_conexion(
+            conexion, prod, delta, motivo, e.owner.id, observaciones=observaciones
+        )
+
+
 def _historia_completa(e):
     """Alta con 20 u. (no es un movimiento) y, en orden cronológico real:
     compra A +10, venta -4, venta -3 (anulada: +3), compra B +5 (anulada: -5), ajustes +2 y -1, recuento -2."""
@@ -61,7 +75,7 @@ def _historia_completa(e):
     servicio_ventas.anular_venta(venta_2.id, "ERROR_CARGA", None, e.owner.id)
     compra_b = _comprar(e, e.p, 5)
     servicio_compras.anular_compra(compra_b.id, "ERROR_CARGA", None, e.owner.id)
-    ajuste_mas = servicio_stock.ajustar_stock(e.p.id, 2, "OTRO", e.owner.id, observaciones="Apareció mercadería")
+    ajuste_mas = _ajuste_positivo_legacy(e, e.p, 2, "OTRO", observaciones="Apareció mercadería")
     ajuste_menos = servicio_stock.ajustar_stock(e.p.id, -1, "ROTURA", e.owner.id)
     inventario = servicio_inventario.crear_inventario(e.owner.id, [e.p.id])
     servicio_inventario.registrar_conteo(inventario.id, e.p.id, 25, e.owner.id)  # esperado 27 -> diferencia -2
@@ -232,7 +246,7 @@ class TestOrdenEstable:
         compra = _comprar(e, e.p, 10)
         venta_1 = _vender(e, e.p, 2)
         venta_2 = _vender(e, e.p, 1)
-        ajuste = servicio_stock.ajustar_stock(e.p.id, 1, "OTRO", e.owner.id, observaciones="x")
+        ajuste = _ajuste_positivo_legacy(e, e.p, 1, "OTRO", observaciones="x")
         servicio_ventas.anular_venta(venta_1.id, "ERROR_CARGA", None, e.owner.id)
         instante = "2026-02-01 10:00:00"
         escribir(e.ruta, "UPDATE compras SET fecha = ?", (instante,))

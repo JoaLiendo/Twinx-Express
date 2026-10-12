@@ -6,7 +6,12 @@ autovaliden al construirse, en memoria.
 
 import pytest
 
-from domain.ajuste_stock import MOTIVOS_AJUSTE_VALIDOS, AjusteStock
+from domain.ajuste_stock import (
+    MOTIVOS_AJUSTE_VALIDOS,
+    MOTIVOS_MANUALES_PERMITIDOS,
+    AjusteStock,
+    validar_motivo_manual,
+)
 from domain.caja import MovimientoCaja, clasificar_diferencia
 from domain.producto import Producto
 from domain.venta import MOTIVOS_ANULACION_VALIDOS, ItemVenta, calcular_hash_contenido, validar_motivo_anulacion
@@ -282,6 +287,44 @@ class TestAjusteStock:
     def test_otro_con_observaciones_solo_espacios_es_rechazado(self):
         with pytest.raises(DatosInvalidosError):
             self._ajuste(motivo="OTRO", observaciones="   ")
+
+    def test_acepta_costo_unitario_centavos_nulo(self):
+        ajuste = self._ajuste(costo_unitario_centavos=None)
+        assert ajuste.costo_unitario_centavos is None
+
+    def test_acepta_costo_unitario_centavos_valido(self):
+        ajuste = self._ajuste(costo_unitario_centavos=150)
+        assert ajuste.costo_unitario_centavos == 150
+
+    def test_rechaza_costo_unitario_centavos_negativo(self):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(costo_unitario_centavos=-1)
+
+
+class TestValidarMotivoManual:
+    """`validar_motivo_manual` (V1.11-A): la restricción de ajustes manuales nuevos, separada de
+    `AjusteStock.__post_init__` para no romper la reconstrucción de filas históricas (ver el
+    docstring de `domain.ajuste_stock`)."""
+
+    @pytest.mark.parametrize("motivo", sorted(MOTIVOS_MANUALES_PERMITIDOS))
+    def test_acepta_motivos_manuales_vigentes_con_delta_negativo(self, motivo):
+        validar_motivo_manual(motivo, -1)
+
+    @pytest.mark.parametrize("motivo", ["MERMA", "PERDIDA", "OTRO"])
+    def test_rechaza_motivos_legacy(self, motivo):
+        with pytest.raises(DatosInvalidosError):
+            validar_motivo_manual(motivo, -1)
+
+    def test_rechaza_recuento_como_motivo_manual(self):
+        """RECUENTO solo lo genera `services.servicio_inventario.confirmar_inventario`."""
+        with pytest.raises(DatosInvalidosError):
+            validar_motivo_manual("RECUENTO", -1)
+
+    @pytest.mark.parametrize("motivo", sorted(MOTIVOS_MANUALES_PERMITIDOS))
+    def test_rechaza_delta_positivo_para_cualquier_motivo_manual(self, motivo):
+        """Los cuatro motivos manuales vigentes son de pérdida: nunca suman stock."""
+        with pytest.raises(DatosInvalidosError):
+            validar_motivo_manual(motivo, 1)
 
 
 class TestValidarMotivoAnulacion:
