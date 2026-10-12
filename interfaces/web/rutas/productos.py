@@ -456,9 +456,18 @@ def revertir_ajuste(
     clave_idempotencia: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
-    """Quién revierte es siempre el usuario autenticado, nunca un dato del formulario."""
+    """Quién revierte es siempre el usuario autenticado, nunca un dato del formulario.
+
+    `producto_id_esperado=producto_id`: el `producto_id` de la URL puede no corresponder al
+    `ajuste_id` (URL armada a mano, no necesariamente mediante el GET que sí lo valida) -- el
+    servicio rechaza esa combinación antes de tocar nada.
+    """
     servicio_stock.revertir_ajuste(
-        ajuste_id, observaciones.strip(), usuario_actual.id, clave_idempotencia=clave_idempotencia or None
+        ajuste_id,
+        observaciones.strip(),
+        usuario_actual.id,
+        clave_idempotencia=clave_idempotencia or None,
+        producto_id_esperado=producto_id,
     )
     return redireccionar_con_mensaje(
         f"/productos/{producto_id}/ajustes", "success", "Ajuste revertido correctamente."

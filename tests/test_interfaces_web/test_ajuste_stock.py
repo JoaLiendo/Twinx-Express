@@ -412,6 +412,65 @@ class TestAccionRevertirAjuste:
         assert respuesta.status == 303
         assert "tipo=error" in respuesta.header("location")
 
+    def test_producto_de_la_url_distinto_del_ajuste_no_revierte_nada(self, base_datos_temporal):
+        """Bug corregido: el `producto_id` de la URL puede no corresponder al `ajuste_id` (POST
+        armado a mano, no necesariamente vía el GET que sí valida esto). El servicio lo rechaza
+        antes de tocar nada, aunque el ajuste y el otro producto existan de verdad."""
+        producto_a = _crear_producto(stock_actual=10)
+        producto_b = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 100, 200, stock_actual=5)
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        ajuste_de_b = _crear_ajuste(producto_b.id, cantidad=2)
+        assert servicio_stock.obtener_por_id(producto_b.id).stock_actual == 3
+
+        respuesta = solicitud(
+            "POST",
+            f"/productos/{producto_a.id}/ajustes/{ajuste_de_b}/revertir",
+            cookies=cookies,
+            formulario={"observaciones": "no debería revertir nada"},
+        )
+
+        assert respuesta.status == 303
+        assert "tipo=error" in respuesta.header("location")
+        assert servicio_stock.obtener_por_id(producto_a.id).stock_actual == 10
+        assert servicio_stock.obtener_por_id(producto_b.id).stock_actual == 3
+        with obtener_conexion() as conexion:
+            total = conexion.execute(
+                "SELECT COUNT(*) AS n FROM ajustes_stock WHERE motivo = 'REVERSA'"
+            ).fetchone()["n"]
+        assert total == 0
+
+    def test_producto_inexistente_en_la_url_no_revierte_nada(self, base_datos_temporal):
+        producto = _crear_producto(stock_actual=10)
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        ajuste_id = _crear_ajuste(producto.id, cantidad=3)
+
+        respuesta = solicitud(
+            "POST",
+            f"/productos/9999/ajustes/{ajuste_id}/revertir",
+            cookies=cookies,
+            formulario={"observaciones": "no debería revertir nada"},
+        )
+
+        assert respuesta.status == 303
+        assert "tipo=error" in respuesta.header("location")
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 7
+
+    def test_combinacion_valida_sigue_funcionando_tras_la_correccion(self, base_datos_temporal):
+        producto = _crear_producto(stock_actual=10)
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        ajuste_id = _crear_ajuste(producto.id, cantidad=3)
+
+        respuesta = solicitud(
+            "POST",
+            f"/productos/{producto.id}/ajustes/{ajuste_id}/revertir",
+            cookies=cookies,
+            formulario={"observaciones": "combinación correcta"},
+        )
+
+        assert respuesta.status == 303
+        assert "tipo=success" in respuesta.header("location")
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
     def test_la_reversa_queda_registrada_y_vinculada_en_el_historial(self, base_datos_temporal):
         producto = _crear_producto(stock_actual=10)
         _, cookies = _crear_usuario_logueado("OWNER", "duenio")

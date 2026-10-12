@@ -803,6 +803,33 @@ class TestRevertirAjuste:
         with pytest.raises(AjusteNoEncontradoError):
             servicio_stock.revertir_ajuste(9999, "corrección", owner.id)
 
+    def test_producto_id_esperado_distinto_del_real_es_rechazado_y_no_toca_nada(self, base_datos_temporal):
+        """Defensa en profundidad: aunque la ruta pase un `producto_id` de URL que no corresponde
+        al ajuste, el servicio lo rechaza él mismo, sin confiar en que el caller ya lo validó."""
+        _, owner, ajuste = self._ajuste_y_owner(stock_actual=10, delta=-3)
+        otro = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 100, 200, stock_actual=5)
+
+        with pytest.raises(AjusteNoEncontradoError):
+            servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id, producto_id_esperado=otro.id)
+
+        assert servicio_stock.obtener_por_id(ajuste.producto_id).stock_actual == 7
+        assert servicio_stock.obtener_por_id(otro.id).stock_actual == 5
+        with obtener_conexion() as conexion:
+            total = conexion.execute(
+                "SELECT COUNT(*) AS n FROM ajustes_stock WHERE motivo = 'REVERSA'"
+            ).fetchone()["n"]
+        assert total == 0
+
+    def test_producto_id_esperado_correcto_sigue_funcionando(self, base_datos_temporal):
+        _, owner, ajuste = self._ajuste_y_owner(stock_actual=10, delta=-3)
+
+        reversa = servicio_stock.revertir_ajuste(
+            ajuste.id, "corrección", owner.id, producto_id_esperado=ajuste.producto_id
+        )
+
+        assert reversa.reversa_de_id == ajuste.id
+        assert servicio_stock.obtener_por_id(ajuste.producto_id).stock_actual == 10
+
     def test_fallo_al_persistir_la_reversa_no_deja_el_stock_modificado(self, base_datos_temporal, monkeypatch):
         import sqlite3
 

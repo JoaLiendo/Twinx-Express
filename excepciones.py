@@ -283,7 +283,9 @@ class ProductoFueraDeInventarioError(ErrorAplicacion):
 
 
 class AjusteNoEncontradoError(ErrorAplicacion):
-    """No existe un ajuste de stock con el id solicitado (ver `services.servicio_stock.revertir_ajuste`)."""
+    """No existe un ajuste de stock con el id solicitado, o existe pero no pertenece al
+    producto esperado (`producto_id_esperado` de `services.servicio_stock.revertir_ajuste`): desde
+    la URL que lo pidió, no hay ningún ajuste válido para revertir en ninguno de los dos casos."""
 
 
 class AjusteYaRevertidoError(ErrorAplicacion):

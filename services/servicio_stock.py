@@ -661,6 +661,7 @@ def revertir_ajuste(
     observaciones: str,
     usuario_id: int,
     clave_idempotencia: str | None = None,
+    producto_id_esperado: int | None = None,
 ) -> AjusteStock:
     """Revierte un ajuste manual erróneo con un ajuste NUEVO, vinculado al original por
     `reversa_de_id` (V1.11-B): el original nunca se edita ni se borra, es histórico e inmutable.
@@ -669,6 +670,13 @@ def revertir_ajuste(
     su `costo_unitario_centavos` (sin inventar un costo nuevo, ver `aplicar_ajuste_en_conexion`).
     Exclusivo de OWNER, validado acá (no solo en la ruta): es una operación irreversible que además
     desbloquea volver a ajustar el producto si el error lo había dejado en un stock incorrecto.
+
+    `producto_id_esperado` (opcional): si se pasa, exige que el ajuste pertenezca a ese producto
+    -- lo usa la ruta web, cuyo `producto_id` viene de la URL (`/productos/{producto_id}/ajustes/
+    {ajuste_id}/revertir`) y no debe poder revertir el ajuste de OTRO producto aunque la URL
+    combine ids inconsistentes. No se confía en que el formulario se haya cargado desde el GET que
+    sí valida esto: el POST puede construirse directamente, así que la validación ocurre acá,
+    dentro de la misma transacción, antes de tocar nada.
 
     `clave_idempotencia`: mismo patrón que `ajustar_stock` -- un reenvío con la misma clave (doble
     clic, doble submit) devuelve la reversa ya registrada sin generar una segunda.
@@ -679,7 +687,8 @@ def revertir_ajuste(
 
     Raises:
         PermisoDenegadoError: si `usuario_id` no es un OWNER activo.
-        AjusteNoEncontradoError: si no existe un ajuste con `ajuste_id`.
+        AjusteNoEncontradoError: si no existe un ajuste con `ajuste_id`, o si existe pero no
+            pertenece a `producto_id_esperado`.
         AjusteNoReversibleError: si el ajuste es un RECUENTO de inventario, o ya es una reversa.
         AjusteYaRevertidoError: si el ajuste ya tiene una reversa.
         StockInsuficienteError: si revertirlo dejaría el stock en negativo.
@@ -703,6 +712,13 @@ def revertir_ajuste(
         original = repositorio_ajustes_stock.obtener_por_id_en_conexion(conexion, ajuste_id)
         if original is None:
             raise AjusteNoEncontradoError(f"No existe un ajuste de stock con id {ajuste_id}.")
+        if producto_id_esperado is not None and original.producto_id != producto_id_esperado:
+            # Mismo error que "no existe": desde la URL (producto_id + ajuste_id) no hay ningún
+            # ajuste válido que revertir, sea porque el producto no existe o porque el ajuste es
+            # de otro producto -- en ningún caso corresponde tocar el stock de nada.
+            raise AjusteNoEncontradoError(
+                f"El ajuste {ajuste_id} no corresponde al producto {producto_id_esperado}."
+            )
         if original.motivo == "RECUENTO":
             raise AjusteNoReversibleError(
                 "Un ajuste de inventario (RECUENTO) no se revierte desde este flujo: "
