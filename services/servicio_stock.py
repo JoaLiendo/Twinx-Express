@@ -14,11 +14,16 @@ from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import ajustes_stock as repositorio_ajustes_stock
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
+from db.repositorios import usuarios as repositorio_usuarios
 from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario, validar_motivo_manual
 from domain.dinero import MAXIMO_ENTERO
 from domain.producto import Producto
+from domain.usuario import exigir_rol
 from excepciones import (
     MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
+    AjusteNoEncontradoError,
+    AjusteNoReversibleError,
+    AjusteYaRevertidoError,
     CategoriaNoEncontradaError,
     ClaveIdempotenciaReutilizadaError,
     DatosInvalidosError,
@@ -501,6 +506,12 @@ def asignar_imagen(producto_id: int, contenido: bytes, nombre_original: str) -> 
     return resultado
 
 
+_COSTO_VIGENTE_DEL_PRODUCTO = object()
+"""Sentinel de `aplicar_ajuste_en_conexion`: distingue "no se pasó costo, usar el vigente del
+producto" (default) de "se pasó explícitamente `None`" (una reversa de un ajuste legacy sin
+snapshot, que no debe inventar un costo -- ver `revertir_ajuste`)."""
+
+
 def aplicar_ajuste_en_conexion(
     conexion: ConexionBD,
     producto: Producto,
@@ -510,16 +521,23 @@ def aplicar_ajuste_en_conexion(
     observaciones: str | None = None,
     clave_idempotencia: str | None = None,
     inventario_id: int | None = None,
+    reversa_de_id: int | None = None,
+    costo_unitario_centavos: int | None = _COSTO_VIGENTE_DEL_PRODUCTO,
 ) -> AjusteStock:
     """Núcleo del ajuste de stock, dentro de la transacción `BEGIN IMMEDIATE` de quien invoca.
 
     Recibe el producto ya resuelto (así el ajuste manual exige un producto activo y el inventario
-    físico puede ajustar también uno inactivo con stock). Valida que el stock no quede negativo,
-    escribe el nuevo stock por el único punto autorizado (`actualizar_stock_en_conexion`), registra
-    el ajuste con `stock_anterior`/`stock_resultante` y deja la auditoría `AJUSTE_STOCK`, todo en
-    la transacción del llamador. `inventario_id` marca el ajuste como RECUENTO de un inventario.
-    Congela `producto.precio_costo_centavos` (el costo vigente en este mismo instante, dentro de
-    la transacción) como snapshot del ajuste -- ver `domain.ajuste_stock.AjusteStock.costo_unitario_centavos`.
+    físico -- y una reversa -- pueden ajustar también uno inactivo con stock). Valida que el stock
+    no quede negativo, escribe el nuevo stock por el único punto autorizado
+    (`actualizar_stock_en_conexion`), registra el ajuste con `stock_anterior`/`stock_resultante` y
+    deja la auditoría `AJUSTE_STOCK`, todo en la transacción del llamador. `inventario_id` marca el
+    ajuste como RECUENTO de un inventario; `reversa_de_id` lo marca como REVERSA de otro ajuste
+    (ver `revertir_ajuste`).
+
+    Congela `producto.precio_costo_centavos` (el costo vigente en este mismo instante, dentro de la
+    transacción) como snapshot del ajuste -- salvo que `costo_unitario_centavos` se pase
+    explícitamente (una reversa referencia el snapshot del ajuste original, no inventa uno nuevo
+    con el costo actual, que puede haber cambiado desde entonces).
 
     Raises:
         StockInsuficienteError: si el ajuste dejaría el stock en negativo.
@@ -536,6 +554,11 @@ def aplicar_ajuste_en_conexion(
     producto.actualizar_stock(nuevo_stock)
     repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
 
+    costo = (
+        producto.precio_costo_centavos
+        if costo_unitario_centavos is _COSTO_VIGENTE_DEL_PRODUCTO
+        else costo_unitario_centavos
+    )
     ajuste = AjusteStock(
         producto_id=producto.id,
         usuario_id=usuario_id,
@@ -545,7 +568,8 @@ def aplicar_ajuste_en_conexion(
         stock_resultante=nuevo_stock,
         observaciones=observaciones,
         inventario_id=inventario_id,
-        costo_unitario_centavos=producto.precio_costo_centavos,
+        costo_unitario_centavos=costo,
+        reversa_de_id=reversa_de_id,
     )
     ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(
         conexion, ajuste, clave_idempotencia=clave_idempotencia
@@ -629,10 +653,99 @@ def ajustar_stock(
     return ajuste_creado
 
 
+_SOLO_OWNER = frozenset({"OWNER"})
+
+
+def revertir_ajuste(
+    ajuste_id: int,
+    observaciones: str,
+    usuario_id: int,
+    clave_idempotencia: str | None = None,
+) -> AjusteStock:
+    """Revierte un ajuste manual erróneo con un ajuste NUEVO, vinculado al original por
+    `reversa_de_id` (V1.11-B): el original nunca se edita ni se borra, es histórico e inmutable.
+
+    Aplica exactamente `-delta` del original (restaura el stock que ese ajuste movió) y referencia
+    su `costo_unitario_centavos` (sin inventar un costo nuevo, ver `aplicar_ajuste_en_conexion`).
+    Exclusivo de OWNER, validado acá (no solo en la ruta): es una operación irreversible que además
+    desbloquea volver a ajustar el producto si el error lo había dejado en un stock incorrecto.
+
+    `clave_idempotencia`: mismo patrón que `ajustar_stock` -- un reenvío con la misma clave (doble
+    clic, doble submit) devuelve la reversa ya registrada sin generar una segunda.
+
+    Usa el mismo producto del ajuste original incluso si está inactivo (`...incluyendo_inactivos`,
+    igual criterio que el RECUENTO de inventario): revertir no depende de que el producto siga
+    activo.
+
+    Raises:
+        PermisoDenegadoError: si `usuario_id` no es un OWNER activo.
+        AjusteNoEncontradoError: si no existe un ajuste con `ajuste_id`.
+        AjusteNoReversibleError: si el ajuste es un RECUENTO de inventario, o ya es una reversa.
+        AjusteYaRevertidoError: si el ajuste ya tiene una reversa.
+        StockInsuficienteError: si revertirlo dejaría el stock en negativo.
+        DatosInvalidosError: si `observaciones` está vacío (toda reversa exige su justificación,
+            ver `domain.ajuste_stock.MOTIVOS_QUE_REQUIEREN_OBSERVACIONES`).
+        ClaveIdempotenciaReutilizadaError: si la clave ya se usó para revertir otro ajuste.
+    """
+    with obtener_conexion(inmediata=True) as conexion:
+        usuario = repositorio_usuarios.obtener_por_id_en_conexion(conexion, usuario_id)
+        exigir_rol(usuario, _SOLO_OWNER)
+
+        if clave_idempotencia is not None:
+            existente = repositorio_ajustes_stock.obtener_por_clave_idempotencia_en_conexion(
+                conexion, clave_idempotencia
+            )
+            if existente is not None:
+                if (existente.reversa_de_id, existente.observaciones) != (ajuste_id, observaciones):
+                    raise ClaveIdempotenciaReutilizadaError(MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS)
+                return existente
+
+        original = repositorio_ajustes_stock.obtener_por_id_en_conexion(conexion, ajuste_id)
+        if original is None:
+            raise AjusteNoEncontradoError(f"No existe un ajuste de stock con id {ajuste_id}.")
+        if original.motivo == "RECUENTO":
+            raise AjusteNoReversibleError(
+                "Un ajuste de inventario (RECUENTO) no se revierte desde este flujo: "
+                "corregilo con un nuevo inventario físico."
+            )
+        if original.reversa_de_id is not None:
+            raise AjusteNoReversibleError("No se puede revertir una reversa.")
+        if repositorio_ajustes_stock.obtener_reversa_de_en_conexion(conexion, ajuste_id) is not None:
+            raise AjusteYaRevertidoError(f"El ajuste {ajuste_id} ya fue revertido anteriormente.")
+
+        producto = repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos(
+            conexion, original.producto_id
+        )
+        if producto is None:
+            raise ProductoNoEncontradoError(f"No existe un producto con id {original.producto_id}.")
+
+        reversa = aplicar_ajuste_en_conexion(
+            conexion,
+            producto,
+            -original.delta,
+            "REVERSA",
+            usuario_id,
+            observaciones=observaciones,
+            clave_idempotencia=clave_idempotencia,
+            reversa_de_id=original.id,
+            costo_unitario_centavos=original.costo_unitario_centavos,
+        )
+
+    logger.info(
+        "Ajuste de stock revertido: ajuste_id=%s reversa_id=%s usuario_id=%s", ajuste_id, reversa.id, usuario_id
+    )
+    return reversa
+
+
 def listar_ajustes(producto_id: int) -> list[AjusteStockConUsuario]:
     """Historial de ajustes manuales de stock de un producto, más
     reciente primero (ver `services.servicio_stock.ajustar_stock`)."""
     return repositorio_ajustes_stock.listar_por_producto(producto_id)
+
+
+def obtener_ajuste(ajuste_id: int) -> AjusteStock | None:
+    """El ajuste con ese id, o `None` (pantalla de confirmación de `revertir_ajuste`)."""
+    return repositorio_ajustes_stock.obtener_por_id(ajuste_id)
 
 
 def quitar_imagen(producto_id: int) -> Producto:

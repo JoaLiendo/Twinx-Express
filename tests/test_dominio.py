@@ -246,7 +246,11 @@ class TestAjusteStock:
 
     @pytest.mark.parametrize("motivo", sorted(MOTIVOS_AJUSTE_VALIDOS))
     def test_acepta_todos_los_motivos_validos(self, motivo):
-        kwargs = {"observaciones": "justificación"} if motivo == "OTRO" else {}
+        kwargs = {}
+        if motivo in ("OTRO", "REVERSA"):
+            kwargs["observaciones"] = "justificación"
+        if motivo == "REVERSA":
+            kwargs["reversa_de_id"] = 1
         ajuste = self._ajuste(motivo=motivo, **kwargs)
         assert ajuste.motivo == motivo
 
@@ -299,6 +303,21 @@ class TestAjusteStock:
     def test_rechaza_costo_unitario_centavos_negativo(self):
         with pytest.raises(DatosInvalidosError):
             self._ajuste(costo_unitario_centavos=-1)
+
+    def test_acepta_reversa_con_reversa_de_id(self):
+        ajuste = self._ajuste(
+            motivo="REVERSA", delta=5, stock_anterior=10, stock_resultante=15,
+            reversa_de_id=1, observaciones="corrección",
+        )
+        assert ajuste.reversa_de_id == 1
+
+    def test_rechaza_reversa_sin_reversa_de_id(self):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(motivo="REVERSA", observaciones="corrección")
+
+    def test_rechaza_reversa_de_id_con_motivo_distinto_de_reversa(self):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(reversa_de_id=1)
 
 
 class TestValidarMotivoManual:

@@ -239,3 +239,156 @@ def test_listar_por_producto_no_mezcla_ajustes_de_otro_producto(base_datos_tempo
         )
 
     assert repositorio_ajustes.listar_por_producto(p2.id) == []
+
+
+def test_registrar_reversa_persiste_reversa_de_id(base_datos_temporal):
+    producto = _crear_producto()
+    usuario = _crear_usuario()
+    with obtener_conexion() as conexion:
+        original = repositorio_ajustes.registrar_ajuste_en_conexion(
+            conexion,
+            AjusteStock(
+                producto_id=producto.id, usuario_id=usuario.id, motivo="ROTURA",
+                delta=-2, stock_anterior=10, stock_resultante=8,
+            ),
+        )
+    with obtener_conexion() as conexion:
+        reversa = repositorio_ajustes.registrar_ajuste_en_conexion(
+            conexion,
+            AjusteStock(
+                producto_id=producto.id, usuario_id=usuario.id, motivo="REVERSA",
+                delta=2, stock_anterior=8, stock_resultante=10,
+                observaciones="corrección", reversa_de_id=original.id,
+            ),
+        )
+
+    assert reversa.reversa_de_id == original.id
+
+
+def test_obtener_por_id_en_conexion_devuelve_el_ajuste(base_datos_temporal):
+    producto = _crear_producto()
+    usuario = _crear_usuario()
+    with obtener_conexion() as conexion:
+        creado = repositorio_ajustes.registrar_ajuste_en_conexion(
+            conexion,
+            AjusteStock(
+                producto_id=producto.id, usuario_id=usuario.id, motivo="ROTURA",
+                delta=-1, stock_anterior=10, stock_resultante=9,
+            ),
+        )
+
+    with obtener_conexion() as conexion:
+        encontrado = repositorio_ajustes.obtener_por_id_en_conexion(conexion, creado.id)
+    assert encontrado.id == creado.id
+    assert repositorio_ajustes.obtener_por_id(creado.id).id == creado.id
+
+
+def test_obtener_por_id_en_conexion_inexistente_devuelve_none(base_datos_temporal):
+    with obtener_conexion() as conexion:
+        assert repositorio_ajustes.obtener_por_id_en_conexion(conexion, 9999) is None
+    assert repositorio_ajustes.obtener_por_id(9999) is None
+
+
+def test_obtener_reversa_de_en_conexion_sin_reversa_devuelve_none(base_datos_temporal):
+    producto = _crear_producto()
+    usuario = _crear_usuario()
+    with obtener_conexion() as conexion:
+        original = repositorio_ajustes.registrar_ajuste_en_conexion(
+            conexion,
+            AjusteStock(
+                producto_id=producto.id, usuario_id=usuario.id, motivo="ROTURA",
+                delta=-1, stock_anterior=10, stock_resultante=9,
+            ),
+        )
+        assert repositorio_ajustes.obtener_reversa_de_en_conexion(conexion, original.id) is None
+
+
+def test_obtener_reversa_de_en_conexion_con_reversa_la_devuelve(base_datos_temporal):
+    producto = _crear_producto()
+    usuario = _crear_usuario()
+    with obtener_conexion() as conexion:
+        original = repositorio_ajustes.registrar_ajuste_en_conexion(
+            conexion,
+            AjusteStock(
+                producto_id=producto.id, usuario_id=usuario.id, motivo="ROTURA",
+                delta=-1, stock_anterior=10, stock_resultante=9,
+            ),
+        )
+        reversa = repositorio_ajustes.registrar_ajuste_en_conexion(
+            conexion,
+            AjusteStock(
+                producto_id=producto.id, usuario_id=usuario.id, motivo="REVERSA",
+                delta=1, stock_anterior=9, stock_resultante=10,
+                observaciones="corrección", reversa_de_id=original.id,
+            ),
+        )
+        encontrada = repositorio_ajustes.obtener_reversa_de_en_conexion(conexion, original.id)
+    assert encontrada.id == reversa.id
+
+
+def test_listar_por_producto_marca_el_original_como_revertido(base_datos_temporal):
+    producto = _crear_producto()
+    usuario = _crear_usuario()
+    with obtener_conexion() as conexion:
+        original = repositorio_ajustes.registrar_ajuste_en_conexion(
+            conexion,
+            AjusteStock(
+                producto_id=producto.id, usuario_id=usuario.id, motivo="ROTURA",
+                delta=-2, stock_anterior=10, stock_resultante=8,
+            ),
+        )
+    with obtener_conexion() as conexion:
+        reversa = repositorio_ajustes.registrar_ajuste_en_conexion(
+            conexion,
+            AjusteStock(
+                producto_id=producto.id, usuario_id=usuario.id, motivo="REVERSA",
+                delta=2, stock_anterior=8, stock_resultante=10,
+                observaciones="corrección", reversa_de_id=original.id,
+            ),
+        )
+
+    resultado = {a.id: a for a in repositorio_ajustes.listar_por_producto(producto.id)}
+
+    assert resultado[original.id].fue_revertido is True
+    assert resultado[original.id].reversa_id == reversa.id
+    assert resultado[original.id].reversa_usuario_nombre_completo == "Test"
+    assert resultado[original.id].es_reversible is False
+    assert resultado[reversa.id].es_reversa is True
+    assert resultado[reversa.id].reversa_de_id == original.id
+    assert resultado[reversa.id].es_reversible is False
+
+
+def test_listar_por_producto_ajuste_sin_reversa_es_reversible(base_datos_temporal):
+    producto = _crear_producto()
+    usuario = _crear_usuario()
+    with obtener_conexion() as conexion:
+        repositorio_ajustes.registrar_ajuste_en_conexion(
+            conexion,
+            AjusteStock(
+                producto_id=producto.id, usuario_id=usuario.id, motivo="ROTURA",
+                delta=-1, stock_anterior=10, stock_resultante=9,
+            ),
+        )
+
+    resultado = repositorio_ajustes.listar_por_producto(producto.id)
+
+    assert resultado[0].es_reversible is True
+    assert resultado[0].fue_revertido is False
+    assert resultado[0].es_reversa is False
+
+
+def test_listar_por_producto_recuento_no_es_reversible(base_datos_temporal):
+    producto = _crear_producto()
+    usuario = _crear_usuario()
+    with obtener_conexion() as conexion:
+        repositorio_ajustes.registrar_ajuste_en_conexion(
+            conexion,
+            AjusteStock(
+                producto_id=producto.id, usuario_id=usuario.id, motivo="RECUENTO",
+                delta=2, stock_anterior=10, stock_resultante=12,
+            ),
+        )
+
+    resultado = repositorio_ajustes.listar_por_producto(producto.id)
+
+    assert resultado[0].es_reversible is False

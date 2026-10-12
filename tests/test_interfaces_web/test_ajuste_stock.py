@@ -282,3 +282,150 @@ class TestHistorialAjustes:
 
         assert respuesta.status == 303
         assert "tipo=error" in respuesta.header("location")
+
+
+def _crear_ajuste(producto_id, motivo="ROTURA", cantidad=3):
+    """Ajuste manual insertado directo (sin pasar por `ajustar_stock`): no depende de que ya
+    exista una sesión ni un usuario -- crea el suyo si hace falta."""
+    with obtener_conexion() as conexion:
+        autor_id = conexion.execute("SELECT id FROM usuarios LIMIT 1").fetchone()
+        if autor_id is None:
+            autor_id = conexion.execute(
+                "INSERT INTO usuarios (nombre_usuario, nombre_completo, password_hash, rol)"
+                " VALUES ('autor-ajuste', 'Autor', 'x', 'OWNER') RETURNING id"
+            ).fetchone()
+        conexion.execute(
+            "INSERT INTO ajustes_stock (producto_id, usuario_id, motivo, delta, stock_anterior, stock_resultante)"
+            " SELECT ?, ?, ?, ?, stock_actual, stock_actual - ? FROM productos WHERE id = ?",
+            (producto_id, autor_id[0], motivo, -cantidad, cantidad, producto_id),
+        )
+        conexion.execute(
+            "UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?", (cantidad, producto_id)
+        )
+        return conexion.execute(
+            "SELECT id FROM ajustes_stock WHERE producto_id = ? ORDER BY id DESC LIMIT 1", (producto_id,)
+        ).fetchone()["id"]
+
+
+class TestFormularioRevertirAjuste:
+    def test_owner_puede_ver_el_formulario(self, base_datos_temporal):
+        producto = _crear_producto()
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        ajuste_id = _crear_ajuste(producto.id)
+
+        respuesta = solicitud("GET", f"/productos/{producto.id}/ajustes/{ajuste_id}/revertir", cookies=cookies)
+
+        assert respuesta.status == 200
+
+    def test_cashier_recibe_403(self, base_datos_temporal):
+        producto = _crear_producto()
+        _, cookies = _crear_usuario_logueado("CASHIER", "cajera1")
+        ajuste_id = _crear_ajuste(producto.id)
+
+        respuesta = solicitud("GET", f"/productos/{producto.id}/ajustes/{ajuste_id}/revertir", cookies=cookies)
+
+        assert respuesta.status == 403
+
+    def test_sin_sesion_redirige_a_login(self, base_datos_temporal):
+        producto = _crear_producto()
+        ajuste_id = _crear_ajuste(producto.id)
+
+        respuesta = solicitud("GET", f"/productos/{producto.id}/ajustes/{ajuste_id}/revertir")
+
+        assert respuesta.status == 303
+        assert respuesta.header("location").startswith("/login")
+
+    def test_ajuste_inexistente_redirige_con_error(self, base_datos_temporal):
+        producto = _crear_producto()
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+
+        respuesta = solicitud("GET", f"/productos/{producto.id}/ajustes/9999/revertir", cookies=cookies)
+
+        assert respuesta.status == 303
+        assert "tipo=error" in respuesta.header("location")
+
+    def test_ajuste_de_otro_producto_redirige_con_error(self, base_datos_temporal):
+        producto = _crear_producto()
+        otro = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 100, 200, stock_actual=5)
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        ajuste_del_otro = _crear_ajuste(otro.id)
+
+        respuesta = solicitud(
+            "GET", f"/productos/{producto.id}/ajustes/{ajuste_del_otro}/revertir", cookies=cookies
+        )
+
+        assert respuesta.status == 303
+        assert "tipo=error" in respuesta.header("location")
+
+
+class TestAccionRevertirAjuste:
+    def test_owner_puede_revertir_y_el_stock_se_restaura(self, base_datos_temporal):
+        producto = _crear_producto(stock_actual=10)
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        ajuste_id = _crear_ajuste(producto.id, cantidad=3)
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 7
+
+        respuesta = solicitud(
+            "POST",
+            f"/productos/{producto.id}/ajustes/{ajuste_id}/revertir",
+            cookies=cookies,
+            formulario={"observaciones": "corrección del error de carga"},
+        )
+
+        assert respuesta.status == 303
+        assert "tipo=success" in respuesta.header("location")
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    def test_cashier_recibe_403_y_no_modifica_nada(self, base_datos_temporal):
+        producto = _crear_producto(stock_actual=10)
+        _, cookies = _crear_usuario_logueado("CASHIER", "cajera1")
+        ajuste_id = _crear_ajuste(producto.id, cantidad=3)
+
+        respuesta = solicitud(
+            "POST",
+            f"/productos/{producto.id}/ajustes/{ajuste_id}/revertir",
+            cookies=cookies,
+            formulario={"observaciones": "intento no autorizado"},
+        )
+
+        assert respuesta.status == 403
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 7
+
+    def test_doble_reversa_redirige_con_error(self, base_datos_temporal):
+        producto = _crear_producto(stock_actual=10)
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        ajuste_id = _crear_ajuste(producto.id, cantidad=3)
+        solicitud(
+            "POST",
+            f"/productos/{producto.id}/ajustes/{ajuste_id}/revertir",
+            cookies=cookies,
+            formulario={"observaciones": "primera"},
+        )
+
+        respuesta = solicitud(
+            "POST",
+            f"/productos/{producto.id}/ajustes/{ajuste_id}/revertir",
+            cookies=cookies,
+            formulario={"observaciones": "segunda"},
+        )
+
+        assert respuesta.status == 303
+        assert "tipo=error" in respuesta.header("location")
+
+    def test_la_reversa_queda_registrada_y_vinculada_en_el_historial(self, base_datos_temporal):
+        producto = _crear_producto(stock_actual=10)
+        _, cookies = _crear_usuario_logueado("OWNER", "duenio")
+        ajuste_id = _crear_ajuste(producto.id, cantidad=3)
+
+        solicitud(
+            "POST",
+            f"/productos/{producto.id}/ajustes/{ajuste_id}/revertir",
+            cookies=cookies,
+            formulario={"observaciones": "corrección"},
+        )
+
+        respuesta = solicitud("GET", f"/productos/{producto.id}/ajustes", cookies=cookies)
+
+        assert "REVERSA" in respuesta.texto
+        assert f"Reversa del #{ajuste_id}" in respuesta.texto
+        assert "Revertido por" in respuesta.texto

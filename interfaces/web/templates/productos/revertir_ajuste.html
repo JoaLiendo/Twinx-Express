@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block titulo %}Revertir ajuste{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Revertir ajuste — {{ producto.nombre }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+
+    <div class="mb-5 rounded-xl border border-error/20 bg-error/5 px-4 py-3 text-sm text-error space-y-1">
+      <p>Esta acción <strong>no borra ni edita</strong> el ajuste original: registra un ajuste nuevo que
+        aplica exactamente el movimiento contrario y queda vinculado a él. No se puede deshacer, y este
+        ajuste solo puede revertirse una vez.</p>
+    </div>
+
+    <dl class="grid grid-cols-2 gap-4 text-sm mb-6">
+      <div>
+        <dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Motivo</dt>
+        <dd class="mt-1 font-medium text-slate-900 dark:text-slate-100">{{ ajuste.motivo }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Fecha</dt>
+        <dd class="mt-1 font-medium text-slate-900 dark:text-slate-100">{{ ajuste.fecha }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Cantidad</dt>
+        <dd class="mt-1 font-semibold tabular-nums {{ 'text-success' if ajuste.delta > 0 else 'text-error' }}">
+          {{ '+%d' % ajuste.delta if ajuste.delta > 0 else ajuste.delta }}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Stock</dt>
+        <dd class="mt-1 font-medium text-slate-900 dark:text-slate-100 tabular-nums">
+          {{ ajuste.stock_anterior }} → {{ ajuste.stock_resultante }}
+        </dd>
+      </div>
+    </dl>
+    {% if ajuste.observaciones %}
+      <p class="text-sm text-slate-600 dark:text-slate-400 mb-6">Observaciones originales: {{ ajuste.observaciones }}</p>
+    {% endif %}
+
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
+      La reversa va a aplicar <strong class="tabular-nums {{ 'text-success' if -ajuste.delta > 0 else 'text-error' }}">{{ '+%d' % -ajuste.delta if -ajuste.delta > 0 else -ajuste.delta }}</strong>
+      sobre el stock actual (<span class="tabular-nums">{{ producto.stock_actual }}</span>).
+    </p>
+
+    <form method="post" action="/productos/{{ producto.id }}/ajustes/{{ ajuste.id }}/revertir" class="space-y-5"
+          onsubmit="return confirm('¿Confirmás revertir este ajuste? La reversa queda registrada de forma permanente y no se puede deshacer.');">
+      <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia }}" />
+      <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Justificación de la reversa</label>
+        <textarea name="observaciones" rows="3" required
+                  class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                         dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                         focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                  placeholder="Por qué se revierte este ajuste"></textarea>
+      </div>
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="rounded-lg bg-error hover:bg-error/90 transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">Revertir ajuste</button>
+        <a href="/productos/{{ producto.id }}/ajustes" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

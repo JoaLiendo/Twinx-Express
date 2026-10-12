@@ -282,6 +282,21 @@ class ProductoFueraDeInventarioError(ErrorAplicacion):
     """El producto no forma parte de las líneas del inventario abierto."""
 
 
+class AjusteNoEncontradoError(ErrorAplicacion):
+    """No existe un ajuste de stock con el id solicitado (ver `services.servicio_stock.revertir_ajuste`)."""
+
+
+class AjusteYaRevertidoError(ErrorAplicacion):
+    """El ajuste ya tiene una reversa: un ajuste original se revierte como máximo una vez
+    (V1.11-B, ver migración 028)."""
+
+
+class AjusteNoReversibleError(ErrorAplicacion):
+    """El ajuste no se puede revertir desde este flujo: es un RECUENTO de inventario físico
+    (se corrige con un nuevo inventario, no con una reversa manual) o ya es, él mismo, una
+    reversa (una reversa no se revierte)."""
+
+
 class InventarioDesactualizadoError(ErrorAplicacion):
     """El stock de uno o más productos cambió después de contarlos (una venta, compra, ajuste o
     anulación): el inventario no se confirma y hay que volver a contarlos.

@@ -11,10 +11,15 @@ from db.repositorios import usuarios as repositorio_usuarios
 from domain.usuario import Usuario
 from domain.venta import ItemVenta
 from excepciones import (
+    AjusteNoEncontradoError,
+    AjusteNoReversibleError,
+    AjusteYaRevertidoError,
     ArchivoImagenInvalidoError,
     CategoriaNoEncontradaError,
+    ClaveIdempotenciaReutilizadaError,
     CodigoBarrasDuplicadoError,
     DatosInvalidosError,
+    PermisoDenegadoError,
     ProductoNoEncontradoError,
     StockInsuficienteError,
 )
@@ -720,6 +725,208 @@ class TestAplicarAjusteEnConexion:
             )
 
         assert ajuste.costo_unitario_centavos == 100
+
+
+class TestRevertirAjuste:
+    """Reversas explícitas y auditables de un ajuste manual erróneo (V1.11-B): el original nunca
+    se edita ni se borra, la corrección es siempre un ajuste nuevo vinculado por `reversa_de_id`."""
+
+    def _ajuste_y_owner(self, stock_actual=10, delta=-3, motivo="ROTURA"):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=stock_actual)
+        owner = _crear_usuario()
+        ajuste = servicio_stock.ajustar_stock(producto.id, delta=delta, motivo=motivo, usuario_id=owner.id)
+        return producto, owner, ajuste
+
+    def test_reversa_restaura_exactamente_el_stock(self, base_datos_temporal):
+        producto, owner, ajuste = self._ajuste_y_owner(stock_actual=10, delta=-3)
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 7
+
+        servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id)
+
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
+
+    def test_ajuste_negativo_produce_reversa_positiva(self, base_datos_temporal):
+        _, owner, ajuste = self._ajuste_y_owner(delta=-3)
+
+        reversa = servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id)
+
+        assert reversa.delta == 3
+        assert reversa.motivo == "REVERSA"
+        assert reversa.reversa_de_id == ajuste.id
+
+    def test_solo_owner_puede_revertir(self, base_datos_temporal):
+        _, owner, ajuste = self._ajuste_y_owner()
+
+        reversa = servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id)
+
+        assert reversa.usuario_id == owner.id
+
+    def test_cashier_es_rechazado(self, base_datos_temporal):
+        _, owner, ajuste = self._ajuste_y_owner()
+        cajera = _crear_usuario("cajera", rol="CASHIER")
+
+        with pytest.raises(PermisoDenegadoError):
+            servicio_stock.revertir_ajuste(ajuste.id, "corrección", cajera.id)
+        assert servicio_stock.obtener_por_id(ajuste.producto_id).stock_actual == 7
+
+    def test_doble_reversa_es_rechazada(self, base_datos_temporal):
+        _, owner, ajuste = self._ajuste_y_owner()
+        servicio_stock.revertir_ajuste(ajuste.id, "primera", owner.id)
+
+        with pytest.raises(AjusteYaRevertidoError):
+            servicio_stock.revertir_ajuste(ajuste.id, "segunda", owner.id)
+
+    def test_reversa_de_reversa_es_rechazada(self, base_datos_temporal):
+        _, owner, ajuste = self._ajuste_y_owner()
+        reversa = servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id)
+
+        with pytest.raises(AjusteNoReversibleError):
+            servicio_stock.revertir_ajuste(reversa.id, "no debería poder", owner.id)
+
+    def test_recuento_no_es_reversible_desde_este_flujo(self, base_datos_temporal):
+        from db.repositorios import productos as repositorio_productos
+
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        owner = _crear_usuario()
+        with obtener_conexion(inmediata=True) as conexion:
+            producto_en_conexion = repositorio_productos.obtener_por_id_en_conexion(conexion, producto.id)
+            recuento = servicio_stock.aplicar_ajuste_en_conexion(
+                conexion, producto_en_conexion, 2, "RECUENTO", owner.id
+            )
+
+        with pytest.raises(AjusteNoReversibleError):
+            servicio_stock.revertir_ajuste(recuento.id, "no debería poder", owner.id)
+
+    def test_ajuste_inexistente_es_rechazado(self, base_datos_temporal):
+        owner = _crear_usuario()
+
+        with pytest.raises(AjusteNoEncontradoError):
+            servicio_stock.revertir_ajuste(9999, "corrección", owner.id)
+
+    def test_fallo_al_persistir_la_reversa_no_deja_el_stock_modificado(self, base_datos_temporal, monkeypatch):
+        import sqlite3
+
+        from db.repositorios import ajustes_stock as repositorio_ajustes
+
+        _, owner, ajuste = self._ajuste_y_owner(stock_actual=10, delta=-3)
+
+        original = repositorio_ajustes.registrar_ajuste_en_conexion
+
+        def falla_en_la_reversa(conexion, ajuste_a_registrar, clave_idempotencia=None):
+            if ajuste_a_registrar.motivo == "REVERSA":
+                raise sqlite3.IntegrityError("fallo simulado")
+            return original(conexion, ajuste_a_registrar, clave_idempotencia)
+
+        monkeypatch.setattr(repositorio_ajustes, "registrar_ajuste_en_conexion", falla_en_la_reversa)
+
+        with pytest.raises(Exception):
+            servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id)
+
+        assert servicio_stock.obtener_por_id(ajuste.producto_id).stock_actual == 7
+
+    def test_idempotencia_un_reenvio_con_la_misma_clave_devuelve_la_misma_reversa(self, base_datos_temporal):
+        _, owner, ajuste = self._ajuste_y_owner()
+
+        primera = servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id, clave_idempotencia="rv-1")
+        segunda = servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id, clave_idempotencia="rv-1")
+
+        assert segunda.id == primera.id
+        with obtener_conexion() as conexion:
+            total = conexion.execute(
+                "SELECT COUNT(*) AS n FROM ajustes_stock WHERE motivo = 'REVERSA'"
+            ).fetchone()["n"]
+        assert total == 1
+
+    def test_idempotencia_misma_clave_con_otra_justificacion_es_rechazada(self, base_datos_temporal):
+        _, owner, ajuste = self._ajuste_y_owner()
+        servicio_stock.revertir_ajuste(ajuste.id, "primera justificación", owner.id, clave_idempotencia="rv-1")
+
+        with pytest.raises(ClaveIdempotenciaReutilizadaError):
+            servicio_stock.revertir_ajuste(ajuste.id, "otra justificación", owner.id, clave_idempotencia="rv-1")
+
+    def test_dos_reversas_concurrentes_del_mismo_ajuste_solo_una_se_aplica(self, base_datos_temporal):
+        """Mismo patrón que `TestAjustarStock.test_dos_ajustes_concurrentes_no_generan_lost_update`:
+        dos hilos reales, dos conexiones SQLite reales -- `inmediata=True` los serializa, y el
+        índice único de `reversa_de_id` es la garantía final ante cualquier carrera real."""
+        _, owner, ajuste = self._ajuste_y_owner(stock_actual=10, delta=-3)
+
+        barrera = threading.Barrier(2)
+        errores = []
+
+        def revertir():
+            barrera.wait()
+            try:
+                servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id)
+            except Exception as error:  # noqa: BLE001 -- se inspecciona más abajo
+                errores.append(error)
+
+        hilo_a = threading.Thread(target=revertir)
+        hilo_b = threading.Thread(target=revertir)
+        hilo_a.start()
+        hilo_b.start()
+        hilo_a.join(timeout=10)
+        hilo_b.join(timeout=10)
+
+        assert not hilo_a.is_alive() and not hilo_b.is_alive()
+        assert len(errores) == 1
+        assert isinstance(errores[0], AjusteYaRevertidoError)
+        assert servicio_stock.obtener_por_id(ajuste.producto_id).stock_actual == 10
+        with obtener_conexion() as conexion:
+            total = conexion.execute(
+                "SELECT COUNT(*) AS n FROM ajustes_stock WHERE motivo = 'REVERSA'"
+            ).fetchone()["n"]
+        assert total == 1
+
+    def test_la_reversa_se_audita(self, base_datos_temporal):
+        _, owner, ajuste = self._ajuste_y_owner()
+
+        reversa = servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id)
+
+        with obtener_conexion() as conexion:
+            fila = conexion.execute(
+                "SELECT usuario_id, accion, entidad_id, resumen FROM auditoria ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert fila["usuario_id"] == owner.id
+        assert fila["accion"] == "AJUSTE_STOCK"
+        assert fila["entidad_id"] == ajuste.producto_id
+        assert "REVERSA" in fila["resumen"]
+
+    def test_snapshot_de_costo_referencia_el_del_original(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        owner = _crear_usuario()
+        ajuste = servicio_stock.ajustar_stock(producto.id, delta=-3, motivo="ROTURA", usuario_id=owner.id)
+        assert ajuste.costo_unitario_centavos == 100
+
+        servicio_stock.actualizar_producto(producto.id, producto.codigo_barras, producto.nombre, 999, 200, 1)
+
+        reversa = servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id)
+
+        assert reversa.costo_unitario_centavos == 100
+
+    def test_snapshot_de_costo_nulo_en_un_original_legacy_no_se_inventa(self, base_datos_temporal):
+        """Un ajuste histórico (anterior a V1.11-A) puede no tener `costo_unitario_centavos`: la
+        reversa lo referencia tal cual, sin inventar el costo actual del producto."""
+        from db.repositorios import ajustes_stock as repositorio_ajustes
+        from domain.ajuste_stock import AjusteStock
+
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        owner = _crear_usuario()
+        with obtener_conexion() as conexion:
+            legacy = repositorio_ajustes.registrar_ajuste_en_conexion(
+                conexion,
+                AjusteStock(
+                    producto_id=producto.id, usuario_id=owner.id, motivo="MERMA",
+                    delta=-3, stock_anterior=10, stock_resultante=7,
+                ),
+            )
+        from db.repositorios import productos as repositorio_productos
+
+        with obtener_conexion(inmediata=True) as conexion:
+            repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, 7)
+
+        reversa = servicio_stock.revertir_ajuste(legacy.id, "corrección de un legacy", owner.id)
+
+        assert reversa.costo_unitario_centavos is None
 
 
 class TestCalcularValorizacionInventario:

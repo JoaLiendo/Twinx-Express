@@ -14,7 +14,7 @@ from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario
 
 _COLUMNAS = (
     "id, producto_id, usuario_id, motivo, delta, stock_anterior, stock_resultante, observaciones, fecha, "
-    "inventario_id, costo_unitario_centavos"
+    "inventario_id, costo_unitario_centavos, reversa_de_id"
 )
 
 
@@ -31,6 +31,7 @@ def _fila_a_ajuste(fila: sqlite3.Row) -> AjusteStock:
         fecha=fila["fecha"],
         inventario_id=fila["inventario_id"],
         costo_unitario_centavos=fila["costo_unitario_centavos"],
+        reversa_de_id=fila["reversa_de_id"],
     )
 
 
@@ -40,6 +41,25 @@ def obtener_por_clave_idempotencia_en_conexion(
     """Ajuste ya registrado con esa clave de idempotencia (migración 014), o `None`."""
     fila = conexion.execute(
         f"SELECT {_COLUMNAS} FROM ajustes_stock WHERE clave_idempotencia = ?", (clave_idempotencia,)
+    ).fetchone()
+    return _fila_a_ajuste(fila) if fila is not None else None
+
+
+def obtener_por_id_en_conexion(conexion: sqlite3.Connection, ajuste_id: int) -> AjusteStock | None:
+    """El ajuste con ese id, o `None` (ver `services.servicio_stock.revertir_ajuste`)."""
+    fila = conexion.execute(f"SELECT {_COLUMNAS} FROM ajustes_stock WHERE id = ?", (ajuste_id,)).fetchone()
+    return _fila_a_ajuste(fila) if fila is not None else None
+
+
+def obtener_por_id(ajuste_id: int) -> AjusteStock | None:
+    with obtener_conexion() as conexion:
+        return obtener_por_id_en_conexion(conexion, ajuste_id)
+
+
+def obtener_reversa_de_en_conexion(conexion: sqlite3.Connection, ajuste_id: int) -> AjusteStock | None:
+    """La reversa de ese ajuste, si ya tiene una (a lo sumo una, ver migración 028), o `None`."""
+    fila = conexion.execute(
+        f"SELECT {_COLUMNAS} FROM ajustes_stock WHERE reversa_de_id = ?", (ajuste_id,)
     ).fetchone()
     return _fila_a_ajuste(fila) if fila is not None else None
 
@@ -63,8 +83,8 @@ def registrar_ajuste_en_conexion(
     consulta = f"""
         INSERT INTO ajustes_stock
             (producto_id, usuario_id, motivo, delta, stock_anterior, stock_resultante, observaciones,
-             clave_idempotencia, inventario_id, costo_unitario_centavos)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             clave_idempotencia, inventario_id, costo_unitario_centavos, reversa_de_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING {_COLUMNAS}
     """
     parametros = (
@@ -78,6 +98,7 @@ def registrar_ajuste_en_conexion(
         clave_idempotencia,
         ajuste.inventario_id,
         ajuste.costo_unitario_centavos,
+        ajuste.reversa_de_id,
     )
     fila = conexion.execute(consulta, parametros).fetchone()
     return _fila_a_ajuste(fila)
@@ -93,13 +114,20 @@ def listar_por_producto(producto_id: int) -> list[AjusteStockConUsuario]:
     no tiene ninguna ruta sin autenticar) -- no filtra por
     `usuarios.activo`: un usuario desactivado después de ajustar stock
     sigue apareciendo con su nombre, igual criterio que en ventas/caja.
+
+    `LEFT JOIN ajustes_stock r` (V1.11-B): la reversa de esta fila, si ya tiene una (a lo sumo una,
+    ver migración 028) -- permite mostrar "revertido por X el Y" sin una consulta aparte por fila.
     """
     consulta = """
         SELECT
             a.id, a.producto_id, a.usuario_id, u.nombre_completo AS usuario_nombre_completo,
-            a.motivo, a.delta, a.stock_anterior, a.stock_resultante, a.observaciones, a.fecha
+            a.motivo, a.delta, a.stock_anterior, a.stock_resultante, a.observaciones, a.fecha,
+            a.reversa_de_id, r.id AS reversa_id, r.fecha AS reversa_fecha,
+            ru.nombre_completo AS reversa_usuario_nombre_completo
         FROM ajustes_stock a
         JOIN usuarios u ON u.id = a.usuario_id
+        LEFT JOIN ajustes_stock r ON r.reversa_de_id = a.id
+        LEFT JOIN usuarios ru ON ru.id = r.usuario_id
         WHERE a.producto_id = ?
         ORDER BY a.id DESC
     """
@@ -117,6 +145,10 @@ def listar_por_producto(producto_id: int) -> list[AjusteStockConUsuario]:
             stock_resultante=fila["stock_resultante"],
             observaciones=fila["observaciones"],
             fecha=fila["fecha"],
+            reversa_de_id=fila["reversa_de_id"],
+            reversa_id=fila["reversa_id"],
+            reversa_fecha=fila["reversa_fecha"],
+            reversa_usuario_nombre_completo=fila["reversa_usuario_nombre_completo"],
         )
         for fila in filas
     ]

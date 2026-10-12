@@ -311,6 +311,18 @@ class TestPantalla:
         assert html.count('data-tipo="ANULACION_VENTA"') == 1 and html.count('data-tipo="ANULACION_COMPRA"') == 1
         assert html.count('data-tipo="RECUENTO"') == 1
 
+    def test_recuento_no_se_muestra_crudo_pero_su_codigo_interno_no_cambia(self, e):
+        """Riesgo conocido de V1.11-A, resuelto en V1.11-B: RECUENTO sigue siendo el código
+        interno (`data-tipo`, usado por filtros/tests), pero el texto visible y la descripción
+        se traducen a "Ajuste de inventario" (ver `db.repositorios.movimientos_stock`)."""
+        _historia_completa(e)
+
+        html = solicitud("GET", f"/productos/{e.p.id}/movimientos", cookies=e.co).texto
+
+        assert html.count('data-tipo="RECUENTO"') == 1
+        assert ">RECUENTO<" not in html
+        assert "Ajuste de inventario" in html
+
     def test_el_filtro_de_fechas_se_conserva_y_recorta(self, e):
         _historia_completa(e)
 

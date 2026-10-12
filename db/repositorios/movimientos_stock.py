@@ -46,7 +46,11 @@ _MOVIMIENTOS = f"""
     SELECT a.fecha,
            CASE WHEN a.motivo = 'RECUENTO' THEN '{TIPO_RECUENTO}' ELSE '{TIPO_AJUSTE}' END,
            3, a.id, a.delta, a.stock_resultante,
-           a.motivo || CASE WHEN a.observaciones IS NOT NULL THEN ': ' || a.observaciones ELSE '' END,
+           -- El código interno del motivo (columna `ajustes_stock.motivo`) nunca cambia; solo se
+           -- traduce para mostrarse: RECUENTO es un ajuste de inventario físico, no algo que el
+           -- usuario eligió como motivo (ver V1.11-A/B).
+           (CASE WHEN a.motivo = 'RECUENTO' THEN 'Ajuste de inventario' ELSE a.motivo END)
+               || CASE WHEN a.observaciones IS NOT NULL THEN ': ' || a.observaciones ELSE '' END,
            a.inventario_id
     FROM ajustes_stock a
     WHERE a.producto_id = :producto_id

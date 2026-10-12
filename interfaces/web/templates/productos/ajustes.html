@@ -21,11 +21,13 @@
               <th class="px-5 py-3 text-right">Stock resultante</th>
               <th class="px-5 py-3">Usuario</th>
               <th class="px-5 py-3">Observaciones</th>
+              <th class="px-5 py-3">Reversa</th>
+              <th class="px-5 py-3"></th>
             </tr>
           </thead>
           <tbody>
             {% for ajuste in ajustes %}
-              <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+              <tr id="ajuste-{{ ajuste.id }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800">
                 <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ ajuste.fecha }}</td>
                 <td class="px-5 py-3.5">
                   {# RECUENTO es el código interno de un ajuste de inventario físico (domain.ajuste_stock);
@@ -39,6 +41,23 @@
                 <td class="px-5 py-3.5 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">{{ ajuste.stock_resultante }}</td>
                 <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ ajuste.usuario_nombre_completo }}</td>
                 <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ ajuste.observaciones or "—" }}</td>
+                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                  {% if ajuste.es_reversa %}
+                    <a href="#ajuste-{{ ajuste.reversa_de_id }}" class="text-primary hover:underline">Reversa del #{{ ajuste.reversa_de_id }}</a>
+                  {% elif ajuste.fue_revertido %}
+                    <a href="#ajuste-{{ ajuste.reversa_id }}" class="text-primary hover:underline">
+                      Revertido por {{ ajuste.reversa_usuario_nombre_completo }} el {{ ajuste.reversa_fecha }}
+                    </a>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="px-5 py-3.5 whitespace-nowrap">
+                  {% if ajuste.es_reversible %}
+                    <a href="/productos/{{ producto.id }}/ajustes/{{ ajuste.id }}/revertir"
+                       class="text-sm font-medium text-error hover:underline">Revertir</a>
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>

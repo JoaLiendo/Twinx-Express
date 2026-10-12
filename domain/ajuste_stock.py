@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from excepciones import DatosInvalidosError
 
 MOTIVOS_AJUSTE_VALIDOS = frozenset(
-    {"MERMA", "ROTURA", "VENCIMIENTO", "PERDIDA", "ROBO", "RECUENTO", "OTRO", "FALLA_FABRICA"}
+    {"MERMA", "ROTURA", "VENCIMIENTO", "PERDIDA", "ROBO", "RECUENTO", "OTRO", "FALLA_FABRICA", "REVERSA"}
 )
 
 # Único motivo manual vigente desde V1.11-A: `MERMA`/`PERDIDA`/`OTRO` quedan legacy (solo lectura
@@ -38,8 +38,10 @@ MOTIVOS_MANUALES_PERMITIDOS = frozenset({"VENCIMIENTO", "ROTURA", "ROBO", "FALLA
 # `OTRO` es el único motivo legacy que no describía por sí mismo qué pasó -- por eso exigía una
 # justificación. Ya no se ofrece para ajustes nuevos, pero una fila histórica con `OTRO` sigue
 # necesitando su observación al reconstruirse (mismo criterio que ya usa
-# `domain.caja.TIPOS_QUE_REQUIEREN_DESCRIPCION` para INGRESO/EGRESO).
-MOTIVOS_QUE_REQUIEREN_OBSERVACIONES = frozenset({"OTRO"})
+# `domain.caja.TIPOS_QUE_REQUIEREN_DESCRIPCION` para INGRESO/EGRESO). `REVERSA` (V1.11-B) también
+# exige su propia justificación: no hay riesgo de romper historial porque es un motivo nuevo, sin
+# filas anteriores a esta regla.
+MOTIVOS_QUE_REQUIEREN_OBSERVACIONES = frozenset({"OTRO", "REVERSA"})
 
 
 def validar_motivo_manual(motivo: str, delta: int) -> None:
@@ -87,6 +89,9 @@ class AjusteStock:
     # 027: costo vigente del producto congelado al momento del ajuste. NULL en filas históricas
     # (anteriores a esta versión): nunca se infiere ni se backfillea un costo retroactivo.
     costo_unitario_centavos: int | None = None
+    # 028: ajuste original que esta fila revierte. Solo lo fija `services.servicio_stock.revertir_ajuste`
+    # (vía `aplicar_ajuste_en_conexion`); el original nunca se edita ni se borra (ver docstring del módulo).
+    reversa_de_id: int | None = None
 
     def __post_init__(self) -> None:
         self._validar()
@@ -116,6 +121,11 @@ class AjusteStock:
             )
         if self.costo_unitario_centavos is not None and self.costo_unitario_centavos < 0:
             raise DatosInvalidosError("El costo unitario de un ajuste no puede ser negativo.")
+        if (self.motivo == "REVERSA") != (self.reversa_de_id is not None):
+            raise DatosInvalidosError(
+                "Un ajuste de motivo REVERSA debe tener reversa_de_id, y solo uno de motivo "
+                "REVERSA puede tenerlo."
+            )
 
 
 @dataclass
@@ -129,6 +139,11 @@ class AjusteStockConUsuario:
     criterio que `domain.compra.ResumenCompra`/`domain.venta.ResumenVenta`.
     Incluye usuarios desactivados (nunca se borran físicamente): el
     nombre sigue resolviéndose sin importar el estado actual del usuario.
+
+    `reversa_de_id` (V1.11-B): si esta fila ES una reversa, el id del ajuste original que corrige.
+    `reversa_id`/`reversa_fecha`/`reversa_usuario_nombre_completo`: si esta fila YA fue revertida
+    (es un ajuste original con una reversa), los datos de esa reversa -- `None` si todavía no tiene
+    ninguna. Un ajuste puede revertirse como máximo una vez (ver migración 028).
     """
 
     id: int
@@ -141,3 +156,21 @@ class AjusteStockConUsuario:
     stock_resultante: int
     observaciones: str | None
     fecha: str
+    reversa_de_id: int | None = None
+    reversa_id: int | None = None
+    reversa_fecha: str | None = None
+    reversa_usuario_nombre_completo: str | None = None
+
+    @property
+    def es_reversa(self) -> bool:
+        return self.reversa_de_id is not None
+
+    @property
+    def fue_revertido(self) -> bool:
+        return self.reversa_id is not None
+
+    @property
+    def es_reversible(self) -> bool:
+        """Un RECUENTO no se revierte desde este flujo manual (ver `services.servicio_stock.revertir_ajuste`),
+        una reversa no se revierte, y un ajuste ya revertido no se revierte dos veces."""
+        return self.motivo != "RECUENTO" and not self.es_reversa and not self.fue_revertido

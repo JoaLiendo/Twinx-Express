@@ -429,6 +429,42 @@ def listar_ajustes_de_producto(request: Request, producto_id: int):
     return templates.TemplateResponse(request, "productos/ajustes.html", contexto)
 
 
+@router.get("/productos/{producto_id}/ajustes/{ajuste_id}/revertir", dependencies=[_SOLO_OWNER])
+def formulario_revertir_ajuste(request: Request, producto_id: int, ajuste_id: int):
+    producto = servicio_stock.obtener_por_id(producto_id)
+    if producto is None:
+        return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
+
+    ajuste = servicio_stock.obtener_ajuste(ajuste_id)
+    if ajuste is None or ajuste.producto_id != producto_id:
+        return redireccionar_con_mensaje(f"/productos/{producto_id}/ajustes", "error", "El ajuste no existe.")
+
+    contexto = {
+        **contexto_base(request),
+        "producto": producto,
+        "ajuste": ajuste,
+        "clave_idempotencia": nueva_clave_idempotencia(),
+    }
+    return templates.TemplateResponse(request, "productos/revertir_ajuste.html", contexto)
+
+
+@router.post("/productos/{producto_id}/ajustes/{ajuste_id}/revertir", dependencies=[_SOLO_OWNER])
+def revertir_ajuste(
+    producto_id: int,
+    ajuste_id: int,
+    observaciones: str = Form(...),
+    clave_idempotencia: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    """Quién revierte es siempre el usuario autenticado, nunca un dato del formulario."""
+    servicio_stock.revertir_ajuste(
+        ajuste_id, observaciones.strip(), usuario_actual.id, clave_idempotencia=clave_idempotencia or None
+    )
+    return redireccionar_con_mensaje(
+        f"/productos/{producto_id}/ajustes", "success", "Ajuste revertido correctamente."
+    )
+
+
 @router.get("/productos/{producto_id}/movimientos/exportar", dependencies=[_SOLO_OWNER])
 def exportar_movimientos_de_producto(producto_id: int, fecha_desde: str | None = None, fecha_hasta: str | None = None):
     """CSV del kardex del producto con el mismo período de la pantalla."""
