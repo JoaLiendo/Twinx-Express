@@ -349,6 +349,8 @@ class TestRotacion:
 
 class TestKardex:
     def _historia(self, e):
+        # El alta (V1.11-C: movimiento STOCK_INICIAL) es anterior a todo lo demás, como en la realidad.
+        escribir(e.ruta, "UPDATE ajustes_stock SET fecha = '2026-01-01 08:00:00' WHERE motivo = 'STOCK_INICIAL'")
         c1 = _comprar(e, e.a, (e.p1, 10, 100), fecha="2026-01-10 09:00:00")
         v1 = _vender(e, (e.p1, 4), fecha="2026-01-11 10:00:00")
         v2 = _vender(e, (e.p1, 3), fecha="2026-01-12 10:00:00")
@@ -366,7 +368,8 @@ class TestKardex:
 
         assert list(filas[0].keys()) == list(COLUMNAS_KARDEX)
         assert [(f["tipo"], f["entrada"], f["salida"], f["saldo"]) for f in filas] == [
-            ("SALDO_INICIAL_RECONSTRUIDO", "", "", "50"),
+            ("SALDO_INICIAL_RECONSTRUIDO", "", "", "0"),
+            ("STOCK_INICIAL", "50", "", "50"),
             ("COMPRA", "10", "", "60"),
             ("VENTA", "", "4", "56"),
             ("VENTA", "", "3", "53"),
@@ -406,7 +409,7 @@ class TestKardex:
         _comprar(e, e.a, (e.p2, 3, 400))
         escribir(e.ruta, "UPDATE productos SET activo = 0 WHERE id = ?", (e.p2.id,))
 
-        assert len(_filas(_bajar(e, f"/productos/{e.p2.id}/movimientos/exportar"))) == 2
+        assert len(_filas(_bajar(e, f"/productos/{e.p2.id}/movimientos/exportar"))) == 3  # saldo, alta y compra
 
 
 class TestPermisos:

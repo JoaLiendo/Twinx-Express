@@ -2,8 +2,8 @@
 
 Son proyecciones de solo lectura armadas con los eventos reales que ya cambian el stock (ventas,
 anulaciones de venta y de compra, compras y ajustes de stock, incluidos los recuentos de inventario
-físico): no existe una tabla de movimientos. Un movimiento anulado NO desaparece: se muestra la
-operación original y, aparte, su reversión en la fecha de anulación.
+físico y, desde V1.11-C, el stock inicial de alta): no existe una tabla de movimientos. Un movimiento
+anulado NO desaparece: se muestra la operación original y, aparte, su reversión en la fecha de anulación.
 """
 
 from dataclasses import dataclass, field
@@ -14,6 +14,7 @@ TIPO_COMPRA = "COMPRA"
 TIPO_ANULACION_COMPRA = "ANULACION_COMPRA"
 TIPO_AJUSTE = "AJUSTE"
 TIPO_RECUENTO = "RECUENTO"
+TIPO_STOCK_INICIAL = "STOCK_INICIAL"
 
 
 @dataclass(frozen=True)
@@ -45,8 +46,9 @@ class Kardex:
     """Movimientos de un producto en un período, con sus saldos.
 
     `saldo_inicial` es siempre RECONSTRUIDO (no es un dato persistido): `stock_actual` menos todos los
-    movimientos desde el inicio del período. Incluye el stock con el que se dio de alta el producto, que el
-    sistema no registra como movimiento. `saldo_final` es el saldo al terminar el período; sin filtros
+    movimientos desde el inicio del período. En un producto creado desde V1.11-C el stock de alta es un
+    movimiento propio (`STOCK_INICIAL`); en uno anterior sigue incluido en este saldo reconstruido (nunca se
+    infiere un movimiento histórico). `saldo_final` es el saldo al terminar el período; sin filtros
     coincide con `stock_actual`.
     """
 

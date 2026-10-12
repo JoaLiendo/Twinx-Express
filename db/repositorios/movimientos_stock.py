@@ -6,7 +6,8 @@ todas filtradas por producto desde SQL:
     * ventas (salida en `ventas.fecha`) y su anulación (entrada en `fecha_anulacion`);
     * compras (entrada en `compras.fecha`) y su anulación (salida en `fecha_anulacion`);
     * `ajustes_stock` (delta real): el ajuste de un inventario físico ya es un ajuste de motivo `RECUENTO`,
-      así que `inventarios`/`inventario_lineas` NO son fuente (sumarlos duplicaría el movimiento).
+      así que `inventarios`/`inventario_lineas` NO son fuente (sumarlos duplicaría el movimiento); el
+      stock de alta de un producto creado desde V1.11-C es un ajuste de motivo `STOCK_INICIAL`.
 
 Orden total y estable: `(fecha, prioridad, fuente_id)`. Como las fechas tienen resolución de segundos y pueden
 empatar, `prioridad` pone primero las operaciones originales (compra, venta, ajuste) y después las
@@ -24,6 +25,7 @@ from domain.movimiento_stock import (
     TIPO_ANULACION_VENTA,
     TIPO_COMPRA,
     TIPO_RECUENTO,
+    TIPO_STOCK_INICIAL,
     TIPO_VENTA,
 )
 from domain.producto import Producto
@@ -44,12 +46,16 @@ _MOVIMIENTOS = f"""
     GROUP BY c.id
   UNION ALL
     SELECT a.fecha,
-           CASE WHEN a.motivo = 'RECUENTO' THEN '{TIPO_RECUENTO}' ELSE '{TIPO_AJUSTE}' END,
-           3, a.id, a.delta, a.stock_resultante,
+           CASE a.motivo WHEN 'RECUENTO' THEN '{TIPO_RECUENTO}' WHEN 'STOCK_INICIAL' THEN '{TIPO_STOCK_INICIAL}'
+                ELSE '{TIPO_AJUSTE}' END,
+           -- El stock de alta es el primer movimiento del producto: ante un empate de fecha va primero.
+           CASE WHEN a.motivo = 'STOCK_INICIAL' THEN 0 ELSE 3 END,
+           a.id, a.delta, a.stock_resultante,
            -- El código interno del motivo (columna `ajustes_stock.motivo`) nunca cambia; solo se
-           -- traduce para mostrarse: RECUENTO es un ajuste de inventario físico, no algo que el
-           -- usuario eligió como motivo (ver V1.11-A/B).
-           (CASE WHEN a.motivo = 'RECUENTO' THEN 'Ajuste de inventario' ELSE a.motivo END)
+           -- traduce para mostrarse: RECUENTO es un ajuste de inventario físico y STOCK_INICIAL el
+           -- stock de alta, no algo que el usuario eligió como motivo (ver V1.11-A/B/C).
+           (CASE a.motivo WHEN 'RECUENTO' THEN 'Ajuste de inventario' WHEN 'STOCK_INICIAL' THEN 'Stock inicial'
+                 ELSE a.motivo END)
                || CASE WHEN a.observaciones IS NOT NULL THEN ': ' || a.observaciones ELSE '' END,
            a.inventario_id
     FROM ajustes_stock a

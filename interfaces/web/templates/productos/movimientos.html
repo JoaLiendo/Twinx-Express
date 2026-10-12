@@ -38,8 +38,9 @@
     </div>
   </dl>
   <p class="text-xs text-slate-500 dark:text-slate-400">
-    El sistema no guarda un stock inicial histórico: el saldo inicial se reconstruye desde el stock actual restando los movimientos
-    {% if kardex.fecha_desde %}desde {{ kardex.fecha_desde }}{% else %}registrados{% endif %} (incluye el stock cargado al dar de alta el producto).
+    El saldo inicial se reconstruye desde el stock actual restando los movimientos
+    {% if kardex.fecha_desde %}desde {{ kardex.fecha_desde }}{% else %}registrados{% endif %}. El stock cargado al dar de alta un producto
+    figura como «Stock inicial»; en productos creados antes de esa versión sigue incluido en el saldo inicial reconstruido.
     Las operaciones anuladas se muestran con su movimiento original y con su reversión. Solo consulta.
   </p>
 
@@ -59,11 +60,12 @@
             </tr>
           </thead>
           <tbody>
+            {% set etiquetas_tipo = {'RECUENTO': 'Ajuste de inventario', 'STOCK_INICIAL': 'Stock inicial'} %}
             {% for m in kardex.movimientos %}
               <tr data-tipo="{{ m.tipo }}" data-referencia="{{ m.referencia }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800">
                 <td class="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ m.fecha }}</td>
-                {# `data-tipo` arriba conserva el código interno RECUENTO (filtros/tests); solo el texto visible se traduce. #}
-                <td class="px-5 py-3">{{ ui.badge('Ajuste de inventario' if m.tipo == 'RECUENTO' else m.tipo, 'exito' if m.cantidad > 0 else 'advertencia') }}</td>
+                {# `data-tipo` arriba conserva el código interno (filtros/tests); solo el texto visible se traduce. #}
+                <td class="px-5 py-3">{{ ui.badge(etiquetas_tipo.get(m.tipo, m.tipo), 'exito' if m.cantidad > 0 else 'advertencia') }}</td>
                 <td class="px-5 py-3 whitespace-nowrap">{{ m.referencia }}</td>
                 <td class="px-5 py-3 text-right tabular-nums">{{ m.entrada if m.entrada else '' }}</td>
                 <td class="px-5 py-3 text-right tabular-nums">{{ m.salida if m.salida else '' }}</td>

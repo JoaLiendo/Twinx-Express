@@ -15,7 +15,12 @@ from db.repositorios import ajustes_stock as repositorio_ajustes_stock
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
-from domain.ajuste_stock import AjusteStock, AjusteStockConUsuario, validar_motivo_manual
+from domain.ajuste_stock import (
+    MOTIVO_STOCK_INICIAL,
+    AjusteStock,
+    AjusteStockConUsuario,
+    validar_motivo_manual,
+)
 from domain.dinero import MAXIMO_ENTERO
 from domain.producto import Producto
 from domain.usuario import exigir_rol
@@ -83,6 +88,9 @@ def registrar_producto(
     )
     with obtener_conexion() as conexion:
         producto_creado = repositorio_productos.crear_producto_en_conexion(conexion, producto)
+        registrar_stock_inicial_en_conexion(
+            conexion, producto_creado, usuario_id, producto_creado.precio_costo_centavos
+        )
         if usuario_id is not None:
             repositorio_auditoria.registrar_en_conexion(
                 conexion,
@@ -94,6 +102,35 @@ def registrar_producto(
             )
     logger.info("Producto registrado: %s (id=%s)", producto_creado.nombre, producto_creado.id)
     return producto_creado
+
+
+def registrar_stock_inicial_en_conexion(
+    conexion: ConexionBD,
+    producto: Producto,
+    usuario_id: int | None,
+    costo_unitario_centavos: int | None,
+) -> AjusteStock | None:
+    """Registra el stock de alta de un producto recién creado como movimiento `STOCK_INICIAL`
+    (V1.11-C), dentro de la transacción del alta: se confirma o se revierte junto con ella.
+
+    No escribe `productos.stock_actual` (el alta ya lo insertó con ese valor, sin pasar por un
+    UPDATE): solo deja el movimiento causal con anterior 0 y resultante = stock de alta. Sin stock
+    (0) no registra nada -- un movimiento de cero no explica nada. `usuario_id` y
+    `costo_unitario_centavos` se guardan tal como llegan, `None` incluido: nunca se inventa un
+    responsable ni un costo (ver `domain.ajuste_stock.MOTIVO_STOCK_INICIAL` y migración 029).
+    """
+    if producto.stock_actual <= 0:
+        return None
+    ajuste = AjusteStock(
+        producto_id=producto.id,
+        usuario_id=usuario_id,
+        motivo=MOTIVO_STOCK_INICIAL,
+        delta=producto.stock_actual,
+        stock_anterior=0,
+        stock_resultante=producto.stock_actual,
+        costo_unitario_centavos=costo_unitario_centavos,
+    )
+    return repositorio_ajustes_stock.registrar_ajuste_en_conexion(conexion, ajuste)
 
 
 def obtener_por_id(producto_id: int) -> Producto | None:
@@ -723,6 +760,11 @@ def revertir_ajuste(
             raise AjusteNoReversibleError(
                 "Un ajuste de inventario (RECUENTO) no se revierte desde este flujo: "
                 "corregilo con un nuevo inventario físico."
+            )
+        if original.motivo == MOTIVO_STOCK_INICIAL:
+            raise AjusteNoReversibleError(
+                "El stock inicial de un producto no se revierte: si se cargó mal, "
+                "corregilo con un inventario físico."
             )
         if original.reversa_de_id is not None:
             raise AjusteNoReversibleError("No se puede revertir una reversa.")

@@ -211,7 +211,7 @@ class TestSubmitAjustar:
         assert "tipo=error" in respuesta.header("location")
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
         with obtener_conexion() as conexion:
-            total = conexion.execute("SELECT COUNT(*) AS n FROM ajustes_stock").fetchone()["n"]
+            total = conexion.execute("SELECT COUNT(*) AS n FROM ajustes_stock WHERE motivo <> 'STOCK_INICIAL'").fetchone()["n"]
         assert total == 0
 
     def test_stock_insuficiente_redirige_con_error_y_no_modifica_nada(self, base_datos_temporal):

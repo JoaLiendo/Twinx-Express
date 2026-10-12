@@ -207,7 +207,7 @@ class TestOtrasOperacionesAuditadas:
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == stock_antes
         assert servicio_stock.obtener_por_id(producto.id).precio_venta_centavos == 200
         assert servicio_stock.obtener_por_id(producto.id).precio_costo_centavos == 100
-        assert _contar("ajustes_stock") == 0 and _contar("compras") == 0
+        assert _contar("ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0 and _contar("compras") == 0
         assert _consultar("SELECT estado FROM ventas WHERE id = ?", venta.id)[0][0] == "ACTIVA"
         assert _contar("caja_movimientos", "tipo = 'EGRESO'") == 0
         assert _contar("lotes_precios") == 0 and _contar("historial_precios") == 0

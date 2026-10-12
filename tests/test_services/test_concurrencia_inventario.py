@@ -77,7 +77,7 @@ def test_venta_y_confirmacion_simultaneas_nunca_sobrescriben_la_venta(e):
         # La venta fue primero: se rechaza la confirmación y el stock refleja solo la venta.
         assert isinstance(error_confirmacion, InventarioDesactualizadoError)
         assert _stock(e) == 8
-        assert contar(e.ruta, "ajustes_stock") == 0
+        assert contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0
         assert servicio_inventario.obtener_detalle(e.inventario.id, e.owner.id).inventario.abierto
 
 
@@ -94,7 +94,7 @@ def test_compra_y_confirmacion_simultaneas_nunca_sobrescriben_la_compra(e):
         assert _stock(e) == 13  # 10 -> 8 (recuento) -> 13 (compra)
     else:
         assert isinstance(error_confirmacion, InventarioDesactualizadoError)
-        assert _stock(e) == 15 and contar(e.ruta, "ajustes_stock") == 0
+        assert _stock(e) == 15 and contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0
 
 
 def test_dos_confirmaciones_concurrentes_generan_un_solo_ajuste(e):
@@ -119,7 +119,7 @@ def test_reenvios_concurrentes_con_la_misma_clave_devuelven_el_mismo_resultado(e
 
     assert all(error is None for _, error in resultados)
     assert {r.ajustes_generados for r, _ in resultados} == {1}
-    assert contar(e.ruta, "ajustes_stock") == 1 and _stock(e) == 8
+    assert contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 1 and _stock(e) == 8
 
 
 def test_cancelar_y_confirmar_a_la_vez_deja_un_unico_estado_final(e):
@@ -131,9 +131,9 @@ def test_cancelar_y_confirmar_a_la_vez_deja_un_unico_estado_final(e):
     assert (error_confirmar is None) != (error_cancelar is None)
     estado = servicio_inventario.obtener_detalle(e.inventario.id, e.owner.id).inventario.estado
     if estado == "CONFIRMADO":
-        assert _stock(e) == 8 and contar(e.ruta, "ajustes_stock") == 1
+        assert _stock(e) == 8 and contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 1
     else:
-        assert estado == "CANCELADO" and _stock(e) == 10 and contar(e.ruta, "ajustes_stock") == 0
+        assert estado == "CANCELADO" and _stock(e) == 10 and contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0
 
 
 def test_conteo_y_confirmacion_simultaneos_no_aplican_un_conteo_a_medias(e):
@@ -169,4 +169,4 @@ def test_muchas_ventas_concurrentes_con_la_confirmacion_dejan_el_stock_consisten
         assert _stock(e) == 3  # 10 -> 8 por el recuento -> 3 por las cinco ventas posteriores
     else:
         assert isinstance(error_confirmacion, InventarioDesactualizadoError)
-        assert _stock(e) == 10 - 5 and contar(e.ruta, "ajustes_stock") == 0
+        assert _stock(e) == 10 - 5 and contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0

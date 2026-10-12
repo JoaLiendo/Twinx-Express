@@ -33,7 +33,7 @@ from domain.celdas_seguras import desneutralizar_texto
 from domain.dinero import texto_a_centavos
 from domain.producto import Producto
 from excepciones import ArchivoImportacionInvalidoError, DatosInvalidosError
-from services import servicio_categorias
+from services import servicio_categorias, servicio_stock
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,15 @@ def _procesar_fila(
             categoria_id=categoria_id,
             unidad_medida=(_celda(fila, "unidad_medida") or "UNIDAD").upper(),
         )
-        repositorio_productos.crear_producto_en_conexion(conexion, producto)
+        creado = repositorio_productos.crear_producto_en_conexion(conexion, producto)
+        # Celda de costo vacía: el producto queda con costo 0 (comportamiento previo), pero el
+        # snapshot del stock inicial queda NULL -- ese 0 no es un costo real, no se congela.
+        servicio_stock.registrar_stock_inicial_en_conexion(
+            conexion,
+            creado,
+            usuario_id,
+            creado.precio_costo_centavos if _celda(fila, "precio_costo") else None,
+        )
         resultado.importados += 1
         return
 

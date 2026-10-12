@@ -476,7 +476,9 @@ def listar_valorizables() -> list[Producto]:
 _CONSULTAS_DE_MOTIVOS = (
     ("ventas", "SELECT 1 FROM detalle_venta WHERE producto_id = ? LIMIT 1"),
     ("compras", "SELECT 1 FROM detalle_compra WHERE producto_id = ? LIMIT 1"),
-    ("ajustes de stock", "SELECT 1 FROM ajustes_stock WHERE producto_id = ? LIMIT 1"),
+    # El stock inicial (V1.11-C) es un movimiento histórico propio, no un ajuste del usuario: se informa aparte.
+    ("ajustes de stock", "SELECT 1 FROM ajustes_stock WHERE producto_id = ? AND motivo <> 'STOCK_INICIAL' LIMIT 1"),
+    ("stock inicial registrado", "SELECT 1 FROM ajustes_stock WHERE producto_id = ? AND motivo = 'STOCK_INICIAL' LIMIT 1"),
     ("cambios de precio", "SELECT 1 FROM historial_precios WHERE producto_id = ? LIMIT 1"),
     ("proveedores vinculados", "SELECT 1 FROM producto_proveedor WHERE producto_id = ? LIMIT 1"),
     ("inventarios", "SELECT 1 FROM inventario_lineas WHERE producto_id = ? LIMIT 1"),
@@ -485,7 +487,8 @@ _CONSULTAS_DE_MOTIVOS = (
 
 def listar_motivos_de_conservacion_en_conexion(conexion: sqlite3.Connection, producto_id: int) -> list[str]:
     """Qué registros asociados impiden borrar físicamente un producto (ventas,
-    compras, ajustes de stock, cambios de precio, proveedores vinculados, inventarios)."""
+    compras, ajustes de stock, stock inicial registrado, cambios de precio,
+    proveedores vinculados, inventarios)."""
     return [
         motivo
         for motivo, consulta in _CONSULTAS_DE_MOTIVOS

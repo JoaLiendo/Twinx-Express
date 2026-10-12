@@ -8,6 +8,7 @@ from db.conexion import obtener_conexion
 from db.repositorios import movimientos_stock as repositorio_movimientos
 from db.repositorios import productos as repositorio_productos
 from domain.compra import ItemCompra
+from domain.producto import Producto
 from domain.venta import ItemVenta
 from excepciones import DatosInvalidosError, ProductoNoEncontradoError
 from services import (
@@ -28,14 +29,24 @@ pytestmark = pytest.mark.sin_caja_abierta  # el fixture abre su propia caja
 STOCK_DE_ALTA = 20
 
 
+def _producto_historico(codigo, nombre, costo, venta, stock):
+    """Producto como los creados antes de V1.11-C: su stock de alta NO es un movimiento (se crea por
+    el repositorio, sin `STOCK_INICIAL`) y el kardex lo reconstruye dentro del saldo inicial. Los
+    productos nuevos sí lo registran: ver `TestStockInicial`."""
+    return repositorio_productos.crear_producto(
+        Producto(codigo_barras=codigo, nombre=nombre, precio_costo_centavos=costo, precio_venta_centavos=venta,
+                 stock_actual=stock)
+    )
+
+
 @pytest.fixture
 def e(base_datos_temporal):
     owner, cookies = usuario_logueado("OWNER", "duenio")
     _, cajera = usuario_logueado("CASHIER", "cajera")
     servicio_caja.abrir_caja(0, None, owner.id)
     proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
-    producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 300, stock_actual=STOCK_DE_ALTA)
-    otro = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 400, 700, stock_actual=50)
+    producto = _producto_historico("7790000000001", "Alfajor", 100, 300, STOCK_DE_ALTA)
+    otro = _producto_historico("7790000000002", "Gaseosa", 400, 700, 50)
     return type(
         "E", (), {"ruta": base_datos_temporal, "owner": owner, "co": cookies, "cajera": cajera, "prov": proveedor,
                   "p": producto, "q": otro},
@@ -67,7 +78,7 @@ def _ajuste_positivo_legacy(e, producto, delta, motivo, observaciones=None):
 
 
 def _historia_completa(e):
-    """Alta con 20 u. (no es un movimiento) y, en orden cronológico real:
+    """Alta histórica con 20 u. (no es un movimiento) y, en orden cronológico real:
     compra A +10, venta -4, venta -3 (anulada: +3), compra B +5 (anulada: -5), ajustes +2 y -1, recuento -2."""
     compra_a = _comprar(e, e.p, 10)
     venta_1 = _vender(e, e.p, 4)
@@ -364,3 +375,50 @@ class TestPantalla:
         assert f"/productos/{e.p.id}/movimientos" in solicitud("GET", f"/productos/{e.p.id}/editar", cookies=e.co).texto
         assert f'href="/productos/{e.p.id}/movimientos"' in solicitud("GET", "/productos", cookies=e.co).texto
         assert "/movimientos" not in solicitud("GET", "/productos", cookies=e.cajera).texto
+
+
+class TestStockInicial:
+    """V1.11-C: un producto creado desde esta versión con stock > 0 registra su alta como
+    movimiento propio (`STOCK_INICIAL`), y el kardex lo muestra como "Stock inicial"."""
+
+    def _nuevo(self, e, stock=12):
+        return servicio_stock.registrar_producto(
+            "7790000000099", "Nuevo", 100, 300, stock_actual=stock, usuario_id=e.owner.id
+        )
+
+    def test_el_alta_es_el_primer_movimiento_y_el_saldo_inicial_es_cero(self, e):
+        nuevo = self._nuevo(e)
+
+        kardex = servicio_movimientos_stock.generar_kardex(nuevo.id)
+
+        assert _resumen(kardex) == [("STOCK_INICIAL", 12, 12)]
+        assert kardex.saldo_inicial == 0 and kardex.saldo_final == 12
+        (alta,) = kardex.movimientos
+        assert alta.referencia == "Alta del producto"
+        assert alta.descripcion == "Stock inicial"
+        assert alta.saldo_verificado is True
+
+    def test_ante_un_empate_de_fecha_el_alta_va_primero(self, e):
+        nuevo = self._nuevo(e)
+        _comprar(e, nuevo, 3)
+        instante = "2026-02-01 10:00:00"
+        escribir(e.ruta, "UPDATE compras SET fecha = ?", (instante,))
+        escribir(e.ruta, "UPDATE ajustes_stock SET fecha = ?", (instante,))
+
+        kardex = servicio_movimientos_stock.generar_kardex(nuevo.id)
+
+        assert _resumen(kardex) == [("STOCK_INICIAL", 12, 12), ("COMPRA", 3, 15)]
+
+    def test_alta_sin_stock_no_genera_movimiento(self, e):
+        nuevo = self._nuevo(e, stock=0)
+
+        assert servicio_movimientos_stock.generar_kardex(nuevo.id).movimientos == []
+
+    def test_la_pantalla_muestra_stock_inicial_y_no_el_codigo_tecnico(self, e):
+        nuevo = self._nuevo(e)
+
+        html = solicitud("GET", f"/productos/{nuevo.id}/movimientos", cookies=e.co).texto
+
+        assert html.count('data-tipo="STOCK_INICIAL"') == 1
+        assert ">STOCK_INICIAL<" not in html
+        assert "Stock inicial" in html

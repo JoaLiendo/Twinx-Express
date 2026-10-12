@@ -25,8 +25,17 @@ from dataclasses import dataclass
 from excepciones import DatosInvalidosError
 
 MOTIVOS_AJUSTE_VALIDOS = frozenset(
-    {"MERMA", "ROTURA", "VENCIMIENTO", "PERDIDA", "ROBO", "RECUENTO", "OTRO", "FALLA_FABRICA", "REVERSA"}
+    {
+        "MERMA", "ROTURA", "VENCIMIENTO", "PERDIDA", "ROBO", "RECUENTO", "OTRO", "FALLA_FABRICA", "REVERSA",
+        "STOCK_INICIAL",
+    }
 )
+
+# Origen interno (V1.11-C, migración 029): el stock con el que se da de alta un producto. No es un
+# motivo manual (no está en `MOTIVOS_MANUALES_PERMITIDOS`), ni una pérdida, ni un RECUENTO, y no se
+# revierte (un stock de alta mal cargado se corrige con un inventario físico). Es el único motivo que
+# admite `usuario_id=None`: un alta sin usuario real (CLI, importación sin sesión) no inventa uno.
+MOTIVO_STOCK_INICIAL = "STOCK_INICIAL"
 
 # Único motivo manual vigente desde V1.11-A: `MERMA`/`PERDIDA`/`OTRO` quedan legacy (solo lectura
 # de historial) y `RECUENTO` no es manual (lo genera automáticamente la confirmación de un
@@ -77,7 +86,7 @@ class AjusteStock:
     """
 
     producto_id: int
-    usuario_id: int
+    usuario_id: int | None  # 029: None solo en un STOCK_INICIAL sin usuario real
     motivo: str
     delta: int
     stock_anterior: int
@@ -126,6 +135,14 @@ class AjusteStock:
                 "Un ajuste de motivo REVERSA debe tener reversa_de_id, y solo uno de motivo "
                 "REVERSA puede tenerlo."
             )
+        if self.usuario_id is None and self.motivo != MOTIVO_STOCK_INICIAL:
+            raise DatosInvalidosError("Solo el stock inicial de un producto puede registrarse sin usuario.")
+        if self.motivo == MOTIVO_STOCK_INICIAL and (
+            self.stock_anterior != 0 or self.delta <= 0 or self.inventario_id is not None
+        ):
+            raise DatosInvalidosError(
+                "El stock inicial parte de 0, suma stock y no proviene de un inventario."
+            )
 
 
 @dataclass
@@ -148,8 +165,8 @@ class AjusteStockConUsuario:
 
     id: int
     producto_id: int
-    usuario_id: int
-    usuario_nombre_completo: str
+    usuario_id: int | None
+    usuario_nombre_completo: str | None  # None: STOCK_INICIAL sin usuario real (ver migración 029)
     motivo: str
     delta: int
     stock_anterior: int
@@ -171,6 +188,11 @@ class AjusteStockConUsuario:
 
     @property
     def es_reversible(self) -> bool:
-        """Un RECUENTO no se revierte desde este flujo manual (ver `services.servicio_stock.revertir_ajuste`),
-        una reversa no se revierte, y un ajuste ya revertido no se revierte dos veces."""
-        return self.motivo != "RECUENTO" and not self.es_reversa and not self.fue_revertido
+        """Un RECUENTO o un STOCK_INICIAL no se revierten desde este flujo manual (ver
+        `services.servicio_stock.revertir_ajuste`), una reversa no se revierte, y un ajuste ya
+        revertido no se revierte dos veces."""
+        return (
+            self.motivo not in ("RECUENTO", MOTIVO_STOCK_INICIAL)
+            and not self.es_reversa
+            and not self.fue_revertido
+        )

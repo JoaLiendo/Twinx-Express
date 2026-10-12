@@ -20,9 +20,9 @@ def _owner():
     )
 
 
-def _contar(tabla: str) -> int:
+def _contar(tabla: str, donde: str = "1 = 1") -> int:
     with obtener_conexion() as conexion:
-        return conexion.execute(f"SELECT COUNT(*) AS n FROM {tabla}").fetchone()["n"]
+        return conexion.execute(f"SELECT COUNT(*) AS n FROM {tabla} WHERE {donde}").fetchone()["n"]
 
 
 class TestCajaContenidoDistinto:
@@ -77,7 +77,7 @@ class TestAjusteContenidoDistinto:
             servicio_stock.ajustar_stock(producto.id, -5, "ROTURA", owner.id, clave_idempotencia="k")
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 8
-        assert _contar("ajustes_stock") == 1
+        assert _contar("ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 1
 
     def test_ajuste_con_otro_motivo_y_la_misma_clave_se_rechaza(self, base_datos_temporal):
         owner = _owner()

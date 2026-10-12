@@ -226,7 +226,7 @@ def test_contar_no_modifica_el_stock_ni_su_version(e):
     _contar(e, inventario, e.a, 1)
 
     assert _stock(e.a) == 10 and _version(e, e.a) == version_antes
-    assert contar(e.ruta, "ajustes_stock") == 0
+    assert contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0
 
 
 # --- confirmación: diferencias -----------------------------------------------------------------------------
@@ -255,7 +255,7 @@ def test_el_ajuste_queda_explicado_por_su_origen_y_con_auditoria(e):
 
     servicio_inventario.confirmar_inventario(inventario.id, e.owner.id)
 
-    ajuste = consultar(e.ruta, "SELECT * FROM ajustes_stock")[0]
+    ajuste = consultar(e.ruta, "SELECT * FROM ajustes_stock WHERE motivo = 'RECUENTO'")[0]
     assert (ajuste["motivo"], ajuste["stock_anterior"], ajuste["stock_resultante"]) == ("RECUENTO", 10, 7)
     assert ajuste["observaciones"] == f"Inventario #{inventario.id}" and ajuste["usuario_id"] == e.owner.id
     linea = consultar(e.ruta, "SELECT ajuste_id FROM inventario_lineas")[0]
@@ -271,7 +271,7 @@ def test_diferencia_cero_no_genera_ajuste_ni_toca_stock_ni_version(e):
 
     resultado = servicio_inventario.confirmar_inventario(inventario.id, e.owner.id)
 
-    assert resultado.ajustes_generados == 0 and contar(e.ruta, "ajustes_stock") == 0
+    assert resultado.ajustes_generados == 0 and contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0
     assert _stock(e.a) == 10 and _version(e, e.a) == version
 
 
@@ -466,7 +466,7 @@ def test_falla_en_un_ajuste_intermedio_revierte_todo(e, monkeypatch):
             servicio_inventario.confirmar_inventario(inventario.id, e.owner.id)
 
     assert (_stock(e.a), _stock(e.b), _stock(e.c)) == (10, 20, 5)
-    assert contar(e.ruta, "ajustes_stock") == 0
+    assert contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0
     assert contar(e.ruta, "inventario_lineas", "ajuste_id IS NOT NULL") == 0
     assert _acciones("INVENTARIO_CONFIRMADO") == [] and _acciones("AJUSTE_STOCK") == []
     assert servicio_inventario.obtener_detalle(inventario.id, e.owner.id).inventario.abierto
@@ -490,7 +490,7 @@ def test_falla_en_la_auditoria_final_revierte_todo(e, monkeypatch):
         with pytest.raises(RuntimeError):
             servicio_inventario.confirmar_inventario(inventario.id, e.owner.id)
 
-    assert _stock(e.a) == 10 and contar(e.ruta, "ajustes_stock") == 0
+    assert _stock(e.a) == 10 and contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0
     assert servicio_inventario.obtener_detalle(inventario.id, e.owner.id).inventario.abierto
 
 
@@ -505,7 +505,7 @@ def test_doble_confirmacion_no_duplica_ajustes(e):
     with pytest.raises(InventarioNoAbiertoError):
         servicio_inventario.confirmar_inventario(inventario.id, e.owner.id)
 
-    assert contar(e.ruta, "ajustes_stock") == 1 and _stock(e.a) == 8
+    assert contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 1 and _stock(e.a) == 8
     assert _acciones("INVENTARIO_CONFIRMADO") == ["INVENTARIO_CONFIRMADO"]
 
 
@@ -517,7 +517,7 @@ def test_reenvio_con_la_misma_clave_devuelve_el_mismo_resultado_sin_reaplicar(e)
     segundo = servicio_inventario.confirmar_inventario(inventario.id, e.owner.id, clave_idempotencia="k-1")
 
     assert segundo.ajustes_generados == primero.ajustes_generados == 1
-    assert contar(e.ruta, "ajustes_stock") == 1 and _stock(e.a) == 8
+    assert contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 1 and _stock(e.a) == 8
 
 
 def test_una_clave_ya_usada_en_otro_inventario_se_rechaza(e):
@@ -542,7 +542,7 @@ def test_cancelar_no_toca_stock_y_no_se_puede_confirmar_ni_reabrir(e):
     cancelado = servicio_inventario.cancelar_inventario(inventario.id, e.owner.id)
 
     assert cancelado.estado == "CANCELADO" and cancelado.usuario_cierre_id == e.owner.id
-    assert _stock(e.a) == 10 and contar(e.ruta, "ajustes_stock") == 0
+    assert _stock(e.a) == 10 and contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0
     with pytest.raises(InventarioNoAbiertoError):
         servicio_inventario.confirmar_inventario(inventario.id, e.owner.id)
     with pytest.raises(InventarioNoAbiertoError):

@@ -27,9 +27,9 @@ def _cookies_owner() -> dict[str, str]:
     return {NOMBRE_COOKIE_SESION: token}
 
 
-def _contar(tabla: str) -> int:
+def _contar(tabla: str, donde: str = "1 = 1") -> int:
     with obtener_conexion() as conexion:
-        return conexion.execute(f"SELECT COUNT(*) AS n FROM {tabla}").fetchone()["n"]
+        return conexion.execute(f"SELECT COUNT(*) AS n FROM {tabla} WHERE {donde}").fetchone()["n"]
 
 
 def _claves_del_formulario(html: str) -> list[str]:
@@ -119,7 +119,7 @@ class TestAjusteDeStock:
         cookies = _cookies_owner()
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
         formulario = {
-            "motivo": "MERMA",
+            "motivo": "ROTURA",
             "direccion": "restar",
             "cantidad": "4",
             "observaciones": "",
@@ -131,7 +131,7 @@ class TestAjusteDeStock:
 
         assert "tipo=success" in r2.header("location")
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 6
-        assert _contar("ajustes_stock") == 1
+        assert _contar("ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 1
 
 
 class TestCompra:

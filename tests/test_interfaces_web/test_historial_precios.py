@@ -287,7 +287,7 @@ class TestBajaDeProductoConHistorial:
 
     def test_producto_con_historial_y_sin_ventas_se_da_de_baja_con_el_motivo_real(self, base_datos_temporal):
         usuario = _usuario()
-        producto = _producto()
+        producto = _producto(stock=0)  # sin otra historia que la del test
         _editar(producto, venta=300, usuario_id=usuario.id)
 
         baja_logica = servicio_stock.eliminar_producto(producto.id, usuario_id=usuario.id)
@@ -302,7 +302,7 @@ class TestBajaDeProductoConHistorial:
 
     def test_el_mensaje_web_indica_la_razon_real(self, base_datos_temporal):
         cookies = _cookies("duenio", "OWNER")
-        producto = _producto()
+        producto = _producto(stock=0)  # sin otra historia que la del test
         _editar(producto, venta=300)
 
         respuesta = self._baja_por_http(cookies, producto)
@@ -319,10 +319,11 @@ class TestBajaDeProductoConHistorial:
         _editar(servicio_stock.obtener_por_id(producto.id), venta=300)
 
         assert servicio_stock.eliminar_producto(producto.id) is True
-        assert servicio_stock.motivos_de_conservacion(producto.id) == ["ventas", "cambios de precio"]
+        # Tiene stock para poder vender: desde V1.11-C su alta también es historia propia.
+        assert servicio_stock.motivos_de_conservacion(producto.id) == ["ventas", "stock inicial registrado", "cambios de precio"]
 
     def test_un_producto_sin_ningun_registro_sigue_eliminandose_fisicamente(self, base_datos_temporal):
-        producto = _producto()
+        producto = _producto(stock=0)  # sin otra historia que la del test
 
         assert servicio_stock.eliminar_producto(producto.id) is False
 
@@ -330,7 +331,7 @@ class TestBajaDeProductoConHistorial:
             assert conexion.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 0
 
     def test_el_producto_dado_de_baja_por_historial_se_puede_reactivar_y_conserva_su_historial(self, base_datos_temporal):
-        producto = _producto()
+        producto = _producto(stock=0)  # sin otra historia que la del test
         _editar(producto, venta=300)
         servicio_stock.eliminar_producto(producto.id)
 
@@ -342,7 +343,7 @@ class TestBajaDeProductoConHistorial:
     def test_una_baja_de_un_producto_inexistente_o_ya_inactivo_sigue_fallando(self, base_datos_temporal):
         from excepciones import ProductoNoEncontradoError
 
-        producto = _producto()
+        producto = _producto(stock=0)  # sin otra historia que la del test
         _editar(producto, venta=300)
         servicio_stock.eliminar_producto(producto.id)
 

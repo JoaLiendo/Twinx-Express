@@ -251,8 +251,34 @@ class TestAjusteStock:
             kwargs["observaciones"] = "justificación"
         if motivo == "REVERSA":
             kwargs["reversa_de_id"] = 1
+        if motivo == "STOCK_INICIAL":
+            kwargs.update(delta=5, stock_anterior=0, stock_resultante=5)
         ajuste = self._ajuste(motivo=motivo, **kwargs)
         assert ajuste.motivo == motivo
+
+    def test_stock_inicial_sin_usuario_es_valido(self):
+        ajuste = self._ajuste(motivo="STOCK_INICIAL", usuario_id=None, delta=5, stock_anterior=0, stock_resultante=5)
+        assert ajuste.usuario_id is None
+
+    def test_solo_stock_inicial_admite_usuario_nulo(self):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(motivo="ROTURA", usuario_id=None)
+
+    @pytest.mark.parametrize(
+        "campos",
+        [
+            dict(delta=5, stock_anterior=2, stock_resultante=7),  # no parte de 0
+            dict(delta=-5, stock_anterior=0, stock_resultante=-5),  # resta
+            dict(delta=5, stock_anterior=0, stock_resultante=5, inventario_id=1),  # viene de inventario
+        ],
+    )
+    def test_stock_inicial_mal_formado_es_rechazado(self, campos):
+        with pytest.raises(DatosInvalidosError):
+            self._ajuste(motivo="STOCK_INICIAL", **campos)
+
+    def test_stock_inicial_no_es_motivo_manual(self):
+        with pytest.raises(DatosInvalidosError):
+            validar_motivo_manual("STOCK_INICIAL", -1)
 
     def test_rechaza_motivo_invalido(self):
         with pytest.raises(DatosInvalidosError):

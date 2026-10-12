@@ -109,9 +109,9 @@ def listar_por_producto(producto_id: int) -> list[AjusteStockConUsuario]:
     nombre completo del usuario ya resuelto en una sola consulta (sin
     N+1).
 
-    `JOIN usuarios` (no `LEFT JOIN`): `ajustes_stock.usuario_id` es
-    `NOT NULL` (a diferencia de `ventas`/`caja_movimientos`, este bloque
-    no tiene ninguna ruta sin autenticar) -- no filtra por
+    `LEFT JOIN usuarios`: desde la migración 029 un `STOCK_INICIAL` cargado
+    sin usuario real (CLI, importación sin sesión) tiene `usuario_id` NULL
+    -- el resto de los motivos lo sigue exigiendo. No filtra por
     `usuarios.activo`: un usuario desactivado después de ajustar stock
     sigue apareciendo con su nombre, igual criterio que en ventas/caja.
 
@@ -125,7 +125,7 @@ def listar_por_producto(producto_id: int) -> list[AjusteStockConUsuario]:
             a.reversa_de_id, r.id AS reversa_id, r.fecha AS reversa_fecha,
             ru.nombre_completo AS reversa_usuario_nombre_completo
         FROM ajustes_stock a
-        JOIN usuarios u ON u.id = a.usuario_id
+        LEFT JOIN usuarios u ON u.id = a.usuario_id
         LEFT JOIN ajustes_stock r ON r.reversa_de_id = a.id
         LEFT JOIN usuarios ru ON ru.id = r.usuario_id
         WHERE a.producto_id = ?

@@ -294,9 +294,9 @@ class AjusteYaRevertidoError(ErrorAplicacion):
 
 
 class AjusteNoReversibleError(ErrorAplicacion):
-    """El ajuste no se puede revertir desde este flujo: es un RECUENTO de inventario físico
-    (se corrige con un nuevo inventario, no con una reversa manual) o ya es, él mismo, una
-    reversa (una reversa no se revierte)."""
+    """El ajuste no se puede revertir desde este flujo: es un RECUENTO de inventario físico o el
+    STOCK_INICIAL de un producto (ambos se corrigen con un nuevo inventario, no con una reversa
+    manual) o ya es, él mismo, una reversa (una reversa no se revierte)."""
 
 
 class InventarioDesactualizadoError(ErrorAplicacion):

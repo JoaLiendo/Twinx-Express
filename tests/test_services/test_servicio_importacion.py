@@ -190,3 +190,92 @@ def test_importar_xlsx_valido_crea_productos(base_datos_temporal):
     assert resultado.duplicados == 0
     assert resultado.errores == []
     assert servicio_stock.buscar_por_codigo_barras("7790000000002").precio_venta_centavos == 35000
+
+
+# --- V1.11-C: stock inicial trazable --------------------------------------------------------
+
+
+def _stock_inicial(codigo: str):
+    from db.conexion import obtener_conexion
+
+    with obtener_conexion() as conexion:
+        return conexion.execute(
+            "SELECT a.usuario_id, a.delta, a.stock_anterior, a.stock_resultante, a.costo_unitario_centavos"
+            " FROM ajustes_stock a JOIN productos p ON p.id = a.producto_id"
+            " WHERE p.codigo_barras = ? AND a.motivo = 'STOCK_INICIAL'",
+            (codigo,),
+        ).fetchall()
+
+
+def _owner():
+    from db.repositorios import usuarios as repositorio_usuarios
+    from domain.usuario import Usuario
+
+    return repositorio_usuarios.crear_usuario(
+        Usuario(nombre_usuario="duenio", nombre_completo="Dueño", password_hash="x", rol="OWNER")
+    )
+
+
+def test_importar_registra_stock_inicial_con_responsable_y_costo(base_datos_temporal):
+    owner = _owner()
+
+    servicio_importacion.procesar_archivo("productos.csv", _csv_valido(), usuario_id=owner.id)
+
+    assert [tuple(f) for f in _stock_inicial("7790000000001")] == [(owner.id, 10, 0, 10, 10000)]
+    assert [tuple(f) for f in _stock_inicial("7790000000002")] == [(owner.id, 5, 0, 5, 20000)]
+
+
+def test_importar_sin_usuario_no_inventa_responsable(base_datos_temporal):
+    servicio_importacion.procesar_archivo("productos.csv", _csv_valido())
+
+    assert _stock_inicial("7790000000001")[0]["usuario_id"] is None
+
+
+def test_importar_con_costo_vacio_deja_el_snapshot_desconocido(base_datos_temporal):
+    contenido = (
+        "codigo_barras,nombre,precio_costo,precio_venta,stock_actual,stock_minimo\n"
+        "7790000000001,Alfajor,,200,10,2\n"
+    ).encode("utf-8")
+
+    servicio_importacion.procesar_archivo("productos.csv", contenido)
+
+    assert _stock_inicial("7790000000001")[0]["costo_unitario_centavos"] is None
+
+
+def test_importar_xlsx_registra_stock_inicial(base_datos_temporal):
+    servicio_importacion.procesar_archivo("productos.xlsx", _xlsx_bytes([("7790000000001", "Alfajor", 100, 200, 7, 1)]))
+
+    assert _stock_inicial("7790000000001")[0]["delta"] == 7
+
+
+def test_importar_con_stock_cero_no_genera_movimiento(base_datos_temporal):
+    contenido = (
+        "codigo_barras,nombre,precio_costo,precio_venta,stock_actual,stock_minimo\n"
+        "7790000000001,Alfajor,100,200,0,2\n"
+    ).encode("utf-8")
+
+    servicio_importacion.procesar_archivo("productos.csv", contenido)
+
+    assert _stock_inicial("7790000000001") == []
+
+
+def test_importacion_todo_o_nada_revertida_no_deja_stock_inicial(base_datos_temporal):
+    contenido = (
+        "codigo_barras,nombre,precio_costo,precio_venta,stock_actual,stock_minimo\n"
+        "7790000000001,Alfajor,100,200,10,2\n"
+        "7790000000002,,100,200,5,1\n"  # nombre vacío: fila inválida, se revierte todo
+    ).encode("utf-8")
+
+    resultado = servicio_importacion.procesar_archivo("productos.csv", contenido)
+
+    assert resultado.aplicado is False
+    assert _stock_inicial("7790000000001") == []
+    assert servicio_stock.buscar_por_codigo_barras("7790000000001") is None
+
+
+def test_reimportar_el_mismo_archivo_no_duplica_el_stock_inicial(base_datos_temporal):
+    servicio_importacion.procesar_archivo("productos.csv", _csv_valido())
+    servicio_importacion.procesar_archivo("productos.csv", _csv_valido(), modo="CREAR_Y_ACTUALIZAR")
+
+    assert len(_stock_inicial("7790000000001")) == 1
+    assert servicio_stock.buscar_por_codigo_barras("7790000000001").stock_actual == 10

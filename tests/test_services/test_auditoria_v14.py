@@ -147,7 +147,7 @@ def test_un_cambio_de_stock_sin_cambio_de_version_tambien_se_rechaza(e):
 
     with pytest.raises(InventarioDesactualizadoError):
         servicio_inventario.confirmar_inventario(inventario.id, e.owner.id)
-    assert servicio_stock.obtener_por_id(e.p1.id).stock_actual == 9 and contar(e.ruta, "ajustes_stock") == 0
+    assert servicio_stock.obtener_por_id(e.p1.id).stock_actual == 9 and contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0
 
 
 def test_un_producto_con_lineas_de_inventario_pasa_a_baja_logica_y_lo_informa(e):
@@ -158,7 +158,8 @@ def test_un_producto_con_lineas_de_inventario_pasa_a_baja_logica_y_lo_informa(e)
     baja_logica = servicio_stock.eliminar_producto(e.p1.id, usuario_id=e.owner.id)
 
     assert baja_logica is True
-    assert servicio_stock.motivos_de_conservacion(e.p1.id) == ["inventarios"]
+    # Desde V1.11-C el stock de alta es un movimiento propio: también lo conserva (y se informa aparte).
+    assert servicio_stock.motivos_de_conservacion(e.p1.id) == ["stock inicial registrado", "inventarios"]
     assert contar(e.ruta, "productos", f"id = {e.p1.id} AND activo = 0") == 1
     servicio_inventario.registrar_conteo(inventario.id, e.p1.id, 9, e.owner.id)  # sigue funcionando inactivo
     assert servicio_inventario.confirmar_inventario(inventario.id, e.owner.id).ajustes_generados == 1

@@ -14,9 +14,9 @@ from excepciones import ProductoNoEncontradoError
 from services import servicio_caja, servicio_compras, servicio_proveedores, servicio_stock
 
 
-def _contar(tabla: str) -> int:
+def _contar(tabla: str, donde: str = "1 = 1") -> int:
     with obtener_conexion() as conexion:
-        return conexion.execute(f"SELECT COUNT(*) AS n FROM {tabla}").fetchone()["n"]
+        return conexion.execute(f"SELECT COUNT(*) AS n FROM {tabla} WHERE {donde}").fetchone()["n"]
 
 
 def _crear_owner():
@@ -103,7 +103,7 @@ class TestAjusteManualDeStock:
 
         assert segundo.id == primero.id
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 7
-        assert _contar("ajustes_stock") == 1
+        assert _contar("ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 1
 
     def test_el_reintento_de_un_ajuste_ya_aplicado_no_falla_por_stock_insuficiente(self, base_datos_temporal):
         owner = _crear_owner()
@@ -137,7 +137,7 @@ class TestAjusteManualDeStock:
             hilo.join()
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 6
-        assert _contar("ajustes_stock") == 1
+        assert _contar("ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 1
 
     def test_claves_distintas_aplican_cada_ajuste(self, base_datos_temporal):
         owner = _crear_owner()
@@ -147,7 +147,7 @@ class TestAjusteManualDeStock:
         servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id, clave_idempotencia="aj-2")
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 8
-        assert _contar("ajustes_stock") == 2
+        assert _contar("ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 2
 
 
 class TestCompra:

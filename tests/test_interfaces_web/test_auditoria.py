@@ -120,7 +120,7 @@ class TestProductos:
     def test_baja_fisica_baja_logica_y_reactivacion(self, base_datos_temporal):
         servicio_caja.abrir_caja(0)
         usuario = _usuario()
-        eliminable = _producto(codigo="1", nombre="Se borra")
+        eliminable = _producto(codigo="1", nombre="Se borra", stock=0)  # sin historia: se borra físicamente
         con_ventas = _producto(codigo="2", nombre="Se desactiva")
         servicio_ventas.registrar_venta([ItemVenta(con_ventas.id, 1)], "EFECTIVO")
 
@@ -174,7 +174,7 @@ class TestAjusteCompraAnulacion:
             servicio_stock.ajustar_stock(producto.id, -3, "ROTURA", usuario.id)
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 10
-        assert _consultar("SELECT COUNT(*) FROM ajustes_stock")[0][0] == 0
+        assert _consultar("SELECT COUNT(*) FROM ajustes_stock WHERE motivo <> 'STOCK_INICIAL'")[0][0] == 0
 
     def test_compra_se_audita_con_proveedor_y_total(self, base_datos_temporal):
         usuario = _usuario()

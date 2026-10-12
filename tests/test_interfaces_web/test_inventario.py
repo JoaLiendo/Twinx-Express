@@ -234,7 +234,7 @@ def test_confirmar_por_http_ajusta_el_stock_y_deja_el_inventario_cerrado(e):
     reenvio = solicitud(
         "POST", f"/inventario/{inventario.id}/confirmar", cookies=e.co, formulario={"clave_idempotencia": "k1"}
     )
-    assert "tipo=success" in _location(reenvio) and contar(e.ruta, "ajustes_stock") == 1
+    assert "tipo=success" in _location(reenvio) and contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 1
 
 
 def test_confirmar_con_stock_cambiado_muestra_el_error_y_no_modifica_nada(e):
@@ -247,7 +247,7 @@ def test_confirmar_con_stock_cambiado_muestra_el_error_y_no_modifica_nada(e):
     assert respuesta.status == 303 and "tipo=error" in _location(respuesta)
     assert "cambió después del conteo" in _mensaje(respuesta) and e.a.nombre in _mensaje(respuesta)
     assert servicio_stock.obtener_por_id(e.a.id).stock_actual == STOCK_SECRETO - 2
-    assert contar(e.ruta, "ajustes_stock") == 0
+    assert contar(e.ruta, "ajustes_stock", "motivo <> 'STOCK_INICIAL'") == 0
     detalle = solicitud("GET", f"/inventario/{inventario.id}", cookies=e.co).texto
     assert "aviso-desactualizadas" in detalle and "Desactualizado" in detalle
 

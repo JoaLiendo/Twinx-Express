@@ -168,7 +168,9 @@ class TestCompatibilidadExportarReimportar:
         )
 
     def _borrar_todos_los_productos(self):
+        # Simula una instalación nueva: sus movimientos de alta (STOCK_INICIAL, V1.11-C) se van con ellos.
         with obtener_conexion() as conexion:
+            conexion.execute("DELETE FROM ajustes_stock")
             conexion.execute("DELETE FROM productos")
 
     def test_csv_exportado_se_reimporta_sin_adaptacion(self, base_datos_temporal):

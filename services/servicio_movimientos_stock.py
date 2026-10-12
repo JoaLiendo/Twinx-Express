@@ -1,8 +1,9 @@
 """Kardex de un producto (V1.7-C): por qué tiene el stock que tiene.
 
 Solo lectura. Arma la lista de movimientos con los eventos reales (ver `db.repositorios.movimientos_stock`) y
-reconstruye los saldos hacia atrás desde `productos.stock_actual`: el sistema no guarda un stock inicial
-histórico, así que el saldo inicial siempre es RECONSTRUIDO, nunca un dato persistido ni un cero supuesto.
+reconstruye los saldos hacia atrás desde `productos.stock_actual`: el saldo inicial siempre es RECONSTRUIDO,
+nunca un dato persistido ni un cero supuesto. Desde V1.11-C el stock de alta de un producto nuevo es un
+movimiento `STOCK_INICIAL` propio; el de un producto anterior sigue dentro de ese saldo reconstruido.
 """
 
 from db.repositorios import movimientos_stock as repositorio_movimientos
@@ -12,6 +13,7 @@ from domain.movimiento_stock import (
     TIPO_ANULACION_VENTA,
     TIPO_COMPRA,
     TIPO_RECUENTO,
+    TIPO_STOCK_INICIAL,
     TIPO_VENTA,
     Kardex,
     MovimientoStock,
@@ -28,6 +30,8 @@ def _referencia(tipo: str, fuente_id: int, inventario_id: int | None) -> str:
         return f"Compra #{fuente_id}"
     if tipo == TIPO_RECUENTO and inventario_id is not None:
         return f"Inventario #{inventario_id}"
+    if tipo == TIPO_STOCK_INICIAL:
+        return "Alta del producto"
     return f"Ajuste #{fuente_id}"
 
 

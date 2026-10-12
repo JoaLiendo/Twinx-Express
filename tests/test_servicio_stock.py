@@ -562,7 +562,7 @@ class TestAjustarStock:
         # nada quedó modificado: ni el stock ni el historial.
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 3
         with obtener_conexion() as conexion:
-            total = conexion.execute("SELECT COUNT(*) AS n FROM ajustes_stock").fetchone()["n"]
+            total = conexion.execute("SELECT COUNT(*) AS n FROM ajustes_stock WHERE motivo <> 'STOCK_INICIAL'").fetchone()["n"]
         assert total == 0
 
     def test_producto_inexistente_es_rechazado(self, base_datos_temporal):
@@ -686,7 +686,7 @@ class TestAjustarStock:
         assert errores == []
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 0
         with obtener_conexion() as conexion:
-            total = conexion.execute("SELECT COUNT(*) AS n FROM ajustes_stock").fetchone()["n"]
+            total = conexion.execute("SELECT COUNT(*) AS n FROM ajustes_stock WHERE motivo <> 'STOCK_INICIAL'").fetchone()["n"]
         assert total == 2
 
 
@@ -954,6 +954,90 @@ class TestRevertirAjuste:
         reversa = servicio_stock.revertir_ajuste(legacy.id, "corrección de un legacy", owner.id)
 
         assert reversa.costo_unitario_centavos is None
+
+
+class TestStockInicial:
+    """V1.11-C: el stock de alta de un producto nuevo es un movimiento `STOCK_INICIAL` propio."""
+
+    def _stock_inicial(self, producto_id):
+        with obtener_conexion() as conexion:
+            return conexion.execute(
+                "SELECT * FROM ajustes_stock WHERE producto_id = ? AND motivo = 'STOCK_INICIAL'", (producto_id,)
+            ).fetchall()
+
+    def test_alta_con_stock_registra_el_movimiento(self, base_datos_temporal):
+        owner = _crear_usuario()
+
+        producto = servicio_stock.registrar_producto(
+            "7790000000001", "Alfajor", 100, 200, stock_actual=12, usuario_id=owner.id
+        )
+
+        (fila,) = self._stock_inicial(producto.id)
+        assert (fila["delta"], fila["stock_anterior"], fila["stock_resultante"]) == (12, 0, 12)
+        assert fila["usuario_id"] == owner.id
+        assert fila["costo_unitario_centavos"] == 100
+        assert fila["fecha"] is not None
+
+    def test_alta_con_stock_cero_no_registra_nada(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=0)
+
+        assert self._stock_inicial(producto.id) == []
+
+    def test_alta_sin_usuario_no_inventa_responsable(self, base_datos_temporal):
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=5)
+
+        assert self._stock_inicial(producto.id)[0]["usuario_id"] is None
+
+    def test_el_alta_no_mueve_la_version_de_stock(self, base_datos_temporal):
+        """El stock entra con el INSERT del producto, no con un UPDATE: el movimiento solo lo explica."""
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=5)
+
+        with obtener_conexion() as conexion:
+            version = conexion.execute("SELECT version_stock FROM productos WHERE id = ?", (producto.id,)).fetchone()[0]
+        assert version == 0
+
+    def test_si_falla_el_movimiento_no_queda_el_producto(self, base_datos_temporal, monkeypatch):
+        import sqlite3
+
+        from db.repositorios import ajustes_stock as repositorio_ajustes
+
+        def falla(*_args, **_kwargs):
+            raise sqlite3.IntegrityError("fallo simulado")
+
+        monkeypatch.setattr(repositorio_ajustes, "registrar_ajuste_en_conexion", falla)
+
+        with pytest.raises(Exception):
+            servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=5)
+
+        assert servicio_stock.buscar_por_codigo_barras("7790000000001") is None
+
+    def test_aparece_en_el_historial_y_no_es_reversible(self, base_datos_temporal):
+        owner = _crear_usuario()
+        producto = servicio_stock.registrar_producto(
+            "7790000000001", "Alfajor", 100, 200, stock_actual=5, usuario_id=owner.id
+        )
+
+        (ajuste,) = servicio_stock.listar_ajustes(producto.id)
+
+        assert ajuste.motivo == "STOCK_INICIAL" and ajuste.es_reversible is False
+        with pytest.raises(AjusteNoReversibleError):
+            servicio_stock.revertir_ajuste(ajuste.id, "corrección", owner.id)
+        assert servicio_stock.obtener_por_id(producto.id).stock_actual == 5
+
+    def test_un_producto_con_stock_inicial_se_conserva_con_baja_logica(self, base_datos_temporal):
+        """El movimiento de alta es historia inmutable: borrar el producto lo borraría con él."""
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=5)
+
+        assert servicio_stock.eliminar_producto(producto.id) is True
+        assert servicio_stock.motivos_de_conservacion(producto.id) == ["stock inicial registrado"]
+        assert len(self._stock_inicial(producto.id)) == 1
+
+    def test_no_es_un_motivo_manual(self, base_datos_temporal):
+        owner = _crear_usuario()
+        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=5)
+
+        with pytest.raises(DatosInvalidosError):
+            servicio_stock.ajustar_stock(producto.id, delta=-1, motivo="STOCK_INICIAL", usuario_id=owner.id)
 
 
 class TestCalcularValorizacionInventario:
