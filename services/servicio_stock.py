@@ -24,6 +24,7 @@ from domain.ajuste_stock import (
     validar_motivo_manual,
 )
 from domain.dinero import MAXIMO_ENTERO
+from domain.partida import ORIGEN_AJUSTE, ORIGEN_RECUENTO, ORIGEN_STOCK_INICIAL
 from domain.producto import Producto
 from domain.usuario import exigir_rol
 from excepciones import (
@@ -39,7 +40,7 @@ from excepciones import (
     StockInsuficienteError,
 )
 from db.repositorios import auditoria as repositorio_auditoria
-from services import servicio_categorias, servicio_etiquetas, servicio_imagenes
+from services import servicio_categorias, servicio_etiquetas, servicio_imagenes, servicio_partidas
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,14 @@ def registrar_stock_inicial_en_conexion(
         stock_resultante=producto.stock_actual,
         costo_unitario_centavos=costo_unitario_centavos,
     )
-    return repositorio_ajustes_stock.registrar_ajuste_en_conexion(conexion, ajuste)
+    ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(conexion, ajuste)
+    # V1.12: el stock de alta es una partida propia, sin vencimiento conocido y con el mismo costo del ajuste.
+    servicio_partidas.registrar_ingreso_en_conexion(
+        conexion, producto.id, ORIGEN_STOCK_INICIAL, producto.stock_actual,
+        ajuste_id=ajuste_creado.id, costo_unitario_centavos=costo_unitario_centavos,
+    )
+    servicio_partidas.verificar_conciliacion_en_conexion(conexion, [producto.id])
+    return ajuste_creado
 
 
 def obtener_por_id(producto_id: int) -> Producto | None:
@@ -622,6 +630,7 @@ def aplicar_ajuste_en_conexion(
     inventario_id: int | None = None,
     reversa_de_id: int | None = None,
     costo_unitario_centavos: int | None = _COSTO_VIGENTE_DEL_PRODUCTO,
+    partida_id: int | None = None,
 ) -> AjusteStock:
     """Núcleo del ajuste de stock, dentro de la transacción `BEGIN IMMEDIATE` de quien invoca.
 
@@ -673,6 +682,19 @@ def aplicar_ajuste_en_conexion(
     ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(
         conexion, ajuste, clave_idempotencia=clave_idempotencia
     )
+    # V1.12: una unidad que aparece en un recuento no trae ningún dato conocido (ni vencimiento ni costo);
+    # la que devuelve una reversa de un ajuste anterior a V1.12 conserva el costo histórico del original.
+    servicio_partidas.aplicar_ajuste_en_conexion(
+        conexion,
+        producto.id,
+        delta,
+        ajuste_creado.id,
+        ORIGEN_RECUENTO if motivo == "RECUENTO" else ORIGEN_AJUSTE,
+        reversa_de_id=reversa_de_id,
+        costo_unitario_centavos=None if motivo == "RECUENTO" else costo,
+        partida_elegida_id=partida_id,
+    )
+    servicio_partidas.verificar_conciliacion_en_conexion(conexion, [producto.id])
     repositorio_auditoria.registrar_en_conexion(
         conexion,
         usuario_id,

@@ -22,6 +22,7 @@ from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import clientes as repositorio_clientes
+from db.repositorios import partidas as repositorio_partidas
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
 from db.repositorios import ventas as repositorio_ventas
@@ -54,6 +55,7 @@ from excepciones import (
     VentaNoEncontradaError,
     VentaYaAnuladaError,
 )
+from services import servicio_partidas
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +276,11 @@ def registrar_venta(
                 sesion_caja_id=sesion_abierta.id,
                 cliente_id=cliente_id,
             )
+            # V1.12: cada línea consume sus partidas por FEFO, en esta misma transacción (un fallo acá
+            # revierte la venta entera, y viceversa).
+            for detalle_id, producto_id, cantidad in repositorio_partidas.lineas_de_venta_en_conexion(conexion, venta.id):
+                servicio_partidas.consumir_en_conexion(conexion, producto_id, cantidad, detalle_venta_id=detalle_id)
+            servicio_partidas.verificar_conciliacion_en_conexion(conexion, productos_por_id)
             if es_venta_a_cuenta:
                 repositorio_clientes.registrar_cargo_en_conexion(
                     conexion, cliente_id, venta.total_centavos, venta.id, usuario_id, f"Venta #{venta.id}"
@@ -469,6 +476,10 @@ def anular_venta(
                 raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
             producto.actualizar_stock(producto.stock_actual + cantidad)
             repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
+        # V1.12: cada línea devuelve sus unidades a las mismas partidas de las que salieron.
+        for detalle_id, producto_id, cantidad in repositorio_partidas.lineas_de_venta_en_conexion(conexion, venta_id):
+            servicio_partidas.devolver_linea_de_venta_en_conexion(conexion, detalle_id, producto_id, cantidad)
+        servicio_partidas.verificar_conciliacion_en_conexion(conexion, cantidad_por_producto)
 
         venta_anulada = repositorio_ventas.anular_venta_en_conexion(
             conexion, venta_id, motivo=motivo, observaciones=observaciones, usuario_id=usuario_id

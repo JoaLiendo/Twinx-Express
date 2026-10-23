@@ -403,17 +403,6 @@ def actualizar_costo_con_evento_en_conexion(
     )
 
 
-def actualizar_stock(producto_id: int, nuevo_stock: int) -> Producto:
-    """Fija el stock actual de un producto en su propia transacción.
-
-    Para descontar stock como parte de una venta (junto con el alta de
-    la venta y su detalle) usar `actualizar_stock_en_conexion` dentro
-    de la misma conexión, no esta función.
-    """
-    with obtener_conexion() as conexion:
-        return actualizar_stock_en_conexion(conexion, producto_id, nuevo_stock)
-
-
 def listar_todos() -> list[Producto]:
     """Devuelve todos los productos activos, ordenados por nombre (grilla del POS)."""
     consulta = f"SELECT {_COLUMNAS} FROM productos WHERE activo = 1 ORDER BY nombre"

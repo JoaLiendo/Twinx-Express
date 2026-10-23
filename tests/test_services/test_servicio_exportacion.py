@@ -9,9 +9,11 @@ round-trip, no se vuelve a probar su comportamiento interno)."""
 
 import csv
 import io
+from pathlib import Path
 
 from openpyxl import load_workbook
 
+import db.conexion as modulo_conexion
 from db.conexion import obtener_conexion
 from services import servicio_categorias, servicio_exportacion, servicio_importacion, servicio_stock
 
@@ -167,16 +169,19 @@ class TestCompatibilidadExportarReimportar:
             unidad_medida="LITRO",
         )
 
-    def _borrar_todos_los_productos(self):
-        # Simula una instalación nueva: sus movimientos de alta (STOCK_INICIAL, V1.11-C) se van con ellos.
-        with obtener_conexion() as conexion:
-            conexion.execute("DELETE FROM ajustes_stock")
-            conexion.execute("DELETE FROM productos")
+    def _borrar_todos_los_productos(self, monkeypatch):
+        # Instalación nueva de verdad: otra base vacía (desde V1.12 un producto con stock tiene partidas, que
+        # son historial y no se borran). Las categorías del catálogo se recrean igual que en el origen.
+        nueva = Path(modulo_conexion.RUTA_BASE_DATOS).with_name("instalacion_nueva.db")
+        monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", nueva)
+        modulo_conexion.inicializar_base_datos()
+        for nombre in ("Golosinas",):
+            servicio_categorias.crear_categoria(nombre)
 
-    def test_csv_exportado_se_reimporta_sin_adaptacion(self, base_datos_temporal):
+    def test_csv_exportado_se_reimporta_sin_adaptacion(self, base_datos_temporal, monkeypatch):
         self._productos_de_prueba()
         contenido = servicio_exportacion.generar_csv_productos()
-        self._borrar_todos_los_productos()
+        self._borrar_todos_los_productos(monkeypatch)
 
         resultado = servicio_importacion.procesar_archivo("productos.csv", contenido)
 
@@ -199,10 +204,10 @@ class TestCompatibilidadExportarReimportar:
         assert gaseosa.unidad_medida == "LITRO"
         assert gaseosa.categoria_id is None
 
-    def test_xlsx_exportado_se_reimporta_sin_adaptacion(self, base_datos_temporal):
+    def test_xlsx_exportado_se_reimporta_sin_adaptacion(self, base_datos_temporal, monkeypatch):
         self._productos_de_prueba()
         contenido = servicio_exportacion.generar_xlsx_productos()
-        self._borrar_todos_los_productos()
+        self._borrar_todos_los_productos(monkeypatch)
 
         resultado = servicio_importacion.procesar_archivo("productos.xlsx", contenido)
 

@@ -39,7 +39,7 @@ class BaseAnterior:
         con.execute(
             "INSERT INTO productos (id, codigo_barras, nombre, precio_costo_centavos, precio_venta_centavos,"
             " stock_actual, categoria_id) VALUES (1, 'c1', 'Cola', 100, 200, 10, 1), (2, 'c2', 'Chicle', 10, 30, 0, 3),"
-            " (3, 'c3', 'Suelto', 50, 90, 4, NULL)"
+            " (3, 'c3', 'Suelto', 50, 90, 0, NULL)"
         )
         con.execute(
             "INSERT INTO ajustes_stock (producto_id, usuario_id, motivo, delta, stock_anterior, stock_resultante)"

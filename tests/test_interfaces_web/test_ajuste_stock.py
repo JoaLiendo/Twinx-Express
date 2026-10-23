@@ -11,7 +11,7 @@ from db.conexion import obtener_conexion
 from db.repositorios import usuarios as repositorio_usuarios
 from domain.usuario import Usuario
 from interfaces.web.auth import NOMBRE_COOKIE_SESION
-from services import servicio_auth, servicio_stock
+from services import servicio_auth, servicio_partidas, servicio_stock
 
 from ._asgi_cliente import solicitud
 
@@ -302,9 +302,12 @@ def _crear_ajuste(producto_id, motivo="ROTURA", cantidad=3):
         conexion.execute(
             "UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?", (cantidad, producto_id)
         )
-        return conexion.execute(
+        ajuste_id = conexion.execute(
             "SELECT id FROM ajustes_stock WHERE producto_id = ? ORDER BY id DESC LIMIT 1", (producto_id,)
         ).fetchone()["id"]
+        # Desde V1.12 un ajuste descuenta de sus partidas en la misma transacción.
+        servicio_partidas.consumir_en_conexion(conexion, producto_id, cantidad, ajuste_id=ajuste_id)
+        return ajuste_id
 
 
 class TestFormularioRevertirAjuste:

@@ -30,10 +30,17 @@
   inicial" en vez de códigos internos. La actualización masiva de precios por categoría sigue siendo
   exacta (no incluye subcategorías).
 
-## V1.12 — partidas / lotes (a definir)
+## V1.12 — Partidas, vencimientos y liquidación
 
-- Asociar el stock de nuevas compras y altas a existencias causales. El origen de una partida podrá
-  referenciar `ajustes_stock` (STOCK_INICIAL, RECUENTO positivo) igual que una línea de compra.
+Diseño e invariantes: `docs/V1.12_PARTIDAS.md`.
+
+- **V1.12-A (cerrado)**: `partidas_stock` + `movimientos_partida` (migración 032). Existencias previas
+  como una partida `HEREDADA` por producto (sin vencimiento, costo ni fecha). Alta con stock, compra y
+  su anulación, venta y su anulación, ajustes (pérdidas, reversas, RECUENTO) mueven partidas en la
+  misma transacción y verifican `stock_actual = SUM(partidas)` (si no, se revierte todo). FEFO
+  determinístico; anulación de venta y reversa devuelven exactamente a las mismas partidas; venta
+  anterior a V1.12 anulada vuelve como partida `ANULACION_VENTA` sin datos inventados. La base
+  impide escribir el disponible sin un movimiento y vuelve inmutables partidas y movimientos.
 
 ## V1.13 — a definir
 

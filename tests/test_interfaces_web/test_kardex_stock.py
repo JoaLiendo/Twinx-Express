@@ -20,7 +20,7 @@ from services import (
     servicio_stock,
     servicio_ventas,
 )
-from tests.utilidades_clientes import consultar, escribir, usuario_logueado
+from tests.utilidades_clientes import consultar, escribir, heredar_existencia_en_conexion, usuario_logueado
 
 from ._asgi_cliente import solicitud
 
@@ -32,11 +32,17 @@ STOCK_DE_ALTA = 20
 def _producto_historico(codigo, nombre, costo, venta, stock):
     """Producto como los creados antes de V1.11-C: su stock de alta NO es un movimiento (se crea por
     el repositorio, sin `STOCK_INICIAL`) y el kardex lo reconstruye dentro del saldo inicial. Los
-    productos nuevos sí lo registran: ver `TestStockInicial`."""
-    return repositorio_productos.crear_producto(
-        Producto(codigo_barras=codigo, nombre=nombre, precio_costo_centavos=costo, precio_venta_centavos=venta,
-                 stock_actual=stock)
-    )
+    productos nuevos sí lo registran: ver `TestStockInicial`. Su stock queda como existencia heredada,
+    igual que tras el upgrade a V1.12 (migración 032)."""
+    with obtener_conexion() as conexion:
+        producto = repositorio_productos.crear_producto_en_conexion(
+            conexion,
+            Producto(codigo_barras=codigo, nombre=nombre, precio_costo_centavos=costo, precio_venta_centavos=venta,
+                     stock_actual=stock),
+        )
+        if stock:
+            heredar_existencia_en_conexion(conexion, producto.id, stock)
+    return producto
 
 
 @pytest.fixture

@@ -23,6 +23,7 @@ from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import proveedores as repositorio_proveedores
 from db.repositorios import historial_precios as repositorio_historial_precios
+from db.repositorios import partidas as repositorio_partidas
 from domain.compra import (
     Compra,
     CompraDeProducto,
@@ -41,6 +42,7 @@ from domain.compra import (
 from domain.auditoria import LONGITUD_MAXIMA_RESUMEN
 from domain.dinero import centavos_a_texto
 from domain.fechas import limites_de_fechas
+from domain.partida import ORIGEN_COMPRA
 from domain.producto import Producto
 from excepciones import (
     MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
@@ -55,6 +57,7 @@ from excepciones import (
     StockInsuficienteError,
     VencimientoNoEditableError,
 )
+from services import servicio_partidas
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +200,16 @@ def registrar_compra(
             fecha_vencimiento=fecha_vencimiento,
         )
 
+        # V1.12: cada línea ingresa como una partida con el costo real de la compra.
+        for detalle_id, producto_id, cantidad, costo in repositorio_partidas.lineas_de_compra_en_conexion(
+            conexion, compra.id
+        ):
+            servicio_partidas.registrar_ingreso_en_conexion(
+                conexion, producto_id, ORIGEN_COMPRA, cantidad,
+                detalle_compra_id=detalle_id, costo_unitario_centavos=costo,
+            )
+        servicio_partidas.verificar_conciliacion_en_conexion(conexion, productos_por_id)
+
         # CREDITO: el cargo se crea en la MISMA transacción que la compra -- si falla (ej. una
         # violación de trigger imprevista), `obtener_conexion` revierte todo: nunca puede quedar
         # persistida una compra a crédito sin su cargo (V1.9-B).
@@ -329,6 +342,16 @@ def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuari
             producto = productos[linea.producto_id]
             producto.actualizar_stock(producto.stock_actual - linea.cantidad)
             repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
+        # V1.12: sale primero lo que esta compra ingresó (sus propias partidas). Si ya se consumió en parte
+        # (una compra histórica, o mercadería vendida), el resto se asigna por FEFO y queda marcado así.
+        for detalle_id, producto_id, cantidad, _costo in repositorio_partidas.lineas_de_compra_en_conexion(
+            conexion, compra_id
+        ):
+            servicio_partidas.consumir_en_conexion(
+                conexion, producto_id, cantidad, detalle_compra_id=detalle_id,
+                preferidas=repositorio_partidas.ids_partidas_de_detalle_compra_en_conexion(conexion, detalle_id),
+            )
+        servicio_partidas.verificar_conciliacion_en_conexion(conexion, productos)
         for decision in decisiones:
             if decision.restaurar_a_centavos is not None:
                 repositorio_productos.actualizar_costo_con_evento_en_conexion(

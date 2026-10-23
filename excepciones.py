@@ -33,6 +33,11 @@ class DatosInvalidosError(ErrorAplicacion):
     """
 
 
+class StockNoConciliadoError(ErrorAplicacion):
+    """El stock de un producto dejaría de coincidir con la suma de sus partidas (V1.12): la operación se
+    revierte completa en vez de guardar un estado inconsistente."""
+
+
 class StockInsuficienteError(ErrorAplicacion):
     """La operación requiere más stock del disponible."""
 

@@ -9,7 +9,7 @@ import pytest
 
 from domain.compra import ItemCompra
 from services import servicio_compras, servicio_proveedores, servicio_stock
-from tests.utilidades_clientes import consultar, escribir, usuario_logueado
+from tests.utilidades_clientes import consultar, usuario_logueado
 
 from ._asgi_cliente import solicitud
 
@@ -22,16 +22,18 @@ def e(base_datos_temporal):
     owner, cookies = usuario_logueado("OWNER", "duenio")
     a = servicio_proveedores.crear_proveedor("Norte")
     b = servicio_proveedores.crear_proveedor("Sur")
+    # Stock final 4 (bajo el mínimo 10) salvo Prod5 (10): p1 recibe 2 unidades y p3 una por las compras.
+    stock_de_alta = {1: 2, 2: 4, 3: 3, 4: 4, 5: 10}
     productos = {
-        n: servicio_stock.registrar_producto(f"77900000000{n}", f"Prod{n}", 500, 900, stock_actual=100)
+        n: servicio_stock.registrar_producto(
+            f"77900000000{n}", f"Prod{n}", 500, 900, stock_actual=stock_de_alta[n], stock_minimo=10
+        )
         for n in range(1, 6)
     }
     servicio_compras.registrar_compra(a.id, owner.id, [ItemCompra(productos[1].id, 1, 1234)])
     servicio_compras.registrar_compra(b.id, owner.id, [ItemCompra(productos[1].id, 1, 2000)])
     servicio_compras.registrar_compra(b.id, owner.id, [ItemCompra(productos[3].id, 1, 700)])
     servicio_proveedores.vincular_producto(a.id, productos[2].id, owner.id)
-    escribir(base_datos_temporal, "UPDATE productos SET stock_minimo = 10, stock_actual = 4")
-    escribir(base_datos_temporal, "UPDATE productos SET stock_actual = 10 WHERE nombre = 'Prod5'")
     return type(
         "E", (), {"ruta": base_datos_temporal, "co": cookies, "owner": owner, "a": a, "b": b, "p": productos}
     )

@@ -23,7 +23,7 @@ from excepciones import (
     ProductoNoEncontradoError,
     StockInsuficienteError,
 )
-from services import servicio_categorias, servicio_stock, servicio_ventas
+from services import servicio_categorias, servicio_partidas, servicio_stock, servicio_ventas
 
 pytestmark = pytest.mark.usefixtures("caja_abierta")
 
@@ -936,9 +936,16 @@ class TestRevertirAjuste:
         from db.repositorios import ajustes_stock as repositorio_ajustes
         from domain.ajuste_stock import AjusteStock
 
-        producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=10)
+        from db.repositorios import productos as repositorio_productos
+        from domain.producto import Producto
+        from tests.utilidades_clientes import heredar_existencia_en_conexion
+
         owner = _crear_usuario()
+        # Producto y merma históricos (antes de V1.11): el stock que quedó (7) es la existencia heredada.
         with obtener_conexion() as conexion:
+            producto = repositorio_productos.crear_producto_en_conexion(
+                conexion, Producto("7790000000001", "Alfajor", 100, 200, stock_actual=7)
+            )
             legacy = repositorio_ajustes.registrar_ajuste_en_conexion(
                 conexion,
                 AjusteStock(
@@ -946,14 +953,16 @@ class TestRevertirAjuste:
                     delta=-3, stock_anterior=10, stock_resultante=7,
                 ),
             )
-        from db.repositorios import productos as repositorio_productos
-
-        with obtener_conexion(inmediata=True) as conexion:
-            repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, 7)
+            heredar_existencia_en_conexion(conexion, producto.id, 7)
 
         reversa = servicio_stock.revertir_ajuste(legacy.id, "corrección de un legacy", owner.id)
 
         assert reversa.costo_unitario_centavos is None
+        # Sin movimientos que deshacer: las 3 unidades vuelven como una partida propia, sin costo inventado.
+        partidas = servicio_partidas.listar_partidas(producto.id)
+        assert [(p.origen, p.cantidad_disponible, p.costo_unitario_centavos, p.ajuste_id) for p in partidas] == [
+            ("HEREDADA", 7, None, None), ("AJUSTE", 3, None, reversa.id),
+        ]
 
 
 class TestStockInicial:

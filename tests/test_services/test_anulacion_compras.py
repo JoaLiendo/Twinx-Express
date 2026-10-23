@@ -29,7 +29,7 @@ from excepciones import (
 )
 from services import servicio_compras, servicio_inventario, servicio_proveedores, servicio_reportes, servicio_stock
 from services.servicio_compras import _resumen_de_anulacion
-from tests.utilidades_clientes import consultar, escribir
+from tests.utilidades_clientes import conectar, consultar, escribir, heredar_existencia_en_conexion
 
 
 @pytest.fixture
@@ -44,6 +44,29 @@ def e(base_datos_temporal):
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 300, stock_actual=10)
     otro = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 400, 700, stock_actual=5)
     return type("E", (), {"ruta": base_datos_temporal, "owner": owner, "prov": proveedor, "p": producto, "q": otro})
+
+
+def _renumerar_detalle_de_compra(e, compra_id, desplazamiento):
+    """Cambia los ids de detalle de una compra (y la referencia de sus partidas), saltando las guardias
+    de la 032 solo dentro de esta escritura: un estado que la aplicación nunca produce."""
+    conexion = conectar(e.ruta)
+    try:
+        trigger = conexion.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'trg_partidas_stock_origen_inmutable'"
+        ).fetchone()[0]
+        conexion.execute("PRAGMA foreign_keys = OFF")
+        conexion.execute("DROP TRIGGER trg_partidas_stock_origen_inmutable")
+        conexion.execute(
+            "UPDATE partidas_stock SET detalle_compra_id = detalle_compra_id + ?"
+            " WHERE detalle_compra_id IN (SELECT id FROM detalle_compra WHERE compra_id = ?)",
+            (desplazamiento, compra_id),
+        )
+        conexion.execute("UPDATE detalle_compra SET id = id + ? WHERE compra_id = ?", (desplazamiento, compra_id))
+        conexion.execute(trigger)
+        conexion.commit()
+        assert conexion.execute("PRAGMA foreign_key_check").fetchall() == []
+    finally:
+        conexion.close()
 
 
 def _comprar(e, *lineas):
@@ -154,7 +177,7 @@ class TestAnulacionFeliz:
 class TestStockInsuficiente:
     def test_una_linea_sin_stock_aborta_todo_sin_cambiar_nada(self, e):
         compra = _comprar(e, (e.p, 5, 150), (e.q, 2, 500))
-        escribir(e.ruta, "UPDATE productos SET stock_actual = 1 WHERE id = ?", (e.q.id,))  # se vendió: 1 < 2
+        servicio_stock.ajustar_stock(e.q.id, -6, "ROTURA", e.owner.id)  # quedan 1 < 2
         antes = _foto(e)
 
         with pytest.raises(StockInsuficienteError):
@@ -164,11 +187,13 @@ class TestStockInsuficiente:
 
     def test_alcanza_justo(self, e):
         compra = _comprar(e, (e.p, 5, 150))
-        escribir(e.ruta, "UPDATE productos SET stock_actual = 5 WHERE id = ?", (e.p.id,))
+        servicio_stock.ajustar_stock(e.p.id, -10, "ROTURA", e.owner.id)  # quedan 5
 
         _anular(e, compra)
 
         assert _stock(e, e.p) == 0
+        assert consultar(e.ruta, "SELECT SUM(cantidad_disponible) FROM partidas_stock WHERE producto_id = ?",
+                         (e.p.id,))[0][0] == 0
 
 
 class TestCompraHistorica:
@@ -179,6 +204,7 @@ class TestCompraHistorica:
                 con, e.prov.id, e.owner.id, None, cantidad * costo, [(ItemCompra(producto.id, cantidad, costo), cantidad * costo)]
             )
             con.execute("UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?", (cantidad, producto.id))
+            heredar_existencia_en_conexion(con, producto.id, cantidad)  # como la deja el upgrade a V1.12
             from db.repositorios import productos as repositorio_productos
 
             repositorio_productos.actualizar_costo_con_evento_en_conexion(con, producto.id, costo, e.owner.id, "COMPRA")
@@ -226,7 +252,8 @@ class TestCondicionesDeRestauracion:
         primera = _comprar(e, (e.p, 5, 150))
         segunda = _comprar(e, (e.p, 3, 150))
         # Un detalle con id menor no cambia el orden: la segunda compra sigue siendo posterior por su cabecera.
-        escribir(e.ruta, "UPDATE detalle_compra SET id = id + 1000 WHERE compra_id = ?", (primera.id,))
+        # (Desde V1.12 sus partidas referencian el detalle: se renumeran juntos, fabricando a mano el desorden.)
+        _renumerar_detalle_de_compra(e, primera.id, 1000)
 
         _anular(e, primera)
 

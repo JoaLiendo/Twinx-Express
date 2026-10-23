@@ -41,6 +41,17 @@ def crear_producto(codigo: str = "7790000000001", precio_centavos: int = 100, st
     return servicio_stock.registrar_producto(codigo, f"Producto {codigo}", 10, precio_centavos, stock_actual=stock)
 
 
+def heredar_existencia_en_conexion(conexion, producto_id: int, cantidad: int) -> None:
+    """Partida HEREDADA de `cantidad` unidades, exactamente como la crea la migración 032 para el stock
+    anterior a V1.12. Para tests que fabrican historia previa (un producto o una compra creados por el
+    repositorio, sin pasar por las partidas): así el escenario es el mismo que deja un upgrade real."""
+    conexion.execute(
+        "INSERT INTO partidas_stock (producto_id, origen, cantidad_original, cantidad_disponible)"
+        " VALUES (?, 'HEREDADA', ?, ?)",
+        (producto_id, cantidad, cantidad),
+    )
+
+
 def conectar(ruta) -> sqlite3.Connection:
     """Conexión directa con FK activas, para inspeccionar o forzar escrituras que el
     servicio no permitiría (y comprobar que el esquema igual las rechaza)."""
