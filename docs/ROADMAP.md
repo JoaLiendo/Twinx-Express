@@ -56,6 +56,13 @@ Diseño e invariantes: `docs/V1.12_PARTIDAS.md`.
   sin costo si no se conoce, nunca el actual); en otras pérdidas se puede elegir la partida. Una venta
   que solo se completa con mercadería vencida exige autorización de un OWNER (el propio, o sus
   credenciales en el puesto de un CASHIER), auditada como `VENTA_VENCIDOS_AUTORIZADA`. Sin migración.
+- **V1.12-E (cerrado)**: liquidación por vencimiento en `/precios/liquidacion` (OWNER): para lo
+  próximo a vencer, precio sugerido = vigente menos un descuento objetivo, nunca por debajo de costo ×
+  (1 + margen mínimo), con el costo real de las partidas que vencen (o el vigente, avisado). Parámetros
+  locales configurables (20 % / 10 % por defecto). Nunca cambia un precio solo: el OWNER aplica,
+  modifica o descarta; el cambio queda en el historial de precios (edición) y en la auditoría
+  (`PRECIO_LIQUIDACION_APLICADO`), sin pisar un precio que cambió mientras tanto. Sin migración ni
+  dependencias externas.
 
 ## V1.13 — a definir
 

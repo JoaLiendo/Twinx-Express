@@ -16,6 +16,7 @@
 
 ## 2. Pendiente / fuera de alcance actual
 
+- **V1.12 (en desarrollo, rama `dev/v1.12`)**: partidas de stock con vencimientos (migración 032), ingreso con vencimientos, ventas FEFO trazables, alertas/baja/venta autorizada de vencidos y liquidación sugerida. Detalle en `docs/ROADMAP.md` y `docs/V1.12_PARTIDAS.md`; pendiente: certificación y release 1.12.0.
 - **Pedidos**: solo cascarón visual (`interfaces/web/rutas/pedidos.py`), sin lógica de negocio; oculto del menú.
 - **Órdenes de compra persistentes, imputación de pagos a compras concretas, notificaciones de vencimientos, saldos a favor y devoluciones a proveedor**: NO implementadas (candidatas de una versión futura).
 - **Backup automático/programado**: no existe; solo el manual desde `/backup` y el preventivo previo a migrar una base existente.

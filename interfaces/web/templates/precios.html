@@ -7,6 +7,11 @@
 {% block content %}
 <div class="max-w-3xl mx-auto space-y-8">
 
+  <a href="/precios/liquidacion" class="flex items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm font-medium text-warning hover:bg-warning/20 transition">
+    <span>Liquidación por vencimiento: precios sugeridos para lo que está por vencer.</span>
+    <span aria-hidden="true">→</span>
+  </a>
+
   {% call ui.card() %}
     <p class="font-semibold text-slate-900 dark:text-slate-100 mb-1">Actualización masiva de precios de venta</p>
     <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">

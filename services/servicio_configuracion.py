@@ -1,4 +1,4 @@
-"""Casos de uso de configuración (V1.2): datos comerciales del ticket."""
+"""Casos de uso de configuración: datos comerciales del ticket (V1.2), aviso de vencimientos y parámetros de liquidación (V1.12)."""
 
 import logging
 
@@ -6,6 +6,7 @@ from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import configuracion as repositorio_configuracion
 from domain.comercio import CLAVES_CONFIGURACION, ETIQUETAS, DatosComercio
+from domain.liquidacion import DESCUENTO_OBJETIVO_POR_DEFECTO, MARGEN_MINIMO_POR_DEFECTO, ParametrosLiquidacion
 from domain.partida import DIAS_ALERTA_POR_DEFECTO, validar_dias_alerta
 
 logger = logging.getLogger(__name__)
@@ -73,3 +74,33 @@ def guardar_dias_alerta_vencimiento(texto: str, usuario_id: int) -> int:
             )
             logger.info("Días de alerta de vencimiento: %s -> %s", anterior, dias)
     return dias
+
+
+CLAVE_LIQUIDACION_DESCUENTO = "liquidacion.descuento_objetivo"
+CLAVE_LIQUIDACION_MARGEN = "liquidacion.margen_minimo"
+
+
+def obtener_parametros_liquidacion() -> ParametrosLiquidacion:
+    """Descuento objetivo y margen mínimo de la liquidación por vencimiento (V1.12-E); 20 % y 10 % si
+    nunca se configuraron."""
+    valores = repositorio_configuracion.obtener_todas()
+    return ParametrosLiquidacion.desde_texto(
+        valores.get(CLAVE_LIQUIDACION_DESCUENTO, str(DESCUENTO_OBJETIVO_POR_DEFECTO)),
+        valores.get(CLAVE_LIQUIDACION_MARGEN, str(MARGEN_MINIMO_POR_DEFECTO)),
+    )
+
+
+def guardar_parametros_liquidacion(descuento: str, margen: str, usuario_id: int) -> ParametrosLiquidacion:
+    """Raises: DatosInvalidosError si algún porcentaje es inválido."""
+    nuevos = ParametrosLiquidacion.desde_texto(descuento, margen)
+    actuales = obtener_parametros_liquidacion()
+    if nuevos != actuales:
+        with obtener_conexion(inmediata=True) as conexion:
+            repositorio_configuracion.guardar_en_conexion(conexion, CLAVE_LIQUIDACION_DESCUENTO, str(nuevos.descuento_objetivo))
+            repositorio_configuracion.guardar_en_conexion(conexion, CLAVE_LIQUIDACION_MARGEN, str(nuevos.margen_minimo))
+            repositorio_auditoria.registrar_en_conexion(
+                conexion, usuario_id, "CONFIGURACION_VENCIMIENTOS_CAMBIADA", "CONFIGURACION", None,
+                f"Liquidación: descuento {actuales.descuento_objetivo} -> {nuevos.descuento_objetivo} %,"
+                f" margen mínimo {actuales.margen_minimo} -> {nuevos.margen_minimo} %",
+            )
+    return nuevos

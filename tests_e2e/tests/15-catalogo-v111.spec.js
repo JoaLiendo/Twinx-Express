@@ -53,7 +53,7 @@ test('@responsive la tabla de productos no desborda ni recorta nombres', async (
 
 test('@responsive dashboard, categorías e inventario nuevo sin scroll horizontal', async ({ page }) => {
   await loginViaUI(page, { irA: '/' });
-  for (const ruta of ['/', '/productos/categorias', '/inventario/nuevo', '/compras/nueva']) {
+  for (const ruta of ['/', '/productos/categorias', '/inventario/nuevo', '/compras/nueva', '/precios/liquidacion', '/productos/1/vencimientos']) {
     await page.goto(ruta);
     const desborda = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
