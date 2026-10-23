@@ -74,6 +74,22 @@
   </div>
 
   <!-- Alertas -->
+  {% set con_vencidos = vencimientos | selectattr('cantidad_vencida') | list | length %}
+  {% set proximos = vencimientos | selectattr('estado', 'equalto', 'PROXIMO_A_VENCER') | list | length %}
+  {% if con_vencidos or proximos %}
+    <div class="space-y-3" id="alertas-vencimiento">
+      {% if con_vencidos %}
+        <a href="/productos?vencimiento=vencido" class="flex items-center gap-2 rounded-lg bg-error/10 border border-error/20 text-error text-sm font-medium px-3.5 py-2.5 hover:bg-error/20 transition">
+          {{ con_vencidos }} producto{{ 's' if con_vencidos != 1 else '' }} con mercadería vencida: retirala de la venta. Ver →
+        </a>
+      {% endif %}
+      {% if proximos %}
+        <a href="/productos?vencimiento=proximo" class="flex items-center gap-2 rounded-lg bg-warning/10 border border-warning/20 text-warning text-sm font-medium px-3.5 py-2.5 hover:bg-warning/20 transition">
+          {{ proximos }} producto{{ 's' if proximos != 1 else '' }} próximo{{ 's' if proximos != 1 else '' }} a vencer. Ver →
+        </a>
+      {% endif %}
+    </div>
+  {% endif %}
   {% if not caja_abierta or productos_criticos %}
     <div class="space-y-3">
       {% if not caja_abierta %}

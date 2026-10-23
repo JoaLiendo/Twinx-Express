@@ -13,7 +13,7 @@ from domain.usuario import Usuario
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base
-from services import servicio_caja, servicio_reportes, servicio_stock
+from services import servicio_caja, servicio_configuracion, servicio_partidas, servicio_reportes, servicio_stock
 
 MOVIMIENTOS_RECIENTES = 5
 
@@ -27,6 +27,9 @@ def ver_dashboard(request: Request, usuario_actual: Usuario = Depends(obtener_us
         "productos_criticos": servicio_stock.listar_stock_critico(),
         "arqueo": servicio_caja.calcular_arqueo_de_sesion(),
         "movimientos_recientes": servicio_caja.listar_movimientos_recientes(MOVIMIENTOS_RECIENTES),
+        "vencimientos": list(
+            servicio_partidas.resumenes_de_vencimiento(servicio_configuracion.obtener_dias_alerta_vencimiento()).values()
+        ),
     }
     if usuario_actual.rol == "OWNER":
         contexto["valorizacion"] = servicio_stock.calcular_valorizacion_inventario()

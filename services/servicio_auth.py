@@ -52,7 +52,7 @@ from db.repositorios import sesiones as repositorio_sesiones
 from db.repositorios import usuarios as repositorio_usuarios
 from domain.sesion import Sesion
 from domain.usuario import Usuario
-from excepciones import CredencialesInvalidasError, DatosInvalidosError, UsuarioInactivoError
+from excepciones import CredencialesInvalidasError, DatosInvalidosError, PermisoDenegadoError, UsuarioInactivoError
 from services.limitador_login import UMBRAL_FALLOS, LimitadorIntentosLogin
 
 logger = logging.getLogger(__name__)
@@ -192,6 +192,29 @@ def iniciar_sesion(
         UsuarioInactivoError: el usuario existe y la contraseña sería
             válida, pero está desactivado.
     """
+    usuario = _autenticar(nombre_usuario, password)
+    fecha_expiracion = (datetime.now() + timedelta(seconds=duracion_segundos)).strftime(_FORMATO_FECHA)
+    sesion = Sesion(token=_generar_token(), usuario_id=usuario.id, fecha_expiracion=fecha_expiracion)
+    return repositorio_sesiones.crear_sesion(sesion)
+
+
+def autorizar_como_owner(nombre_usuario: str, password: str) -> Usuario:
+    """Verifica credenciales de un OWNER activo sin abrir una sesión (V1.12-D): una autorización puntual
+    pedida en el puesto de un CASHIER (ej. vender mercadería vencida). Mismas protecciones que el login
+    (limitador de intentos, costo constante, mensaje genérico).
+
+    Raises:
+        CredencialesInvalidasError / UsuarioInactivoError: como `iniciar_sesion`.
+        PermisoDenegadoError: si las credenciales son válidas pero no son de un OWNER.
+    """
+    usuario = _autenticar(nombre_usuario, password)
+    if usuario.rol != "OWNER":
+        raise PermisoDenegadoError("La autorización tiene que darla un usuario dueño (OWNER).")
+    return usuario
+
+
+def _autenticar(nombre_usuario: str, password: str) -> Usuario:
+    """Núcleo común de `iniciar_sesion` y `autorizar_como_owner` (ver los pasos en `iniciar_sesion`)."""
     usuario = repositorio_usuarios.obtener_por_nombre_usuario(nombre_usuario)
 
     if usuario is None:
@@ -233,10 +256,7 @@ def iniciar_sesion(
             usuario.id,
             fallos_previos,
         )
-
-    fecha_expiracion = (datetime.now() + timedelta(seconds=duracion_segundos)).strftime(_FORMATO_FECHA)
-    sesion = Sesion(token=_generar_token(), usuario_id=usuario.id, fecha_expiracion=fecha_expiracion)
-    return repositorio_sesiones.crear_sesion(sesion)
+    return usuario
 
 
 def obtener_usuario_de_token(token: str) -> Usuario | None:

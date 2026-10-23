@@ -31,11 +31,13 @@ from interfaces.web.utilidades import (
 from services import (
     servicio_categorias,
     servicio_compras,
+    servicio_configuracion,
     servicio_etiquetas,
     servicio_exportacion,
     servicio_exportacion_csv,
     servicio_importacion,
     servicio_movimientos_stock,
+    servicio_partidas,
     servicio_precios,
     servicio_stock,
 )
@@ -71,6 +73,7 @@ def listar_productos(
     mostrar_inactivos: bool = False,
     categoria_id: str = "",
     etiqueta_id: str = "",
+    vencimiento: str = "",
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
     # Ver productos dados de baja es un caso de uso exclusivo de OWNER
@@ -86,9 +89,15 @@ def listar_productos(
         estado_stock = ""
     categoria = entero_opcional(categoria_id, "La categoría elegida no es válida.")
     etiqueta = entero_opcional(etiqueta_id, "La etiqueta elegida no es válida.")
+    if vencimiento not in servicio_stock.FILTROS_DE_VENCIMIENTO:
+        vencimiento = ""
+    resumenes_vencimiento = servicio_partidas.resumenes_de_vencimiento(
+        servicio_configuracion.obtener_dias_alerta_vencimiento()
+    )
 
     productos = servicio_stock.listar_para_administracion(
-        texto=q, categoria_id=categoria, estado_stock=estado_stock, inactivos=mostrar_inactivos, etiqueta_id=etiqueta
+        texto=q, categoria_id=categoria, estado_stock=estado_stock, inactivos=mostrar_inactivos, etiqueta_id=etiqueta,
+        vencimiento=vencimiento, resumenes_vencimiento=resumenes_vencimiento,
     )
 
     # El árbol completo incluye categorías ya dadas de baja, para no mostrar
@@ -109,7 +118,9 @@ def listar_productos(
         "nombres_de_etiqueta": {e.id: e.nombre for e in etiquetas},
         "etiquetas_por_producto": servicio_etiquetas.ids_por_producto() if etiquetas else {},
         "total_criticos": len(servicio_stock.listar_stock_critico()),
-        "hay_filtros": bool(q.strip() or estado_stock or categoria is not None or etiqueta is not None),
+        "vencimiento": vencimiento,
+        "vencimientos": resumenes_vencimiento,
+        "hay_filtros": bool(q.strip() or estado_stock or categoria is not None or etiqueta is not None or vencimiento),
     }
     return templates.TemplateResponse(request, "productos/lista.html", contexto)
 
@@ -418,6 +429,9 @@ def formulario_ajustar_stock(request: Request, producto_id: int):
         "producto": producto,
         "motivos": sorted(MOTIVOS_MANUALES_PERMITIDOS),
         "clave_idempotencia": nueva_clave_idempotencia(),
+        "partidas": servicio_partidas.listar_partidas_con_estado(
+            producto_id, servicio_configuracion.obtener_dias_alerta_vencimiento()
+        ),
     }
     return templates.TemplateResponse(request, "productos/ajustar.html", contexto)
 
@@ -430,6 +444,7 @@ def ajustar_stock(
     cantidad: int = Form(...),
     observaciones: str = Form(""),
     clave_idempotencia: str = Form(""),
+    partida_id: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     # El usuario no ingresa el signo: la interfaz solo ofrece "sumar" o
@@ -449,9 +464,52 @@ def ajustar_stock(
         usuario_id=usuario_actual.id,
         observaciones=observaciones.strip() or None,
         clave_idempotencia=clave_idempotencia or None,
+        partida_id=entero_opcional(partida_id, "La partida elegida no es válida."),
     )
     return redireccionar_con_mensaje(
         f"/productos/{producto_id}/editar", "success", "Ajuste de stock registrado correctamente."
+    )
+
+
+@router.get("/productos/{producto_id}/vencimientos", dependencies=[_SOLO_OWNER])
+def ver_vencimientos_de_producto(request: Request, producto_id: int):
+    """Partidas con disponible, en orden de salida (FEFO), con su estado; desde acá se retira lo vencido."""
+    producto = servicio_stock.obtener_por_id(producto_id)
+    if producto is None:
+        return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
+    contexto = {
+        **contexto_base(request),
+        "producto": producto,
+        "partidas": servicio_partidas.listar_partidas_con_estado(
+            producto_id, servicio_configuracion.obtener_dias_alerta_vencimiento()
+        ),
+        "clave_idempotencia": nueva_clave_idempotencia(),
+    }
+    return templates.TemplateResponse(request, "productos/vencimientos.html", contexto)
+
+
+@router.post("/productos/{producto_id}/vencimientos/{partida_id}/baja", dependencies=[_SOLO_OWNER])
+def dar_de_baja_partida_por_vencimiento(
+    producto_id: int,
+    partida_id: int,
+    cantidad: int = Form(...),
+    observaciones: str = Form(""),
+    clave_idempotencia: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    if cantidad <= 0:
+        raise DatosInvalidosError("La cantidad a retirar debe ser mayor a cero.")
+    servicio_stock.ajustar_stock(
+        producto_id,
+        delta=-cantidad,
+        motivo="VENCIMIENTO",
+        usuario_id=usuario_actual.id,
+        observaciones=observaciones.strip() or None,
+        clave_idempotencia=clave_idempotencia or None,
+        partida_id=partida_id,
+    )
+    return redireccionar_con_mensaje(
+        f"/productos/{producto_id}/vencimientos", "success", f"Baja por vencimiento registrada ({cantidad} u.)."
     )
 
 

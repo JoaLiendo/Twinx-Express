@@ -232,6 +232,36 @@
   </div>
 
 </div>
+
+{# V1.12-D: vender mercadería vencida exige la autorización explícita de un dueño (queda auditada). #}
+<dialog id="dialogo-vencidos" data-es-owner="{{ 'true' if usuario_actual and usuario_actual.es_owner else 'false' }}"
+        class="w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-error/30 p-0 shadow-xl backdrop:bg-slate-900/60 dark:bg-slate-900">
+  <form method="dialog" id="form-vencidos" class="p-5 space-y-4">
+    <div class="flex items-start gap-3">
+      <span class="flex items-center justify-center w-10 h-10 shrink-0 rounded-full bg-error/10 text-error" aria-hidden="true">!</span>
+      <div>
+        <p class="font-semibold text-error">Mercadería vencida</p>
+        <p class="mt-1 text-sm text-slate-700 dark:text-slate-300" id="dialogo-vencidos-mensaje"></p>
+      </div>
+    </div>
+    {% if usuario_actual and usuario_actual.es_owner %}
+      <label class="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+        <input type="checkbox" id="vencidos-confirmo" required class="mt-0.5 accent-error" />
+        Autorizo vender esta mercadería vencida. Queda registrado en la auditoría.
+      </label>
+    {% else %}
+      <p class="text-sm text-slate-600 dark:text-slate-400">Pedile al dueño que ingrese su usuario y contraseña para autorizarla.</p>
+      <input type="text" id="vencidos-usuario" autocomplete="off" required placeholder="Usuario del dueño" aria-label="Usuario del dueño"
+             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+      <input type="password" id="vencidos-password" autocomplete="off" required placeholder="Contraseña" aria-label="Contraseña del dueño"
+             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+    {% endif %}
+    <div class="flex items-center justify-end gap-2">
+      <button type="button" id="vencidos-cancelar" class="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-300">Cancelar</button>
+      <button type="submit" id="vencidos-autorizar" class="rounded-lg bg-error hover:opacity-90 px-4 py-2 text-sm font-semibold text-white">Autorizar y cobrar</button>
+    </div>
+  </form>
+</dialog>
 {% endblock %}
 
 {% block scripts %}

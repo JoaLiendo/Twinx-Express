@@ -64,6 +64,22 @@ def listar_de_producto(producto_id: int) -> list[Partida]:
         return listar_de_producto_en_conexion(conexion, producto_id)
 
 
+def listar_con_disponible() -> tuple[str, list[Partida]]:
+    """`(hoy, partidas con disponible > 0 de todos los productos)` en una sola consulta (lecturas de
+    vencimientos del listado de productos y del dashboard)."""
+    with obtener_conexion() as conexion:
+        hoy = fecha_de_hoy_en_conexion(conexion)
+        filas = conexion.execute(
+            f"SELECT {_COLUMNAS} FROM partidas_stock WHERE cantidad_disponible > 0 ORDER BY producto_id, id"
+        ).fetchall()
+    return hoy, [_fila_a_partida(fila) for fila in filas]
+
+
+def obtener_en_conexion(conexion: sqlite3.Connection, partida_id: int) -> Partida | None:
+    fila = conexion.execute(f"SELECT {_COLUMNAS} FROM partidas_stock WHERE id = ?", (partida_id,)).fetchone()
+    return _fila_a_partida(fila) if fila is not None else None
+
+
 def registrar_movimientos_en_conexion(
     conexion: sqlite3.Connection,
     asignaciones: Iterable[Asignacion],

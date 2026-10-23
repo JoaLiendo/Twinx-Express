@@ -27,6 +27,7 @@ from interfaces.web.esquemas import VentaEntrada, VentaSalida
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, pagina_o_primera, redireccionar_con_mensaje, respuesta_csv
 from services import (
+    servicio_auth,
     servicio_clientes,
     servicio_configuracion,
     servicio_cuenta_corriente,
@@ -67,12 +68,20 @@ def api_registrar_venta(
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ) -> VentaSalida:
     items = [ItemVenta(producto_id=item.producto_id, cantidad=item.cantidad) for item in datos.items]
+    autorizado_por_id = None
+    if datos.autorizacion_usuario:
+        autorizado_por_id = servicio_auth.autorizar_como_owner(
+            datos.autorizacion_usuario, datos.autorizacion_password or ""
+        ).id
+    elif datos.autorizar_vencidos and usuario_actual.rol == "OWNER":
+        autorizado_por_id = usuario_actual.id
     venta = servicio_ventas.registrar_venta(
         items,
         datos.tipo_pago,
         clave_idempotencia=datos.clave_idempotencia,
         usuario_id=usuario_actual.id,
         cliente_id=datos.cliente_id,
+        autorizado_por_id=autorizado_por_id,
     )
     return VentaSalida(
         id=venta.id, fecha=venta.fecha, total_centavos=venta.total_centavos, tipo_pago=venta.tipo_pago

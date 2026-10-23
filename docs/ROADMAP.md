@@ -49,6 +49,13 @@ Diseño e invariantes: `docs/V1.12_PARTIDAS.md`.
   partida, en la misma transacción). `detalle_venta.costo_unitario_centavos` conserva su semántica
   (costo vigente al vender: márgenes históricos comparables); el costo real de lo que salió queda en
   el libro y se muestra al OWNER en el detalle de la venta ("Partidas consumidas"). Sin migración.
+- **V1.12-D (cerrado)**: aviso "Próximo a vencer" (10 días por defecto, global, configurable por
+  OWNER y auditado) y "Vencido"; filtros del listado (próximo a vencer, vencido, sin vencimiento
+  conocido) y próximo vencimiento por producto; alertas en el dashboard. Pantalla de vencimientos por
+  producto (orden FEFO) con baja por VENCIMIENTO desde la partida, valorizada con su costo real (o
+  sin costo si no se conoce, nunca el actual); en otras pérdidas se puede elegir la partida. Una venta
+  que solo se completa con mercadería vencida exige autorización de un OWNER (el propio, o sus
+  credenciales en el puesto de un CASHIER), auditada como `VENTA_VENCIDOS_AUTORIZADA`. Sin migración.
 
 ## V1.13 — a definir
 

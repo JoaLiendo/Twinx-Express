@@ -228,6 +228,8 @@ RUTAS_CON_ID = [
     ("POST", "/productos/categorias/{id}/reactivar"),
     ("POST", "/productos/etiquetas/{id}/editar"),
     ("POST", "/productos/etiquetas/{id}/eliminar"),
+    ("GET", "/productos/{id}/vencimientos"),
+    ("POST", "/productos/{id}/vencimientos/{id}/baja"),
     ("POST", "/empleados/{id}/activar"),
     ("POST", "/empleados/{id}/desactivar"),
     ("POST", "/empleados/{id}/rol"),

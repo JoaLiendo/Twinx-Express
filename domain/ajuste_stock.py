@@ -36,6 +36,7 @@ MOTIVOS_AJUSTE_VALIDOS = frozenset(
 # revierte (un stock de alta mal cargado se corrige con un inventario físico). Es el único motivo que
 # admite `usuario_id=None`: un alta sin usuario real (CLI, importación sin sesión) no inventa uno.
 MOTIVO_STOCK_INICIAL = "STOCK_INICIAL"
+MOTIVO_VENCIMIENTO = "VENCIMIENTO"
 
 # Único motivo manual vigente desde V1.11-A: `MERMA`/`PERDIDA`/`OTRO` quedan legacy (solo lectura
 # de historial) y `RECUENTO` no es manual (lo genera automáticamente la confirmación de un

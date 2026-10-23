@@ -574,9 +574,21 @@
           tipo_pago: tipoPagoInput.value,
           clave_idempotencia: claveIdempotenciaActual,
           ...(clienteElegido ? { cliente_id: clienteElegido.id } : {}),
+          ...(autorizacionVencidos || {}),
         }),
       });
+      autorizacionVencidos = null; // vale para un solo intento: un reintento la vuelve a pedir
       const datos = await leerJsonSiLoHay(respuesta);
+
+      if (!respuesta.ok && datos && datos.codigo === 'REQUIERE_AUTORIZACION_VENCIDOS' && dialogoVencidos) {
+        // V1.12-D: no se vende como si nada. Se pide la autorización y, si se da, se reintenta el MISMO
+        // intento de cobro (misma clave de idempotencia: la venta todavía no existe).
+        cobroEnCurso = false;
+        establecerEstadoProcesando(false);
+        actualizarEstadoCobrar();
+        pedirAutorizacionVencidos(datos.error);
+        return;
+      }
 
       if (respuesta.ok && !datos) {
         // El servidor respondió 2xx pero sin el JSON esperado: la venta pudo
@@ -626,6 +638,34 @@
       // para que el reintento del usuario sea, para el backend, el
       // mismo intento -- no uno nuevo.
     }
+  }
+
+  // V1.12-D: autorización para vender mercadería vencida. Solo arma los campos; el servidor verifica que
+  // sea un OWNER (sus credenciales, o el OWNER logueado) y lo audita.
+  const dialogoVencidos = document.getElementById('dialogo-vencidos');
+  let autorizacionVencidos = null;
+
+  function pedirAutorizacionVencidos(mensaje) {
+    document.getElementById('dialogo-vencidos-mensaje').textContent = mensaje;
+    const formulario = document.getElementById('form-vencidos');
+    formulario.reset();
+    dialogoVencidos.showModal();
+  }
+
+  if (dialogoVencidos) {
+    document.getElementById('vencidos-cancelar').addEventListener('click', () => dialogoVencidos.close());
+    document.getElementById('form-vencidos').addEventListener('submit', () => {
+      if (dialogoVencidos.dataset.esOwner === 'true') {
+        autorizacionVencidos = { autorizar_vencidos: true };
+      } else {
+        autorizacionVencidos = {
+          autorizacion_usuario: document.getElementById('vencidos-usuario').value.trim(),
+          autorizacion_password: document.getElementById('vencidos-password').value,
+        };
+      }
+      // `method="dialog"` cierra el diálogo; el cobro se reintenta con la autorización.
+      setTimeout(cobrar, 0);
+    });
   }
 
   if (botonCobrar) botonCobrar.addEventListener('click', cobrar);

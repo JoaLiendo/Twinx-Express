@@ -183,6 +183,31 @@ def _sembrar_productos_de_prueba() -> None:
         precio_venta_centavos=PRODUCTO_XSS_PRECIO_VENTA_CENTAVOS,
         stock_actual=PRODUCTO_XSS_STOCK,
     )
+    _sembrar_producto_vencido()
+
+
+def _sembrar_producto_vencido() -> None:
+    """V1.12-D: "Vencido E2E" con 3 unidades cuyo vencimiento ya pasó (venderlas exige autorización).
+
+    Se crea por los flujos normales (alta + partida con vencimiento) y después se hace "pasar el tiempo"
+    moviendo esa fecha al pasado, saltando solo para esta escritura la guardia de inmutabilidad de la
+    032: la aplicación nunca cambia un vencimiento ni deja ingresar mercadería ya vencida."""
+    from db.conexion import obtener_conexion
+    from services import servicio_stock
+
+    producto = servicio_stock.registrar_producto(
+        "7790000000078", "Vencido E2E", precio_costo_centavos=100, precio_venta_centavos=200, stock_actual=3
+    )
+    with obtener_conexion() as conexion:
+        trigger = conexion.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'trg_partidas_stock_origen_inmutable'"
+        ).fetchone()[0]
+        conexion.execute("DROP TRIGGER trg_partidas_stock_origen_inmutable")
+        conexion.execute(
+            "UPDATE partidas_stock SET fecha_vencimiento = date('now', 'localtime', '-2 days') WHERE producto_id = ?",
+            (producto.id,),
+        )
+        conexion.execute(trigger)
 
 
 # Sufijos que SQLite puede dejar junto a la base principal: "" es el

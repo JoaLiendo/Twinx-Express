@@ -38,6 +38,13 @@ class StockNoConciliadoError(ErrorAplicacion):
     revierte completa en vez de guardar un estado inconsistente."""
 
 
+class VentaRequiereAutorizacionVencidosError(ErrorAplicacion):
+    """La venta solo puede completarse con mercadería vencida (V1.12-D): no se bloquea en silencio ni se
+    registra como si nada; hace falta la autorización explícita de un OWNER, que queda auditada."""
+
+    codigo = "REQUIERE_AUTORIZACION_VENCIDOS"
+
+
 class StockInsuficienteError(ErrorAplicacion):
     """La operación requiere más stock del disponible."""
 

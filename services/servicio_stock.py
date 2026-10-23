@@ -14,17 +14,19 @@ from dataclasses import dataclass, field
 from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import ajustes_stock as repositorio_ajustes_stock
 from db.repositorios import etiquetas as repositorio_etiquetas
+from db.repositorios import partidas as repositorio_partidas
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
 from domain.ajuste_stock import (
     MOTIVO_STOCK_INICIAL,
+    MOTIVO_VENCIMIENTO,
     AjusteStock,
     AjusteStockConUsuario,
     validar_motivo_manual,
 )
 from domain.dinero import MAXIMO_ENTERO
-from domain.partida import ORIGEN_AJUSTE, ORIGEN_RECUENTO, ORIGEN_STOCK_INICIAL
+from domain.partida import ESTADO_PROXIMO, ORIGEN_AJUSTE, ORIGEN_RECUENTO, ORIGEN_STOCK_INICIAL
 from domain.producto import Producto
 from domain.usuario import exigir_rol
 from excepciones import (
@@ -40,7 +42,13 @@ from excepciones import (
     StockInsuficienteError,
 )
 from db.repositorios import auditoria as repositorio_auditoria
-from services import servicio_categorias, servicio_etiquetas, servicio_imagenes, servicio_partidas
+from services import (
+    servicio_categorias,
+    servicio_configuracion,
+    servicio_etiquetas,
+    servicio_imagenes,
+    servicio_partidas,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -522,12 +530,21 @@ FILTROS_DE_STOCK = {
 }
 
 
+FILTROS_DE_VENCIMIENTO = {
+    "proximo": lambda resumen: resumen.estado == ESTADO_PROXIMO,
+    "vencido": lambda resumen: resumen.cantidad_vencida > 0,
+    "sin_fecha": lambda resumen: resumen.cantidad_sin_vencimiento > 0,
+}
+
+
 def listar_para_administracion(
     texto: str = "",
     categoria_id: int | None = None,
     estado_stock: str = "",
     inactivos: bool = False,
     etiqueta_id: int | None = None,
+    vencimiento: str = "",
+    resumenes_vencimiento: dict | None = None,
 ) -> list[Producto]:
     """Listado administrativo de productos (V1.11-E), con filtros combinables.
 
@@ -551,6 +568,16 @@ def listar_para_administracion(
     if etiqueta_id is not None:
         etiquetados = servicio_etiquetas.ids_por_producto()
         productos = [p for p in productos if etiqueta_id in etiquetados.get(p.id, [])]
+    filtro_vencimiento = FILTROS_DE_VENCIMIENTO.get(vencimiento)
+    if filtro_vencimiento is not None:
+        # V1.12-D. `resumenes_vencimiento` lo pasa quien ya lo leyó para mostrarlo (una sola lectura).
+        if resumenes_vencimiento is None:
+            resumenes_vencimiento = servicio_partidas.resumenes_de_vencimiento(
+                servicio_configuracion.obtener_dias_alerta_vencimiento()
+            )
+        productos = [
+            p for p in productos if p.id in resumenes_vencimiento and filtro_vencimiento(resumenes_vencimiento[p.id])
+        ]
     return productos
 
 
@@ -713,6 +740,7 @@ def ajustar_stock(
     usuario_id: int,
     observaciones: str | None = None,
     clave_idempotencia: str | None = None,
+    partida_id: int | None = None,
 ) -> AjusteStock:
     """Corrige `stock_actual` fuera de una venta o una compra (merma,
     rotura, vencimiento, pérdida, robo o una diferencia de recuento),
@@ -736,6 +764,9 @@ def ajustar_stock(
     ni un motivo legacy (`MERMA`/`PERDIDA`/`OTRO`) ni `RECUENTO` (ese lo genera únicamente
     `services.servicio_inventario.confirmar_inventario`, vía `aplicar_ajuste_en_conexion`
     directamente, sin pasar por esta función). Al ser todos de pérdida, `delta` debe ser negativo.
+
+    `partida_id` (V1.12-D): la partida de la que sale la baja, si se conoce; su costo real (o `None`)
+    valoriza la pérdida. Una baja por VENCIMIENTO siempre sale de una partida conocida.
 
     Raises:
         ProductoNoEncontradoError: si no existe un producto activo con ese id.
@@ -763,8 +794,28 @@ def ajustar_stock(
         if producto is None:
             raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
 
+        # V1.12-D: si se sabe de qué partida es la baja (elegida, o la única con disponible en una baja por
+        # vencimiento), la pérdida se valoriza con el costo real de ESA partida, o queda sin costo si no se
+        # conoce: nunca se reemplaza por el costo actual. Sin partida conocida (otras pérdidas con varias
+        # partidas), la partida se asigna por FEFO y el costo sigue siendo el vigente (regla de V1.11-A).
+        costo: int | None | object = _COSTO_VIGENTE_DEL_PRODUCTO
+        if partida_id is None and motivo == MOTIVO_VENCIMIENTO:
+            con_disponible = [
+                p for p in repositorio_partidas.listar_de_producto_en_conexion(conexion, producto_id)
+                if p.cantidad_disponible > 0
+            ]
+            if len(con_disponible) > 1:
+                raise DatosInvalidosError("El producto tiene varias partidas: elegí cuál venció.")
+            partida_id = con_disponible[0].id if con_disponible else None
+        if partida_id is not None:
+            partida = repositorio_partidas.obtener_en_conexion(conexion, partida_id)
+            if partida is None or partida.producto_id != producto_id:
+                raise DatosInvalidosError("La partida elegida no corresponde a este producto.")
+            costo = partida.costo_unitario_centavos
+
         ajuste_creado = aplicar_ajuste_en_conexion(
-            conexion, producto, delta, motivo, usuario_id, observaciones, clave_idempotencia
+            conexion, producto, delta, motivo, usuario_id, observaciones, clave_idempotencia,
+            costo_unitario_centavos=costo, partida_id=partida_id,
         )
 
     logger.info(

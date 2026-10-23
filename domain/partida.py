@@ -5,8 +5,9 @@ Diseño e invariantes: `docs/V1.12_PARTIDAS.md`.
 """
 
 from dataclasses import dataclass
+from datetime import date, timedelta
 
-from excepciones import StockInsuficienteError
+from excepciones import DatosInvalidosError, StockInsuficienteError
 
 ORIGEN_HEREDADA = "HEREDADA"
 ORIGEN_STOCK_INICIAL = "STOCK_INICIAL"
@@ -138,3 +139,58 @@ class ConsumoDeVenta:
         if self.costo_unitario_centavos is None:
             return None
         return self.costo_unitario_centavos * self.cantidad
+
+
+DIAS_ALERTA_POR_DEFECTO = 10
+DIAS_ALERTA_MAXIMO = 365
+ESTADO_VENCIDO = "VENCIDO"
+ESTADO_PROXIMO = "PROXIMO_A_VENCER"
+
+
+def validar_dias_alerta(texto: str) -> int:
+    """Días de anticipación de la alerta "Próximo a vencer" (configuración global del OWNER)."""
+    try:
+        dias = int(str(texto).strip())
+    except ValueError:
+        raise DatosInvalidosError("Los días de alerta deben ser un número entero.") from None
+    if not 0 <= dias <= DIAS_ALERTA_MAXIMO:
+        raise DatosInvalidosError(f"Los días de alerta deben estar entre 0 y {DIAS_ALERTA_MAXIMO}.")
+    return dias
+
+
+def estado_de_vencimiento(fecha_vencimiento: str | None, hoy: str, dias_alerta: int) -> str | None:
+    """`VENCIDO`, `PROXIMO_A_VENCER` (de hoy a hoy + días) o `None` (vigente o sin vencimiento conocido)."""
+    if fecha_vencimiento is None:
+        return None
+    if fecha_vencimiento < hoy:
+        return ESTADO_VENCIDO
+    limite = (date.fromisoformat(hoy) + timedelta(days=dias_alerta)).isoformat()
+    return ESTADO_PROXIMO if fecha_vencimiento <= limite else None
+
+
+@dataclass(frozen=True)
+class ResumenVencimientos:
+    """Lectura operativa de los vencimientos de un producto (solo partidas con disponible)."""
+
+    proximo_vencimiento: str | None
+    cantidad_proxima: int
+    cantidad_vencida: int
+    cantidad_sin_vencimiento: int
+    estado: str | None
+
+
+def resumir_vencimientos(partidas: list[Partida], hoy: str, dias_alerta: int) -> ResumenVencimientos:
+    """Próximo vencimiento vigente y sus unidades, unidades vencidas y sin vencimiento conocido. El estado
+    del producto es el más urgente: vencido si tiene algo vencido; si no, próximo a vencer."""
+    con_disponible = [p for p in partidas if p.cantidad_disponible > 0]
+    vigentes = sorted(p.fecha_vencimiento for p in con_disponible if p.fecha_vencimiento and not p.vencida(hoy))
+    proximo = vigentes[0] if vigentes else None
+    vencida = sum(p.cantidad_disponible for p in con_disponible if p.vencida(hoy))
+    estado = ESTADO_VENCIDO if vencida else estado_de_vencimiento(proximo, hoy, dias_alerta)
+    return ResumenVencimientos(
+        proximo_vencimiento=proximo,
+        cantidad_proxima=sum(p.cantidad_disponible for p in con_disponible if p.fecha_vencimiento == proximo) if proximo else 0,
+        cantidad_vencida=vencida,
+        cantidad_sin_vencimiento=sum(p.cantidad_disponible for p in con_disponible if p.fecha_vencimiento is None),
+        estado=estado,
+    )

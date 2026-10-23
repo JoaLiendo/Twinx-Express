@@ -21,7 +21,11 @@ from domain.partida import (
     Asignacion,
     ConsumoDeVenta,
     Partida,
+    ResumenVencimientos,
     asignar_consumo,
+    estado_de_vencimiento,
+    orden_fefo,
+    resumir_vencimientos,
 )
 from excepciones import StockNoConciliadoError
 
@@ -170,6 +174,24 @@ def aplicar_ajuste_en_conexion(
         )
 
 
+def unidades_vencidas_a_consumir_en_conexion(
+    conexion: ConexionBD, cantidad_por_producto: dict[int, int]
+) -> dict[int, int]:
+    """Cuántas unidades vencidas tendría que consumir (por FEFO, sin escribir nada) vender esas cantidades:
+    FEFO deja lo vencido al final, así que solo aparecen si lo vigente no alcanza."""
+    hoy = repositorio_partidas.fecha_de_hoy_en_conexion(conexion)
+    resultado: dict[int, int] = {}
+    for producto_id, cantidad in cantidad_por_producto.items():
+        partidas = repositorio_partidas.listar_de_producto_en_conexion(conexion, producto_id)
+        por_id = {p.id: p for p in partidas}
+        vencidas = sum(
+            a.cantidad for a in asignar_consumo(partidas, cantidad, hoy) if por_id[a.partida_id].vencida(hoy)
+        )
+        if vencidas:
+            resultado[producto_id] = vencidas
+    return resultado
+
+
 def verificar_conciliacion_en_conexion(conexion: ConexionBD, producto_ids: Iterable[int]) -> None:
     """Exige `stock_actual = SUM(partidas disponibles)` para cada producto indicado.
 
@@ -193,6 +215,24 @@ def vencimientos_de_compra(compra_id: int) -> dict[int, list[tuple[int, str]]]:
 def consumos_de_venta(venta_id: int) -> list[ConsumoDeVenta]:
     """De qué partidas salió cada línea de una venta (neto de devoluciones), con su costo real si se conoce."""
     return repositorio_partidas.consumos_de_venta(venta_id)
+
+
+def resumenes_de_vencimiento(dias_alerta: int) -> dict[int, ResumenVencimientos]:
+    """Por producto con stock en partidas: próximo vencimiento, unidades vencidas y sin fecha, y su estado."""
+    hoy, partidas = repositorio_partidas.listar_con_disponible()
+    por_producto: dict[int, list[Partida]] = {}
+    for partida in partidas:
+        por_producto.setdefault(partida.producto_id, []).append(partida)
+    return {pid: resumir_vencimientos(lista, hoy, dias_alerta) for pid, lista in por_producto.items()}
+
+
+def listar_partidas_con_estado(producto_id: int, dias_alerta: int) -> list[tuple[Partida, str | None]]:
+    """Partidas del producto con disponible y su estado de vencimiento (para retirar lo vencido)."""
+    with obtener_conexion() as conexion:
+        hoy = repositorio_partidas.fecha_de_hoy_en_conexion(conexion)
+        partidas = repositorio_partidas.listar_de_producto_en_conexion(conexion, producto_id)
+    con_disponible = [p for p in partidas if p.cantidad_disponible > 0]
+    return [(p, estado_de_vencimiento(p.fecha_vencimiento, hoy, dias_alerta)) for p in orden_fefo(con_disponible, hoy)]
 
 
 def listar_partidas(producto_id: int) -> list[Partida]:

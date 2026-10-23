@@ -46,7 +46,7 @@
 
   <form method="get" action="/productos" id="filtros-productos"
         class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900
-               grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto] gap-2 items-center">
+               grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))_auto] gap-2 items-center">
     {% if mostrar_inactivos %}<input type="hidden" name="mostrar_inactivos" value="true" />{% endif %}
     <div class="relative sm:col-span-2 lg:col-span-1">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
@@ -68,6 +68,12 @@
       <option value="critico" {{ 'selected' if estado_stock == 'critico' else '' }}>Stock crítico</option>
       <option value="sin_stock" {{ 'selected' if estado_stock == 'sin_stock' else '' }}>Sin stock</option>
       <option value="con_stock" {{ 'selected' if estado_stock == 'con_stock' else '' }}>Con stock</option>
+    </select>
+    <select name="vencimiento" aria-label="Vencimiento" onchange="this.form.submit()" class="w-full {{ clase_control }}">
+      <option value="" {{ 'selected' if not vencimiento else '' }}>Todo vencimiento</option>
+      <option value="proximo" {{ 'selected' if vencimiento == 'proximo' else '' }}>Próximo a vencer</option>
+      <option value="vencido" {{ 'selected' if vencimiento == 'vencido' else '' }}>Vencido</option>
+      <option value="sin_fecha" {{ 'selected' if vencimiento == 'sin_fecha' else '' }}>Sin vencimiento conocido</option>
     </select>
     {% if etiquetas %}
       <select name="etiqueta_id" aria-label="Etiqueta" onchange="this.form.submit()" class="w-full {{ clase_control }}">
@@ -158,6 +164,14 @@
               <td class="px-4 py-3 text-right whitespace-nowrap">
                 <span class="font-semibold tabular-nums {{ 'text-error' if critico else 'text-slate-800 dark:text-slate-200' }}">{{ producto.stock_actual }}</span>
                 <span class="block text-xs text-slate-400 dark:text-slate-500">mín. {{ producto.stock_minimo }}</span>
+                {% set resumen_vence = vencimientos.get(producto.id) %}
+                {% if resumen_vence and (resumen_vence.proximo_vencimiento or resumen_vence.cantidad_vencida) %}
+                  <span class="block text-xs mt-0.5 {{ 'text-error font-semibold' if resumen_vence.estado == 'VENCIDO' else ('text-warning font-semibold' if resumen_vence.estado == 'PROXIMO_A_VENCER' else 'text-slate-500 dark:text-slate-400') }}"
+                        data-vencimiento="{{ resumen_vence.estado or '' }}">
+                    {% if resumen_vence.cantidad_vencida %}{{ resumen_vence.cantidad_vencida }} u. vencidas{% if resumen_vence.proximo_vencimiento %}<br>{% endif %}{% endif %}
+                    {% if resumen_vence.proximo_vencimiento %}vence {{ resumen_vence.proximo_vencimiento | fecha_corta }} · {{ resumen_vence.cantidad_proxima }} u.{% endif %}
+                  </span>
+                {% endif %}
               </td>
               <td class="px-4 py-3 text-right whitespace-nowrap">
                 <span class="font-semibold tabular-nums text-slate-900 dark:text-slate-100">${{ producto.precio_venta_centavos | dinero_ar }}</span>
@@ -192,6 +206,11 @@
                     <a href="/productos/{{ producto.id }}/movimientos" data-accion="movimientos"
                        class="text-center rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-xs font-semibold px-3 py-1.5
                               dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Movimientos</a>
+                    {% if not mostrar_inactivos and producto.stock_actual > 0 %}
+                      <a href="/productos/{{ producto.id }}/vencimientos" data-accion="vencimientos"
+                         class="text-center rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-xs font-semibold px-3 py-1.5
+                                dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Vencimientos</a>
+                    {% endif %}
                     {% if mostrar_inactivos %}
                       <form method="post" action="/productos/{{ producto.id }}/reactivar"
                             onsubmit="return confirm('¿Reactivar &quot;{{ producto.nombre }}&quot;?');">

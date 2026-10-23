@@ -89,3 +89,28 @@ test('V1.12-B: compra con varias fechas de vencimiento en una línea', async ({ 
   await expect(page.locator('[data-vencimientos-linea]')).toContainText('sin fecha (1)');
   errores.afirmarSinErrores();
 });
+
+test('V1.12-D: el cajero no vende mercadería vencida sin la autorización del dueño', async ({ page }) => {
+  const { USUARIO, USUARIO_CASHIER, PASSWORD, agregarPorCodigoBarras, seleccionarMedioDePago } = require('./helpers');
+  await loginViaUI(page, { usuario: USUARIO_CASHIER });
+  await agregarPorCodigoBarras(page, '7790000000078');
+  await seleccionarMedioDePago(page, 'TARJETA');
+
+  const [primera] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/api/ventas') && r.request().method() === 'POST'),
+    page.locator('#boton-cobrar').click(),
+  ]);
+  expect(primera.status()).toBe(422);
+  const dialogo = page.locator('#dialogo-vencidos');
+  await expect(dialogo).toBeVisible();
+  await expect(dialogo).toContainText('VENCIDA');
+
+  await page.getByLabel('Usuario del dueño').fill(USUARIO);
+  await page.getByLabel('Contraseña del dueño').fill(PASSWORD);
+  const [autorizada] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/api/ventas') && r.request().method() === 'POST'),
+    page.getByRole('button', { name: 'Autorizar y cobrar' }).click(),
+  ]);
+  expect(autorizada.status()).toBe(200);
+  await expect(page.locator('#toast-container')).toContainText('registrada');
+});

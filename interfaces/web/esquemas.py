@@ -25,6 +25,11 @@ class VentaEntrada(BaseModel):
     # 021: cliente de una venta a cuenta. Solo lo manda el POS con CUENTA_CORRIENTE; el servicio valida
     # que exista, esté activo y que una venta a cuenta lo tenga.
     cliente_id: int | None = None
+    # V1.12-D: autorización para vender mercadería vencida. Un OWNER logueado la confirma con
+    # `autorizar_vencidos`; en el puesto de un CASHIER hacen falta usuario y contraseña de un OWNER.
+    autorizar_vencidos: bool = False
+    autorizacion_usuario: str | None = Field(default=None, max_length=100)
+    autorizacion_password: str | None = Field(default=None, max_length=200)
 
 
 class VentaSalida(BaseModel):

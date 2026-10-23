@@ -30,5 +30,23 @@
       </button>
     </form>
   {% endcall %}
+  {% call ui.card() %}
+    <p class="font-semibold text-slate-900 dark:text-slate-100 mb-1">Vencimientos</p>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
+      Con cuántos días de anticipación un producto figura como "Próximo a vencer". Vale para todos los productos.
+    </p>
+    <form method="post" action="/configuracion/vencimientos" class="flex flex-wrap items-end gap-3">
+      <div>
+        <label for="dias_alerta" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Días de aviso</label>
+        <input id="dias_alerta" name="dias_alerta" type="number" min="0" max="365" step="1" required value="{{ dias_alerta }}"
+               class="w-28 rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 tabular-nums
+                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+      </div>
+      <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
+        Actualizar aviso
+      </button>
+    </form>
+  {% endcall %}
 </div>
 {% endblock %}

@@ -1,4 +1,4 @@
-"""Configuración de los datos comerciales del ticket (V1.2, solo OWNER)."""
+"""Configuración (solo OWNER): datos comerciales del ticket (V1.2) y aviso de vencimientos (V1.12-D)."""
 
 from fastapi import APIRouter, Depends, Form, Request
 
@@ -18,6 +18,7 @@ def ver_configuracion(request: Request):
         **contexto_base(request),
         "comercio": servicio_configuracion.obtener_datos_comercio(),
         "limites": LIMITES,
+        "dias_alerta": servicio_configuracion.obtener_dias_alerta_vencimiento(),
     }
     return templates.TemplateResponse(request, "configuracion.html", contexto)
 
@@ -38,3 +39,11 @@ def guardar_configuracion(
         f"Datos del ticket guardados ({', '.join(cambiados)})." if cambiados else "No hubo cambios que guardar."
     )
     return redireccionar_con_mensaje("/configuracion", "success", mensaje)
+
+
+@router.post("/configuracion/vencimientos")
+def guardar_vencimientos(dias_alerta: str = Form(""), usuario_actual: Usuario = Depends(obtener_usuario_actual)):
+    dias = servicio_configuracion.guardar_dias_alerta_vencimiento(dias_alerta, usuario_actual.id)
+    return redireccionar_con_mensaje(
+        "/configuracion", "success", f"Aviso de vencimiento: {dias} día{'s' if dias != 1 else ''} antes."
+    )

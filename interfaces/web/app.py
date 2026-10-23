@@ -197,7 +197,12 @@ async def manejar_error_de_aplicacion(request: Request, exc: ErrorAplicacion) ->
     capa web que atrapa estas excepciones.
     """
     if request.url.path.startswith("/api/"):
-        return JSONResponse(status_code=422, content={"error": str(exc)})
+        # `codigo` (si la excepción lo define) le permite al POS reaccionar a un caso puntual, ej. pedir
+        # la autorización para vender mercadería vencida (V1.12-D).
+        contenido = {"error": str(exc)}
+        if getattr(exc, "codigo", None):
+            contenido["codigo"] = exc.codigo
+        return JSONResponse(status_code=422, content=contenido)
     referer = request.headers.get("referer", "/")
     return redireccionar_con_mensaje(referer, "error", str(exc))
 

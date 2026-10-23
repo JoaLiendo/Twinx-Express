@@ -53,6 +53,7 @@ from excepciones import (
     VentaACuentaNoAnulableError,
     VentaDeCajaCerradaError,
     VentaNoEncontradaError,
+    VentaRequiereAutorizacionVencidosError,
     VentaYaAnuladaError,
 )
 from services import servicio_partidas
@@ -69,6 +70,7 @@ DIAS_RANGO_POR_DEFECTO_HISTORIAL = 30
 VENTAS_POR_PAGINA = 100
 
 _ROLES_VENTA_A_CUENTA = frozenset({"OWNER", "CASHIER"})
+_SOLO_OWNER = frozenset({"OWNER"})
 
 
 def _resolver_clave_reutilizada(
@@ -91,6 +93,7 @@ def registrar_venta(
     clave_idempotencia: str | None = None,
     usuario_id: int | None = None,
     cliente_id: int | None = None,
+    autorizado_por_id: int | None = None,
 ) -> Venta:
     """Registra una venta con sus líneas de detalle y descuenta stock.
 
@@ -161,6 +164,8 @@ def registrar_venta(
             suficiente para la cantidad total pedida.
         ClaveIdempotenciaReutilizadaError: si `clave_idempotencia` ya
             se usó antes con un contenido distinto.
+        VentaRequiereAutorizacionVencidosError: (V1.12-D) si la venta tiene que consumir partidas
+            vencidas y no viene `autorizado_por_id` (un OWNER activo, que queda en la auditoría).
     """
     if not items:
         raise DatosInvalidosError("Una venta debe tener al menos un ítem.")
@@ -244,6 +249,22 @@ def registrar_venta(
                     )
                 productos_por_id[producto_id] = producto
 
+            # V1.12-D: si la venta solo se completa con mercadería vencida, hace falta un OWNER que lo
+            # autorice (queda auditado abajo); nunca se registra como si nada ni se bloquea en silencio.
+            vencidas = servicio_partidas.unidades_vencidas_a_consumir_en_conexion(conexion, cantidad_pedida_por_producto)
+            autorizador = None
+            if vencidas:
+                detalle_vencidas = ", ".join(
+                    f"{productos_por_id[pid].nombre} ({unidades} u.)" for pid, unidades in vencidas.items()
+                )
+                if autorizado_por_id is None:
+                    raise VentaRequiereAutorizacionVencidosError(
+                        f"Esta venta usa mercadería VENCIDA: {detalle_vencidas}. "
+                        "Retirala o pedí la autorización del dueño para venderla."
+                    )
+                autorizador = repositorio_usuarios.obtener_por_id_en_conexion(conexion, autorizado_por_id)
+                exigir_rol(autorizador, _SOLO_OWNER)
+
             for producto_id, cantidad_total in cantidad_pedida_por_producto.items():
                 producto = productos_por_id[producto_id]
                 producto.actualizar_stock(producto.stock_actual - cantidad_total)
@@ -281,6 +302,16 @@ def registrar_venta(
             for detalle_id, producto_id, cantidad in repositorio_partidas.lineas_de_venta_en_conexion(conexion, venta.id):
                 servicio_partidas.consumir_en_conexion(conexion, producto_id, cantidad, detalle_venta_id=detalle_id)
             servicio_partidas.verificar_conciliacion_en_conexion(conexion, productos_por_id)
+            if autorizador is not None:
+                repositorio_auditoria.registrar_en_conexion(
+                    conexion,
+                    autorizador.id,
+                    "VENTA_VENCIDOS_AUTORIZADA",
+                    "VENTA",
+                    venta.id,
+                    f"Venta #{venta.id} con mercadería vencida: {detalle_vencidas}. Autorizó {autorizador.nombre_completo}"
+                    f" (registró el usuario {usuario_id})",
+                )
             if es_venta_a_cuenta:
                 repositorio_clientes.registrar_cargo_en_conexion(
                     conexion, cliente_id, venta.total_centavos, venta.id, usuario_id, f"Venta #{venta.id}"

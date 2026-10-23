@@ -46,6 +46,23 @@
         </div>
       </div>
 
+      {% if partidas | length > 1 %}
+      {# V1.12-D: de qué existencia es la baja. Si no se sabe, se asigna por vencimiento (y queda dicho así). #}
+      <div>
+        <label for="partida_id" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">¿De qué partida?</label>
+        <select id="partida_id" name="partida_id"
+                class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
+                       dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+          <option value="">No sé (se asigna la que vence primero)</option>
+          {% for partida, estado in partidas %}
+            <option value="{{ partida.id }}">{{ partida.etiqueta_origen }} · {{ 'vence ' ~ (partida.fecha_vencimiento | fecha_corta) if partida.fecha_vencimiento else 'vencimiento desconocido' }} · {{ partida.cantidad_disponible }} u.{{ ' · VENCIDA' if estado == 'VENCIDO' else '' }}</option>
+          {% endfor %}
+        </select>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Para una baja por vencimiento hay que elegirla: su costo real es el de la pérdida.</p>
+      </div>
+      {% endif %}
+
       <div>
         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Observaciones</label>
         <textarea name="observaciones" rows="3"

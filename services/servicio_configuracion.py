@@ -6,6 +6,7 @@ from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import configuracion as repositorio_configuracion
 from domain.comercio import CLAVES_CONFIGURACION, ETIQUETAS, DatosComercio
+from domain.partida import DIAS_ALERTA_POR_DEFECTO, validar_dias_alerta
 
 logger = logging.getLogger(__name__)
 
@@ -43,3 +44,32 @@ def guardar_datos_comercio(datos: DatosComercio, usuario_id: int | None = None) 
     if cambiados:
         logger.info("Datos comerciales del ticket actualizados: %s", ", ".join(cambiados))
     return [ETIQUETAS[campo] for campo in cambiados]
+
+
+CLAVE_DIAS_ALERTA_VENCIMIENTO = "vencimientos.dias_alerta"
+
+
+def obtener_dias_alerta_vencimiento() -> int:
+    """Días de anticipación de la alerta "Próximo a vencer" (V1.12-D); 10 si nunca se configuró."""
+    valor = repositorio_configuracion.obtener_todas().get(CLAVE_DIAS_ALERTA_VENCIMIENTO)
+    return validar_dias_alerta(valor) if valor is not None else DIAS_ALERTA_POR_DEFECTO
+
+
+def guardar_dias_alerta_vencimiento(texto: str, usuario_id: int) -> int:
+    """Guarda los días de alerta (configuración global, solo OWNER: lo exige la ruta) y lo audita si cambió.
+
+    Raises:
+        DatosInvalidosError: si no es un entero entre 0 y `DIAS_ALERTA_MAXIMO`.
+    """
+    dias = validar_dias_alerta(texto)
+    with obtener_conexion(inmediata=True) as conexion:
+        actual = repositorio_configuracion.obtener_todas_en_conexion(conexion).get(CLAVE_DIAS_ALERTA_VENCIMIENTO)
+        anterior = int(actual) if actual is not None else DIAS_ALERTA_POR_DEFECTO
+        if dias != anterior:
+            repositorio_configuracion.guardar_en_conexion(conexion, CLAVE_DIAS_ALERTA_VENCIMIENTO, str(dias))
+            repositorio_auditoria.registrar_en_conexion(
+                conexion, usuario_id, "CONFIGURACION_VENCIMIENTOS_CAMBIADA", "CONFIGURACION", None,
+                f"Alerta de vencimiento: {anterior} -> {dias} días",
+            )
+            logger.info("Días de alerta de vencimiento: %s -> %s", anterior, dias)
+    return dias
