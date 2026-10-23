@@ -77,6 +77,13 @@
               <td class="px-5 py-3.5 font-medium text-slate-800 dark:text-slate-200">
                 {{ linea.producto_nombre }}
                 <span class="text-slate-400 dark:text-slate-500 font-normal">· {{ etiquetas_unidad.get(linea.producto_unidad_medida, linea.producto_unidad_medida) }}</span>
+                {% set ingresos = vencimientos_por_producto.get(linea.producto_id, []) %}
+                {% if ingresos and ingresos | selectattr(1) | list %}
+                  <p class="text-xs font-normal text-slate-500 dark:text-slate-400 mt-0.5" data-vencimientos-linea>
+                    Vence:
+                    {% for cantidad, vence in ingresos %}{{ vence | fecha_corta if vence else 'sin fecha' }} ({{ cantidad }}){{ ' · ' if not loop.last else '' }}{% endfor %}
+                  </p>
+                {% endif %}
               </td>
               <td class="px-5 py-3.5 text-right text-slate-600 dark:text-slate-400 tabular-nums">{{ linea.cantidad }}</td>
               <td class="px-5 py-3.5 text-right text-slate-600 dark:text-slate-400 tabular-nums">${{ linea.costo_unitario_centavos | dinero_ar }}</td>

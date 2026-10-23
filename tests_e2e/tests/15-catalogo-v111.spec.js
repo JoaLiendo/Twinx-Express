@@ -53,11 +53,39 @@ test('@responsive la tabla de productos no desborda ni recorta nombres', async (
 
 test('@responsive dashboard, categorías e inventario nuevo sin scroll horizontal', async ({ page }) => {
   await loginViaUI(page, { irA: '/' });
-  for (const ruta of ['/', '/productos/categorias', '/inventario/nuevo']) {
+  for (const ruta of ['/', '/productos/categorias', '/inventario/nuevo', '/compras/nueva']) {
     await page.goto(ruta);
     const desborda = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
     );
     expect(desborda, ruta).toBe(false);
   }
+});
+
+test('V1.12-B: compra con varias fechas de vencimiento en una línea', async ({ page }) => {
+  const errores = registrarListenersDeErrores(page);
+  await loginViaUI(page, { irA: '/proveedores' });
+  const proveedor = `Lácteos ${Date.now().toString().slice(-6)}`;
+  await page.request.post('/proveedores/nuevo', { form: { nombre: proveedor } });
+
+  await page.goto('/compras/nueva');
+  await page.locator('select[name="proveedor_id"]').selectOption({ label: proveedor });
+  const linea = page.locator('.linea-compra').first();
+  await linea.locator('select[name="producto_id"]').selectOption({ label: PRODUCTO_1.nombre });
+  await linea.locator('.linea-cantidad').fill('10');
+  await linea.locator('.linea-costo').fill('1.50');
+  await linea.getByRole('button', { name: 'Varias fechas' }).click();
+  const filas = linea.locator('.linea-varias-fila');
+  await filas.nth(0).locator('.varias-cantidad').fill('6');
+  await filas.nth(0).locator('.varias-fecha').fill('2099-11-20');
+  await filas.nth(1).locator('.varias-cantidad').fill('3');
+  await filas.nth(1).locator('.varias-fecha').fill('2099-12-15');
+  await expect(linea.locator('.linea-varias-resto')).toHaveText('1 sin vencimiento conocido.');
+  await page.getByRole('button', { name: /Registrar/ }).click();
+
+  await expect(page.locator('#toast-container')).toContainText('registrada correctamente');
+  await expect(page.locator('[data-vencimientos-linea]')).toContainText('20/11/2099 (6)');
+  await expect(page.locator('[data-vencimientos-linea]')).toContainText('15/12/2099 (3)');
+  await expect(page.locator('[data-vencimientos-linea]')).toContainText('sin fecha (1)');
+  errores.afirmarSinErrores();
 });

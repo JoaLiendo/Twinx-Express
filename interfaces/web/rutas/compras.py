@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 
-from domain.compra import MOTIVOS_ANULACION_COMPRA_VALIDOS, ItemCompra
+from domain.compra import MOTIVOS_ANULACION_COMPRA_VALIDOS, ItemCompra, parsear_vencimientos_de_producto
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
 from excepciones import DatosInvalidosError
@@ -29,6 +29,7 @@ from services import (
     servicio_compras,
     servicio_deuda_proveedores,
     servicio_exportacion_csv,
+    servicio_partidas,
     servicio_proveedores,
     servicio_stock,
 )
@@ -121,14 +122,18 @@ def crear_compra(
     clave_idempotencia: str = Form(""),
     condicion_pago: str = Form("CONTADO"),
     fecha_vencimiento: str = Form(""),
+    vencimiento_producto: list[str] = Form([]),
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
-    if not (len(producto_id) == len(cantidad) == len(costo_unitario)):
+    # `vencimiento_producto` (V1.12-B) va alineado con las líneas; un formulario anterior que no lo envía
+    # equivale a "sin vencimiento conocido" en todas.
+    vencimientos = vencimiento_producto or [""] * len(producto_id)
+    if not (len(producto_id) == len(cantidad) == len(costo_unitario) == len(vencimientos)):
         raise DatosInvalidosError("Los datos del formulario de compra son inconsistentes.")
 
     items = [
-        ItemCompra(pid, cant, texto_a_centavos(costo))
-        for pid, cant, costo in zip(producto_id, cantidad, costo_unitario)
+        ItemCompra(pid, cant, texto_a_centavos(costo), parsear_vencimientos_de_producto(vence, cant))
+        for pid, cant, costo, vence in zip(producto_id, cantidad, costo_unitario, vencimientos)
     ]
     compra = servicio_compras.registrar_compra(
         proveedor_id=proveedor_id,
@@ -157,6 +162,7 @@ def ver_compra(request: Request, compra_id: int):
         **contexto_base(request),
         "compra": compra,
         "detalle": servicio_compras.listar_detalle_con_producto(compra_id),
+        "vencimientos_por_producto": servicio_partidas.vencimientos_de_compra(compra_id),
         "cuenta": cuenta,
         "pendiente_estimado": cuenta.pendiente_de(compra_id) if cuenta else None,
         "criterio_fifo": servicio_deuda_proveedores.CRITERIO_FIFO,
@@ -215,6 +221,7 @@ def formulario_anular_compra(request: Request, compra_id: int):
         **contexto_base(request),
         "compra": compra,
         "detalle": servicio_compras.listar_detalle_con_producto(compra_id),
+        "vencimientos_por_producto": servicio_partidas.vencimientos_de_compra(compra_id),
         "motivos": sorted(MOTIVOS_ANULACION_COMPRA_VALIDOS),
     }
     return templates.TemplateResponse(request, "compras/anular.html", contexto)

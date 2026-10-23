@@ -11,7 +11,7 @@ partidas sin descontar, ni partidas descontadas de una venta que falló.
 import logging
 from collections.abc import Iterable
 
-from db.conexion import ConexionBD
+from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import partidas as repositorio_partidas
 from domain.partida import (
     CRITERIO_ELEGIDA,
@@ -181,6 +181,12 @@ def verificar_conciliacion_en_conexion(conexion: ConexionBD, producto_ids: Itera
         raise StockNoConciliadoError(
             "El stock no coincide con sus partidas: se canceló la operación para no dejar datos inconsistentes."
         )
+
+
+def vencimientos_de_compra(compra_id: int) -> dict[int, list[tuple[int, str]]]:
+    """Por producto, `(cantidad, vencimiento o "")` de lo que ingresó una compra (vacío si es anterior a V1.12)."""
+    with obtener_conexion() as conexion:
+        return repositorio_partidas.ingresos_por_producto_de_compra_en_conexion(conexion, compra_id)
 
 
 def listar_partidas(producto_id: int) -> list[Partida]:

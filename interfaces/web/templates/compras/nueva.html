@@ -39,6 +39,28 @@
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 6l12 12M18 6 6 18"/></svg>
                 </button>
               </div>
+              {# V1.12-B: vencimiento del PRODUCTO (no del pago). Siempre hay un único campo habilitado por línea. #}
+              <div class="col-span-12 linea-vencimientos">
+                <div class="flex flex-wrap items-end gap-2">
+                  <div>
+                    <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Vence el producto (opcional)</label>
+                    <input type="date" name="vencimiento_producto"
+                           class="linea-vence-unico rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900
+                                  dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                                  focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+                  </div>
+                  <button type="button" class="boton-varias-fechas text-xs font-semibold text-primary hover:text-primary-hover py-2">Varias fechas</button>
+                </div>
+                <div class="linea-varias hidden mt-2 space-y-2">
+                  <input type="hidden" name="vencimiento_producto" class="linea-vence-serializado" disabled />
+                  <div class="linea-varias-filas space-y-2"></div>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button type="button" class="boton-agregar-fecha text-xs font-semibold text-primary hover:text-primary-hover">+ Otra fecha</button>
+                    <button type="button" class="boton-una-fecha text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400">Una sola fecha</button>
+                    <span class="linea-varias-resto text-xs text-slate-500 dark:text-slate-400"></span>
+                  </div>
+                </div>
+              </div>
             </div>
 {% endmacro %}
 

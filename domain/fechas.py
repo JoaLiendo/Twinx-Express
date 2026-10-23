@@ -37,3 +37,11 @@ def limites_de_fechas(
     except OverflowError:
         raise DatosInvalidosError(mensaje) from None
     return (desde.isoformat() if desde else None), fin_exclusivo
+
+
+def fecha_corta(texto: str) -> str:
+    """"AAAA-MM-DD" -> "DD/MM/AAAA" para mostrar (V1.12). Un texto que no es una fecha se devuelve tal cual."""
+    try:
+        return date.fromisoformat(texto[:10]).strftime("%d/%m/%Y")
+    except ValueError:
+        return texto

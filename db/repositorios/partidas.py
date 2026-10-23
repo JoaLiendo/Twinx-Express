@@ -112,6 +112,25 @@ def ids_partidas_de_detalle_compra_en_conexion(conexion: sqlite3.Connection, det
     return [fila["id"] for fila in filas]
 
 
+def ingresos_por_producto_de_compra_en_conexion(
+    conexion: sqlite3.Connection, compra_id: int
+) -> dict[int, list[tuple[int, str]]]:
+    """Por producto, `(cantidad_original, vencimiento o "")` de las partidas que ingresó una compra, ordenado:
+    el contenido de vencimientos con el que se registró (para comparar un reintento idempotente)."""
+    filas = conexion.execute(
+        """
+        SELECT s.producto_id, s.cantidad_original, COALESCE(s.fecha_vencimiento, '') AS vence
+        FROM partidas_stock s JOIN detalle_compra d ON d.id = s.detalle_compra_id
+        WHERE d.compra_id = ?
+        """,
+        (compra_id,),
+    ).fetchall()
+    resultado: dict[int, list[tuple[int, str]]] = {}
+    for fila in filas:
+        resultado.setdefault(fila["producto_id"], []).append((fila["cantidad_original"], fila["vence"]))
+    return {producto_id: sorted(valores) for producto_id, valores in resultado.items()}
+
+
 def lineas_de_venta_en_conexion(conexion: sqlite3.Connection, venta_id: int) -> list[tuple[int, int, int]]:
     """`(detalle_venta_id, producto_id, cantidad)` de cada línea, en el orden en que se registraron."""
     filas = conexion.execute(

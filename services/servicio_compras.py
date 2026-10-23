@@ -38,6 +38,7 @@ from domain.compra import (
     validar_condicion_pago,
     validar_fecha_vencimiento,
     validar_motivo_anulacion_compra,
+    validar_vencimientos_de_producto,
 )
 from domain.auditoria import LONGITUD_MAXIMA_RESUMEN
 from domain.dinero import centavos_a_texto
@@ -137,15 +138,27 @@ def registrar_compra(
                 lineas_pedidas = sorted(
                     (item.producto_id, item.cantidad, item.costo_unitario_centavos) for item in items
                 )
+                vencimientos_pedidos = {
+                    item.producto_id: sorted(
+                        (p.cantidad, p.fecha_vencimiento or "") for p in item.partidas_efectivas
+                    )
+                    for item in items
+                }
+                # Una compra anterior a V1.12 no tiene partidas: no hay vencimientos con qué comparar.
+                ingresos = repositorio_partidas.ingresos_por_producto_de_compra_en_conexion(conexion, existente.id)
                 if (
                     existente.proveedor_id, existente.observaciones, existente.condicion_pago,
-                    existente.fecha_vencimiento, lineas_originales,
-                ) != (proveedor_id, observaciones, condicion_pago, fecha_vencimiento, lineas_pedidas):
+                    existente.fecha_vencimiento, lineas_originales, ingresos or vencimientos_pedidos,
+                ) != (
+                    proveedor_id, observaciones, condicion_pago, fecha_vencimiento, lineas_pedidas,
+                    vencimientos_pedidos,
+                ):
                     raise ClaveIdempotenciaReutilizadaError(MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS)
                 return existente
 
         fecha_compra = repositorio_compras.obtener_fecha_hora_actual_en_conexion(conexion)
         validar_fecha_vencimiento(condicion_pago, fecha_compra, fecha_vencimiento)
+        validar_vencimientos_de_producto(items, fecha_compra)
 
         proveedor = repositorio_proveedores.obtener_por_id_en_conexion(conexion, proveedor_id)
         if proveedor is None:
@@ -200,14 +213,16 @@ def registrar_compra(
             fecha_vencimiento=fecha_vencimiento,
         )
 
-        # V1.12: cada línea ingresa como una partida con el costo real de la compra.
-        for detalle_id, producto_id, cantidad, costo in repositorio_partidas.lineas_de_compra_en_conexion(
+        # V1.12: cada línea ingresa como una partida por vencimiento de producto, con el costo real de la compra.
+        items_por_producto = {item.producto_id: item for item in items}
+        for detalle_id, producto_id, _cantidad, costo in repositorio_partidas.lineas_de_compra_en_conexion(
             conexion, compra.id
         ):
-            servicio_partidas.registrar_ingreso_en_conexion(
-                conexion, producto_id, ORIGEN_COMPRA, cantidad,
-                detalle_compra_id=detalle_id, costo_unitario_centavos=costo,
-            )
+            for partida in items_por_producto[producto_id].partidas_efectivas:
+                servicio_partidas.registrar_ingreso_en_conexion(
+                    conexion, producto_id, ORIGEN_COMPRA, partida.cantidad, detalle_compra_id=detalle_id,
+                    costo_unitario_centavos=costo, fecha_vencimiento=partida.fecha_vencimiento,
+                )
         servicio_partidas.verificar_conciliacion_en_conexion(conexion, productos_por_id)
 
         # CREDITO: el cargo se crea en la MISMA transacción que la compra -- si falla (ej. una

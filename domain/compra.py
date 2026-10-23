@@ -60,19 +60,104 @@ def validar_fecha_vencimiento(condicion_pago: str, fecha_compra: str, fecha_venc
         raise DatosInvalidosError("La fecha de vencimiento no puede ser anterior a la fecha de la compra.")
 
 
+@dataclass(frozen=True)
+class PartidaIngreso:
+    """Parte de una línea de compra con su propio vencimiento de producto (V1.12-B); `None` = sin
+    vencimiento conocido. No confundir con `Compra.fecha_vencimiento` (el vencimiento del pago)."""
+
+    cantidad: int
+    fecha_vencimiento: str | None
+
+
+def _validar_fecha_de_producto(texto: str) -> str:
+    try:
+        fecha = date.fromisoformat(texto)
+    except ValueError:
+        raise DatosInvalidosError(f"El vencimiento del producto '{texto}' no es una fecha válida (AAAA-MM-DD).") from None
+    if fecha.isoformat() != texto:
+        raise DatosInvalidosError(f"El vencimiento del producto '{texto}' no es una fecha válida (AAAA-MM-DD).")
+    return texto
+
+
 @dataclass
 class ItemCompra:
-    """Una línea de compra: producto, cantidad y costo unitario pedidos."""
+    """Una línea de compra: producto, cantidad y costo unitario pedidos.
+
+    `partidas` (V1.12-B) reparte la cantidad entre vencimientos de producto distintos sin repetir el
+    producto en la compra; vacío = todas las unidades sin vencimiento conocido."""
 
     producto_id: int
     cantidad: int
     costo_unitario_centavos: int
+    partidas: tuple[PartidaIngreso, ...] = ()
 
     def __post_init__(self) -> None:
         if self.cantidad <= 0:
             raise DatosInvalidosError("La cantidad de un ítem de compra debe ser mayor a cero.")
         if self.costo_unitario_centavos < 0:
             raise DatosInvalidosError("El costo unitario no puede ser negativo.")
+        self.partidas = tuple(self.partidas)
+        if self.partidas:
+            if any(p.cantidad <= 0 for p in self.partidas):
+                raise DatosInvalidosError("Cada vencimiento debe tener una cantidad mayor a cero.")
+            if sum(p.cantidad for p in self.partidas) != self.cantidad:
+                raise DatosInvalidosError("Las cantidades por vencimiento no suman la cantidad de la línea.")
+            fechas = [p.fecha_vencimiento for p in self.partidas]
+            if len(set(fechas)) != len(fechas):
+                raise DatosInvalidosError("Un mismo vencimiento aparece dos veces en la línea.")
+            for fecha in fechas:
+                if fecha is not None:
+                    _validar_fecha_de_producto(fecha)
+
+    @property
+    def partidas_efectivas(self) -> tuple[PartidaIngreso, ...]:
+        return self.partidas or (PartidaIngreso(self.cantidad, None),)
+
+
+def parsear_vencimientos_de_producto(texto: str, cantidad: int) -> tuple[PartidaIngreso, ...]:
+    """Lee el campo de vencimientos de una línea del formulario de compra.
+
+    - vacío: sin vencimiento conocido;
+    - `AAAA-MM-DD`: todas las unidades vencen ese día;
+    - `6@AAAA-MM-DD;4@AAAA-MM-DD`: unidades por fecha; lo que falte para la cantidad de la línea queda
+      sin vencimiento conocido (nunca se le asigna una fecha).
+
+    Raises:
+        DatosInvalidosError: formato inválido o cantidades que superan la de la línea.
+    """
+    texto = (texto or "").strip()
+    if not texto:
+        return ()
+    if "@" not in texto:
+        return (PartidaIngreso(cantidad, _validar_fecha_de_producto(texto)),)
+    partidas: list[PartidaIngreso] = []
+    for parte in (p.strip() for p in texto.split(";")):
+        if not parte:
+            continue
+        cantidad_texto, _, fecha = parte.partition("@")
+        try:
+            cantidad_parte = int(cantidad_texto.strip())
+        except ValueError:
+            raise DatosInvalidosError(f"Cantidad por vencimiento inválida: '{parte}'.") from None
+        partidas.append(PartidaIngreso(cantidad_parte, _validar_fecha_de_producto(fecha.strip())))
+    asignado = sum(p.cantidad for p in partidas)
+    if asignado > cantidad:
+        raise DatosInvalidosError("Las cantidades por vencimiento superan la cantidad de la línea.")
+    if asignado < cantidad:
+        partidas.append(PartidaIngreso(cantidad - asignado, None))
+    return tuple(partidas)
+
+
+def validar_vencimientos_de_producto(items: list["ItemCompra"], fecha_compra: str) -> None:
+    """Un vencimiento de producto no puede ser anterior al día de la compra (evita fechas mal tipeadas;
+    mercadería ya vencida no se ingresa como vendible)."""
+    dia = fecha_compra[:10]
+    for item in items:
+        for partida in item.partidas:
+            if partida.fecha_vencimiento is not None and partida.fecha_vencimiento < dia:
+                raise DatosInvalidosError(
+                    f"El vencimiento del producto ({partida.fecha_vencimiento}) es anterior a la fecha de la compra."
+                )
 
 
 @dataclass

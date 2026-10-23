@@ -41,6 +41,10 @@ Diseño e invariantes: `docs/V1.12_PARTIDAS.md`.
   determinístico; anulación de venta y reversa devuelven exactamente a las mismas partidas; venta
   anterior a V1.12 anulada vuelve como partida `ANULACION_VENTA` sin datos inventados. La base
   impide escribir el disponible sin un movimiento y vuelve inmutables partidas y movimientos.
+- **V1.12-B (cerrado)**: vencimiento de producto opcional al ingresar mercadería (una fecha, o varias
+  por línea con `cantidad@fecha`; lo no asignado queda sin vencimiento conocido), validado contra el
+  día de la compra, incluido en la comparación idempotente y visible en el detalle de la compra. La
+  anulación retira primero las partidas de esa compra. Sin migración.
 
 ## V1.13 — a definir
 
