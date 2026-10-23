@@ -31,6 +31,7 @@ from services import (
     servicio_configuracion,
     servicio_cuenta_corriente,
     servicio_exportacion_csv,
+    servicio_partidas,
     servicio_stock,
     servicio_ventas,
 )
@@ -175,7 +176,9 @@ def historial_ventas(
 
 
 @router.get("/ventas/{venta_id}")
-def detalle_venta(request: Request, venta_id: int):
+def detalle_venta(
+    request: Request, venta_id: int, usuario_actual: Usuario | None = Depends(obtener_usuario_actual)
+):
     """`/ventas/historial` (arriba) se declara antes que esta ruta a
     propósito: si estuviera después, una request a `/ventas/historial`
     intentaría bindear `venta_id="historial"` contra este parámetro
@@ -187,7 +190,14 @@ def detalle_venta(request: Request, venta_id: int):
         return redireccionar_con_mensaje("/ventas/historial", "error", "La venta no existe.")
 
     detalle = servicio_ventas.obtener_venta_con_detalle(venta_id)
-    contexto = {**contexto_base(request), "resumen": resumen, "lineas": detalle.lineas}
+    # V1.12-C: de qué partidas salió cada unidad y su costo real; es información de costos, solo OWNER.
+    es_owner = usuario_actual is not None and usuario_actual.rol == "OWNER"
+    contexto = {
+        **contexto_base(request),
+        "resumen": resumen,
+        "lineas": detalle.lineas,
+        "consumos": servicio_partidas.consumos_de_venta(venta_id) if es_owner else [],
+    }
     return templates.TemplateResponse(request, "ventas/detalle.html", contexto)
 
 

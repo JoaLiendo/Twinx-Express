@@ -45,6 +45,10 @@ Diseño e invariantes: `docs/V1.12_PARTIDAS.md`.
   por línea con `cantidad@fecha`; lo no asignado queda sin vencimiento conocido), validado contra el
   día de la compra, incluido en la comparación idempotente y visible en el detalle de la compra. La
   anulación retira primero las partidas de esa compra. Sin migración.
+- **V1.12-C (cerrado)**: ventas FEFO con trazabilidad causal (un movimiento por línea de venta y
+  partida, en la misma transacción). `detalle_venta.costo_unitario_centavos` conserva su semántica
+  (costo vigente al vender: márgenes históricos comparables); el costo real de lo que salió queda en
+  el libro y se muestra al OWNER en el detalle de la venta ("Partidas consumidas"). Sin migración.
 
 ## V1.13 — a definir
 

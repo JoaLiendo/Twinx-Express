@@ -19,6 +19,7 @@ from domain.partida import (
     ORIGEN_AJUSTE,
     ORIGEN_ANULACION_VENTA,
     Asignacion,
+    ConsumoDeVenta,
     Partida,
     asignar_consumo,
 )
@@ -187,6 +188,11 @@ def vencimientos_de_compra(compra_id: int) -> dict[int, list[tuple[int, str]]]:
     """Por producto, `(cantidad, vencimiento o "")` de lo que ingresó una compra (vacío si es anterior a V1.12)."""
     with obtener_conexion() as conexion:
         return repositorio_partidas.ingresos_por_producto_de_compra_en_conexion(conexion, compra_id)
+
+
+def consumos_de_venta(venta_id: int) -> list[ConsumoDeVenta]:
+    """De qué partidas salió cada línea de una venta (neto de devoluciones), con su costo real si se conoce."""
+    return repositorio_partidas.consumos_de_venta(venta_id)
 
 
 def listar_partidas(producto_id: int) -> list[Partida]:

@@ -97,6 +97,41 @@
     </div>
   </div>
 
+  {% if consumos %}
+  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900" id="partidas-consumidas">
+    <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+      <p class="font-semibold text-slate-900 dark:text-slate-100">Partidas consumidas</p>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">De qué existencias salió cada unidad (primero lo que vence antes) y su costo real cuando se conoce.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <th class="px-5 py-3">Producto</th>
+            <th class="px-5 py-3">Existencia</th>
+            <th class="px-5 py-3 text-right">Cantidad</th>
+            <th class="px-5 py-3 text-right">Costo de la partida</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for consumo in consumos %}
+            <tr class="border-b border-slate-50 dark:border-slate-800 last:border-0">
+              <td class="px-5 py-3 text-slate-800 dark:text-slate-200">{{ consumo.producto_nombre }}</td>
+              <td class="px-5 py-3 text-slate-600 dark:text-slate-300">
+                {{ consumo.etiqueta_origen }} · {{ 'vence ' ~ (consumo.fecha_vencimiento | fecha_corta) if consumo.fecha_vencimiento else 'vencimiento desconocido' }}
+              </td>
+              <td class="px-5 py-3 text-right tabular-nums">{{ consumo.cantidad }}</td>
+              <td class="px-5 py-3 text-right tabular-nums">
+                {% if consumo.costo_total_centavos is not none %}${{ consumo.costo_total_centavos | dinero_ar }}{% else %}<span class="text-slate-400">Desconocido</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="flex flex-wrap items-center justify-between gap-3">
     <a href="/ventas/historial" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver al historial</a>
     <div class="flex items-center gap-3">

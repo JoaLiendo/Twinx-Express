@@ -113,3 +113,28 @@ def asignar_consumo(
         asignaciones.append(Asignacion(partida.id, tomada, criterio))
         pendiente -= tomada
     return asignaciones
+
+
+@dataclass(frozen=True)
+class ConsumoDeVenta:
+    """Lo que una línea de venta consumió (neto) de una partida, con el costo real de esa partida si se
+    conoce. No reemplaza `detalle_venta.costo_unitario_centavos` (el costo vigente al vender, base de
+    los márgenes históricos): lo complementa con el costo de lo que efectivamente salió."""
+
+    detalle_venta_id: int
+    partida_id: int
+    producto_nombre: str
+    origen: str
+    fecha_vencimiento: str | None
+    costo_unitario_centavos: int | None
+    cantidad: int
+
+    @property
+    def etiqueta_origen(self) -> str:
+        return ETIQUETAS_ORIGEN.get(self.origen, self.origen)
+
+    @property
+    def costo_total_centavos(self) -> int | None:
+        if self.costo_unitario_centavos is None:
+            return None
+        return self.costo_unitario_centavos * self.cantidad

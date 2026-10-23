@@ -8,7 +8,7 @@ import sqlite3
 from collections.abc import Iterable
 
 from db.conexion import obtener_conexion
-from domain.partida import Asignacion, Partida
+from domain.partida import Asignacion, ConsumoDeVenta, Partida
 
 _COLUMNAS = (
     "id, producto_id, origen, cantidad_original, cantidad_disponible, fecha_vencimiento,"
@@ -129,6 +129,28 @@ def ingresos_por_producto_de_compra_en_conexion(
     for fila in filas:
         resultado.setdefault(fila["producto_id"], []).append((fila["cantidad_original"], fila["vence"]))
     return {producto_id: sorted(valores) for producto_id, valores in resultado.items()}
+
+
+def consumos_de_venta(venta_id: int) -> list[ConsumoDeVenta]:
+    """Neto consumido por línea de venta y partida (consumo menos devoluciones), con los datos de la
+    partida, en una sola consulta. Una venta anulada queda sin consumos netos; una anterior a V1.12, sin filas."""
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            """
+            SELECT m.detalle_venta_id, s.id AS partida_id, p.nombre AS producto_nombre, s.origen, s.fecha_vencimiento,
+                   s.costo_unitario_centavos, -SUM(m.delta) AS cantidad
+            FROM movimientos_partida m
+            JOIN partidas_stock s ON s.id = m.partida_id
+            JOIN detalle_venta d ON d.id = m.detalle_venta_id
+            JOIN productos p ON p.id = s.producto_id
+            WHERE d.venta_id = ?
+            GROUP BY m.detalle_venta_id, s.id
+            HAVING SUM(m.delta) <> 0
+            ORDER BY m.detalle_venta_id, MIN(m.id)
+            """,
+            (venta_id,),
+        ).fetchall()
+    return [ConsumoDeVenta(**{clave: fila[clave] for clave in fila.keys()}) for fila in filas]
 
 
 def lineas_de_venta_en_conexion(conexion: sqlite3.Connection, venta_id: int) -> list[tuple[int, int, int]]:
