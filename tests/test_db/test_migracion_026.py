@@ -140,6 +140,18 @@ class BaseAnterior:
         self.con = sqlite3.connect(self.ruta)
         self.con.execute("PRAGMA foreign_keys = ON")
 
+    def migrar_solo_la_026(self, tmp_path) -> None:
+        """Aplica la 026 sin las migraciones posteriores: lo que se compara contra el estado previo es el
+        efecto de ESTA migración (las posteriores, como la 027-029 que reconstruyen `ajustes_stock`,
+        cambian legítimamente el esquema y `sqlite_sequence`)."""
+        directorio = tmp_path / "migraciones_hasta_026"
+        directorio.mkdir()
+        for migracion in modulo_conexion.DIRECTORIO_MIGRACIONES.glob("*.sql"):
+            if migracion.name <= NOMBRE_026:
+                shutil.copy(migracion, directorio / migracion.name)
+        self.monkeypatch.setattr(modulo_conexion, "DIRECTORIO_MIGRACIONES", directorio)
+        self.migrar()
+
     def migrar_con_migracion_alterada(self, tmp_path, reemplazo: str) -> None:
         """Aplica la 026 con una mutación inyectada justo antes de su verificación (paso 3): prueba que
         la verificación de la propia migración detecta el daño."""
@@ -225,10 +237,10 @@ def test_caja_y_cuenta_corriente_de_clientes_quedan_intactas(previa):
     assert despues["cuenta"] == antes["cuenta"] and len(despues["cuenta"]) == 1
 
 
-def test_sqlite_sequence_se_conserva(previa):
+def test_sqlite_sequence_se_conserva(previa, tmp_path):
     previa.cargar_historia()
     antes = previa.instantanea()["secuencias"]
-    previa.migrar()
+    previa.migrar_solo_la_026(tmp_path)
 
     assert previa.instantanea()["secuencias"] == antes
 
@@ -279,11 +291,11 @@ def test_no_queda_ninguna_tabla_ni_objeto_temporal_huerfano(migrada):
     assert migrada.con.execute("SELECT name FROM sqlite_temp_master").fetchall() == []
 
 
-def test_el_resto_del_esquema_no_cambia(previa):
+def test_el_resto_del_esquema_no_cambia(previa, tmp_path):
     previa.cargar_historia()
     consulta = "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name <> 'compras' ORDER BY name"
     antes = previa.con.execute(consulta).fetchall()
-    previa.migrar()
+    previa.migrar_solo_la_026(tmp_path)
 
     assert previa.con.execute(consulta).fetchall() == antes
 

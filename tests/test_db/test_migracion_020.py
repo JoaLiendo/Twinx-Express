@@ -407,11 +407,13 @@ def test_migracion_desde_base_completamente_vacia_aplica_todo(tmp_path, monkeypa
         assert con.execute("PRAGMA foreign_key_check").fetchall() == []
         # 7 triggers de la 019 + 13 nuevos de la 020 (los 2 de ventas de la 019 se recrean, no se suman).
         # (sin contar los de migraciones posteriores: trg_productos_* y trg_inventario* de la 022,
-        # ni trg_caja_movimientos_pago_proveedor_* y trg_movimientos_proveedor_* de la 025)
+        # ni trg_caja_movimientos_pago_proveedor_* y trg_movimientos_proveedor_* de la 025, ni los de
+        # ajustes_stock de la 027-029 ni los de categorías de la 030)
         triggers_019_020 = con.execute(
             "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name NOT LIKE 'trg_productos_%'"
             " AND name NOT LIKE 'trg_inventario%' AND name NOT LIKE 'trg_ajustes_stock_inventario%'"
             " AND name NOT LIKE 'trg_caja_movimientos_pago_proveedor_%' AND name NOT LIKE 'trg_movimientos_proveedor_%'"
+            " AND name NOT LIKE 'trg_ajustes_stock_%' AND name NOT LIKE 'trg_categorias_%'"
         ).fetchall()
         assert len(triggers_019_020) == 20
     finally:
