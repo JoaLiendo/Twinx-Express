@@ -101,7 +101,7 @@ def test_la_actualizacion_masiva_pasa_por_el_punto_unico():
 
 
 def test_la_edicion_manual_y_la_importacion_pasan_por_actualizar_datos():
-    assert "actualizar_datos" in _llamadas(_funcion("services/servicio_stock.py", "actualizar_producto"))
+    assert "actualizar_datos_en_conexion" in _llamadas(_funcion("services/servicio_stock.py", "actualizar_producto"))
     assert "actualizar_datos_en_conexion" in _llamadas(_funcion("services/servicio_importacion.py", "_procesar_fila"))
 
 

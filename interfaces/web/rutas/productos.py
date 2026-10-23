@@ -13,6 +13,8 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
 from domain.ajuste_stock import MOTIVOS_MANUALES_PERMITIDOS
+from domain.categoria import CategoriaEnArbol
+from domain.movimiento_stock import etiqueta_de_tipo
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
 from excepciones import ArchivoImagenInvalidoError, DatosInvalidosError, ProductoNoEncontradoError
@@ -20,6 +22,7 @@ from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import (
     contexto_base,
+    entero_opcional,
     nueva_clave_idempotencia,
     pagina_o_primera,
     redireccionar_con_mensaje,
@@ -28,6 +31,7 @@ from interfaces.web.utilidades import (
 from services import (
     servicio_categorias,
     servicio_compras,
+    servicio_etiquetas,
     servicio_exportacion,
     servicio_exportacion_csv,
     servicio_importacion,
@@ -63,65 +67,68 @@ def listar_productos(
     request: Request,
     q: str = "",
     solo_criticos: bool = False,
+    estado_stock: str = "",
     mostrar_inactivos: bool = False,
-    categoria_id: int | None = None,
+    categoria_id: str = "",
+    etiqueta_id: str = "",
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
     # Ver productos dados de baja es un caso de uso exclusivo de OWNER
     # (reactivarlos ya lo es, vía _SOLO_OWNER); si un CASHIER fuerza el
     # parámetro a mano, el flag simplemente se ignora y ve el listado
     # normal, en vez de devolver un error sobre una ruta que sí tiene permitida.
-    mostrar_inactivos = mostrar_inactivos and usuario_actual is not None and usuario_actual.rol == "OWNER"
+    es_owner = usuario_actual is not None and usuario_actual.rol == "OWNER"
+    mostrar_inactivos = mostrar_inactivos and es_owner
+    # `solo_criticos` es el enlace histórico del dashboard y del aviso de stock crítico.
+    if solo_criticos and not estado_stock:
+        estado_stock = "critico"
+    if estado_stock not in servicio_stock.FILTROS_DE_STOCK:
+        estado_stock = ""
+    categoria = entero_opcional(categoria_id, "La categoría elegida no es válida.")
+    etiqueta = entero_opcional(etiqueta_id, "La etiqueta elegida no es válida.")
 
-    if mostrar_inactivos:
-        productos = servicio_stock.listar_inactivos()
-        total_criticos = len(servicio_stock.listar_stock_critico())
-    elif solo_criticos:
-        productos = servicio_stock.listar_stock_critico()
-        total_criticos = len(productos)
-    elif q:
-        productos = servicio_stock.buscar_por_nombre(q)
-        total_criticos = len(servicio_stock.listar_stock_critico())
-    else:
-        productos = servicio_stock.listar_todos()
-        total_criticos = len(servicio_stock.listar_stock_critico())
+    productos = servicio_stock.listar_para_administracion(
+        texto=q, categoria_id=categoria, estado_stock=estado_stock, inactivos=mostrar_inactivos, etiqueta_id=etiqueta
+    )
 
-    # Filtro adicional por categoría: se combina con cualquiera de los
-    # listados de arriba (búsqueda, stock crítico, inactivos). El catálogo
-    # de un kiosco es chico, así que filtrar en Python alcanza sin sumar
-    # una consulta SQL por cada combinación posible de filtros.
-    if categoria_id:
-        productos = [producto for producto in productos if producto.categoria_id == categoria_id]
-
-    # Para mostrar el nombre de categoría en cada tarjeta hace falta el
-    # historial completo (incluye categorías ya dadas de baja, para no
-    # mostrar "Categoría eliminada" en productos viejos); para el <select>
-    # del filtro solo tiene sentido ofrecer las categorías activas.
-    categorias_todas = servicio_categorias.listar_todas()
-
+    # El árbol completo incluye categorías ya dadas de baja, para no mostrar
+    # "Sin categoría" en productos viejos; el filtro solo ofrece las activas.
+    arbol = servicio_categorias.obtener_arbol()
+    etiquetas = servicio_etiquetas.listar()
     contexto = {
         **contexto_base(request),
         "productos": productos,
         "q": q,
-        "solo_criticos": solo_criticos,
+        "estado_stock": estado_stock,
         "mostrar_inactivos": mostrar_inactivos,
-        "categoria_id": categoria_id,
-        "categorias": [categoria for categoria in categorias_todas if categoria.activa],
-        "categorias_por_id": {categoria.id: categoria.nombre for categoria in categorias_todas},
-        "total_criticos": total_criticos,
+        "categoria_id": categoria,
+        "etiqueta_id": etiqueta,
+        "categorias": arbol.en_orden(solo_activas=True),
+        "rutas_de_categoria": {p.categoria_id: arbol.ruta(p.categoria_id) for p in productos if p.categoria_id},
+        "etiquetas": etiquetas,
+        "nombres_de_etiqueta": {e.id: e.nombre for e in etiquetas},
+        "etiquetas_por_producto": servicio_etiquetas.ids_por_producto() if etiquetas else {},
+        "total_criticos": len(servicio_stock.listar_stock_critico()),
+        "hay_filtros": bool(q.strip() or estado_stock or categoria is not None or etiqueta is not None),
     }
     return templates.TemplateResponse(request, "productos/lista.html", contexto)
 
 
 @router.get("/productos/categorias", dependencies=[_SOLO_OWNER])
 def listar_categorias(request: Request):
-    contexto = {**contexto_base(request), "categorias": servicio_categorias.listar_todas()}
+    contexto = {
+        **contexto_base(request),
+        "categorias": servicio_categorias.obtener_arbol().en_orden(),
+        "opciones_superior": servicio_categorias.opciones_de_categoria_superior(),
+        "etiquetas": servicio_etiquetas.listar(),
+        "productos_por_etiqueta": servicio_etiquetas.contar_productos_por_etiqueta(),
+    }
     return templates.TemplateResponse(request, "productos/categorias.html", contexto)
 
 
 @router.post("/productos/categorias", dependencies=[_SOLO_OWNER])
-def crear_categoria(nombre: str = Form(...)):
-    categoria = servicio_categorias.crear_categoria(nombre)
+def crear_categoria(nombre: str = Form(...), categoria_padre_id: str = Form("")):
+    categoria = servicio_categorias.crear_categoria(nombre, _categoria_id_o_none(categoria_padre_id))
     return redireccionar_con_mensaje(
         "/productos/categorias", "success", f"Categoría '{categoria.nombre}' creada correctamente."
     )
@@ -144,13 +151,19 @@ def formulario_editar_categoria(request: Request, categoria_id: int):
     if categoria is None:
         return redireccionar_con_mensaje("/productos/categorias", "error", "La categoría no existe.")
 
-    contexto = {**contexto_base(request), "categoria": categoria}
+    contexto = {
+        **contexto_base(request),
+        "categoria": categoria,
+        "opciones_superior": servicio_categorias.opciones_de_categoria_superior(categoria_id),
+    }
     return templates.TemplateResponse(request, "productos/categoria_editar.html", contexto)
 
 
 @router.post("/productos/categorias/{categoria_id}/editar", dependencies=[_SOLO_OWNER])
-def editar_categoria(categoria_id: int, nombre: str = Form(...)):
-    categoria = servicio_categorias.actualizar_categoria(categoria_id, nombre)
+def editar_categoria(categoria_id: int, nombre: str = Form(...), categoria_padre_id: str = Form("")):
+    categoria = servicio_categorias.actualizar_categoria(
+        categoria_id, nombre, _categoria_id_o_none(categoria_padre_id)
+    )
     return redireccionar_con_mensaje(
         "/productos/categorias", "success", f"Categoría '{categoria.nombre}' actualizada correctamente."
     )
@@ -164,10 +177,54 @@ def reactivar_categoria(categoria_id: int):
     )
 
 
+@router.post("/productos/etiquetas", dependencies=[_SOLO_OWNER])
+def crear_etiqueta(nombre: str = Form(...)):
+    etiqueta = servicio_etiquetas.crear_etiqueta(nombre)
+    return redireccionar_con_mensaje(
+        "/productos/categorias", "success", f"Etiqueta '{etiqueta.nombre}' creada correctamente."
+    )
+
+
+@router.post("/productos/etiquetas/{etiqueta_id}/editar", dependencies=[_SOLO_OWNER])
+def renombrar_etiqueta(etiqueta_id: int, nombre: str = Form(...)):
+    etiqueta = servicio_etiquetas.renombrar_etiqueta(etiqueta_id, nombre)
+    return redireccionar_con_mensaje(
+        "/productos/categorias", "success", f"Etiqueta '{etiqueta.nombre}' actualizada correctamente."
+    )
+
+
+@router.post("/productos/etiquetas/{etiqueta_id}/eliminar", dependencies=[_SOLO_OWNER])
+def eliminar_etiqueta(etiqueta_id: int):
+    servicio_etiquetas.eliminar_etiqueta(etiqueta_id)
+    return redireccionar_con_mensaje("/productos/categorias", "success", "Etiqueta eliminada.")
+
+
+def _contexto_formulario_producto(request: Request, producto=None) -> dict:
+    """Opciones de categoría (con su ruta, en orden de árbol) y etiquetas para alta/edición."""
+    arbol = servicio_categorias.obtener_arbol()
+    categorias = arbol.en_orden(solo_activas=True)
+    # Si el producto ya tiene asignada una categoría que después se dio de
+    # baja, se agrega igual a las opciones -- si no, el <select> caería en
+    # "Sin categoría" y guardar el formulario sin tocarlo se la borraría
+    # sin que nadie lo haya pedido.
+    if producto is not None and producto.categoria_id is not None:
+        if not any(opcion.categoria.id == producto.categoria_id for opcion in categorias):
+            actual = arbol.obtener(producto.categoria_id)
+            if actual is not None:
+                categorias = categorias + [
+                    CategoriaEnArbol(actual, arbol.nivel(actual.id), arbol.ruta(actual.id))
+                ]
+    return {
+        **contexto_base(request),
+        "categorias": categorias,
+        "etiquetas": servicio_etiquetas.listar(),
+        "etiquetas_del_producto": set(servicio_etiquetas.ids_de_producto(producto.id)) if producto else set(),
+    }
+
+
 @router.get("/productos/nuevo", dependencies=[_SOLO_OWNER])
 def formulario_nuevo_producto(request: Request):
-    contexto = {**contexto_base(request), "categorias": servicio_categorias.listar_activas()}
-    return templates.TemplateResponse(request, "productos/nuevo.html", contexto)
+    return templates.TemplateResponse(request, "productos/nuevo.html", _contexto_formulario_producto(request))
 
 
 @router.post("/productos/nuevo", dependencies=[_SOLO_OWNER])
@@ -180,6 +237,7 @@ async def crear_producto(
     stock_minimo: int = Form(0),
     categoria_id: str = Form(""),
     unidad_medida: str = Form("UNIDAD"),
+    etiqueta_id: list[int] = Form([]),
     imagen: UploadFile | None = File(None),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
@@ -193,6 +251,7 @@ async def crear_producto(
         categoria_id=_categoria_id_o_none(categoria_id),
         unidad_medida=unidad_medida,
         usuario_id=usuario_actual.id,
+        etiqueta_ids=etiqueta_id,
     )
 
     # El producto ya se creó y tiene id antes de tocar la imagen (ver
@@ -272,20 +331,9 @@ def formulario_editar_producto(request: Request, producto_id: int):
     if producto is None:
         return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
 
-    categorias = servicio_categorias.listar_activas()
-    # Si el producto ya tiene asignada una categoría que después se dio de
-    # baja, se agrega igual a las opciones -- si no, el <select> caería en
-    # "Sin categoría" y guardar el formulario sin tocarlo se la borraría
-    # sin que nadie lo haya pedido.
-    if producto.categoria_id is not None and not any(c.id == producto.categoria_id for c in categorias):
-        categoria_actual = servicio_categorias.obtener_por_id(producto.categoria_id)
-        if categoria_actual is not None:
-            categorias = categorias + [categoria_actual]
-
     contexto = {
-        **contexto_base(request),
+        **_contexto_formulario_producto(request, producto),
         "producto": producto,
-        "categorias": categorias,
         "ultima_compra": servicio_compras.obtener_ultima_compra_de_producto(producto.id),
     }
     return templates.TemplateResponse(request, "productos/editar.html", contexto)
@@ -301,10 +349,12 @@ async def editar_producto(
     stock_minimo: int = Form(0),
     categoria_id: str = Form(""),
     unidad_medida: str = Form("UNIDAD"),
+    etiqueta_id: list[int] = Form([]),
     quitar_imagen: bool = Form(False),
     imagen: UploadFile | None = File(None),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
+    # El formulario de edición siempre muestra todas las etiquetas: lo no marcado se quita.
     producto = servicio_stock.actualizar_producto(
         producto_id=producto_id,
         codigo_barras=codigo_barras,
@@ -315,6 +365,7 @@ async def editar_producto(
         categoria_id=_categoria_id_o_none(categoria_id),
         unidad_medida=unidad_medida,
         usuario_id=usuario_actual.id,
+        etiqueta_ids=etiqueta_id,
     )
 
     # Una imagen nueva tiene prioridad sobre el checkbox de "quitar" (si
@@ -493,7 +544,7 @@ def ver_movimientos_de_producto(
         kardex = servicio_movimientos_stock.generar_kardex(producto_id, fecha_desde or None, fecha_hasta or None)
     except ProductoNoEncontradoError:
         return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
-    contexto = {**contexto_base(request), "kardex": kardex}
+    contexto = {**contexto_base(request), "kardex": kardex, "etiqueta_de_tipo": etiqueta_de_tipo}
     return templates.TemplateResponse(request, "productos/movimientos.html", contexto)
 
 

@@ -76,8 +76,8 @@
                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
             <option value="">Sin categoría</option>
-            {% for categoria in categorias %}
-              <option value="{{ categoria.id }}">{{ categoria.nombre }}</option>
+            {% for opcion in categorias %}
+              <option value="{{ opcion.categoria.id }}">{{ opcion.ruta }}</option>
             {% endfor %}
           </select>
         </div>
@@ -95,6 +95,8 @@
           </select>
         </div>
       </div>
+
+      {% include "productos/_campo_etiquetas.html" %}
 
       <div class="grid grid-cols-2 gap-4">
         <div>

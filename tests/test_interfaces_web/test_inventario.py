@@ -107,7 +107,7 @@ def test_el_owner_crea_un_inventario_con_seleccion_manual(e):
 
 
 def test_seleccion_manual_vacia_o_alcance_invalido_no_crean_nada(e):
-    for formulario in ({"alcance": "manual"}, {"alcance": "categoria"}):
+    for formulario in ({"alcance": "manual"}, {"alcance": "categoria"}, {"alcance": "sector"}):
         respuesta = solicitud("POST", "/inventario/nuevo", cookies=e.co, formulario=formulario)
         assert respuesta.status == 303 and "tipo=error" in _location(respuesta)
     assert contar(e.ruta, "inventarios") == 0

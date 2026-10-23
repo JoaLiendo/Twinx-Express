@@ -51,14 +51,14 @@ def test_obtener_por_nombre_inexistente_devuelve_none(base_datos_temporal):
     assert repositorio_categorias.obtener_por_nombre("no-existe") is None
 
 
-def test_listar_activas_no_incluye_las_dadas_de_baja(base_datos_temporal):
+def test_una_categoria_borrada_fisicamente_no_se_lista(base_datos_temporal):
     activa = repositorio_categorias.crear_categoria(Categoria(nombre="Bebidas"))
     repositorio_categorias.crear_categoria(Categoria(nombre="Golosinas"))
     repositorio_categorias.eliminar_categoria(activa.id)  # sin productos, se borra físicamente
     inactiva = repositorio_categorias.crear_categoria(Categoria(nombre="Limpieza"))
     repositorio_categorias.crear_categoria(Categoria(nombre="X"))  # placeholder para forzar baja lógica más abajo
 
-    nombres = [c.nombre for c in repositorio_categorias.listar_activas()]
+    nombres = [c.nombre for c in repositorio_categorias.listar_todas() if c.activa]
     assert "Bebidas" not in nombres  # fue borrada físicamente
 
 
@@ -147,7 +147,7 @@ def test_reactivar_categoria_ya_activa_falla(base_datos_temporal):
 def test_actualizar_nombre_persiste_y_conserva_el_id(base_datos_temporal):
     categoria = repositorio_categorias.crear_categoria(Categoria(nombre="Bebidas"))
 
-    actualizada = repositorio_categorias.actualizar_nombre(categoria.id, "Bebidas frías")
+    actualizada = repositorio_categorias.actualizar(categoria.id, "Bebidas frías", None)
 
     assert actualizada.id == categoria.id
     assert actualizada.nombre == "Bebidas frías"
@@ -160,7 +160,7 @@ def test_actualizar_nombre_con_duplicado_falla(base_datos_temporal):
     otra = repositorio_categorias.crear_categoria(Categoria(nombre="Golosinas"))
 
     with pytest.raises(NombreCategoriaDuplicadoError):
-        repositorio_categorias.actualizar_nombre(otra.id, "Bebidas")
+        repositorio_categorias.actualizar(otra.id, "Bebidas", None)
 
     # No se aplicó ningún cambio parcial.
     assert repositorio_categorias.obtener_por_id(otra.id).nombre == "Golosinas"
@@ -168,7 +168,7 @@ def test_actualizar_nombre_con_duplicado_falla(base_datos_temporal):
 
 def test_actualizar_nombre_inexistente_falla(base_datos_temporal):
     with pytest.raises(CategoriaNoEncontradaError):
-        repositorio_categorias.actualizar_nombre(9999, "Cualquiera")
+        repositorio_categorias.actualizar(9999, "Cualquiera", None)
 
 
 def test_actualizar_nombre_no_rompe_la_relacion_con_productos(base_datos_temporal):
@@ -183,6 +183,6 @@ def test_actualizar_nombre_no_rompe_la_relacion_con_productos(base_datos_tempora
         )
     )
 
-    repositorio_categorias.actualizar_nombre(categoria.id, "Bebidas frías")
+    repositorio_categorias.actualizar(categoria.id, "Bebidas frías", None)
 
     assert repositorio_productos.obtener_por_id(producto.id).categoria_id == categoria.id

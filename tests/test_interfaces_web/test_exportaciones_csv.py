@@ -9,12 +9,14 @@ from datetime import date
 import pytest
 
 from domain.compra import ItemCompra
+from domain.movimiento_stock import etiqueta_de_tipo
 from domain.venta import ItemVenta
 from services import (
     servicio_caja,
     servicio_clientes,
     servicio_compras,
     servicio_cuenta_corriente,
+    servicio_inventario,
     servicio_proveedores,
     servicio_reportes,
     servicio_stock,
@@ -369,7 +371,7 @@ class TestKardex:
         assert list(filas[0].keys()) == list(COLUMNAS_KARDEX)
         assert [(f["tipo"], f["entrada"], f["salida"], f["saldo"]) for f in filas] == [
             ("SALDO_INICIAL_RECONSTRUIDO", "", "", "0"),
-            ("STOCK_INICIAL", "50", "", "50"),
+            ("Stock inicial", "50", "", "50"),  # V1.11-E: nombre de negocio, no el código interno
             ("COMPRA", "10", "", "60"),
             ("VENTA", "", "4", "56"),
             ("VENTA", "", "3", "53"),
@@ -380,7 +382,16 @@ class TestKardex:
         stock = consultar(e.ruta, "SELECT stock_actual FROM productos WHERE id = ?", (e.p1.id,))[0][0]
         assert filas[-1]["saldo"] == str(stock)
         pantalla = re.findall(r'data-tipo="([A-Z_]+)"', _bajar(e, f"/productos/{e.p1.id}/movimientos").texto)
-        assert [f["tipo"] for f in filas[1:]] == pantalla
+        assert [f["tipo"] for f in filas[1:]] == [etiqueta_de_tipo(tipo) for tipo in pantalla]
+
+    def test_un_recuento_de_inventario_se_exporta_con_su_nombre_de_negocio(self, e):
+        inventario = servicio_inventario.crear_inventario(e.owner.id, [e.p1.id])
+        servicio_inventario.registrar_conteo(inventario.id, e.p1.id, 45, e.owner.id)
+        servicio_inventario.confirmar_inventario(inventario.id, e.owner.id, "k-kardex-recuento")
+
+        tipos = [f["tipo"] for f in _filas(_bajar(e, f"/productos/{e.p1.id}/movimientos/exportar"))]
+
+        assert "Ajuste de inventario" in tipos and "RECUENTO" not in tipos and "STOCK_INICIAL" not in tipos
 
     def test_el_saldo_inicial_se_marca_como_reconstruido_no_historico(self, e):
         self._historia(e)

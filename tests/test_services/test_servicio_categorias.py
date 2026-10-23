@@ -26,11 +26,11 @@ def test_crear_categoria_con_nombre_vacio_falla(base_datos_temporal):
         servicio_categorias.crear_categoria("   ")
 
 
-def test_listar_activas(base_datos_temporal):
+def test_el_arbol_de_activas_lista_por_nombre(base_datos_temporal):
     servicio_categorias.crear_categoria("Bebidas")
     servicio_categorias.crear_categoria("Golosinas")
 
-    nombres = [c.nombre for c in servicio_categorias.listar_activas()]
+    nombres = [o.categoria.nombre for o in servicio_categorias.obtener_arbol().en_orden(solo_activas=True)]
 
     assert nombres == ["Bebidas", "Golosinas"]
 
@@ -98,11 +98,11 @@ def test_categoria_reactivada_vuelve_a_ser_opcion_valida_para_productos(base_dat
     categoria = servicio_categorias.crear_categoria("Bebidas")
     servicio_stock.registrar_producto("7790000000001", "Gaseosa", 100, 200, categoria_id=categoria.id)
     servicio_categorias.eliminar_categoria(categoria.id)  # con producto asociado: baja lógica
-    assert categoria.nombre not in [c.nombre for c in servicio_categorias.listar_activas()]
+    assert categoria.nombre not in [o.categoria.nombre for o in servicio_categorias.obtener_arbol().en_orden(solo_activas=True)]
 
     servicio_categorias.reactivar_categoria(categoria.id)
 
-    assert categoria.nombre in [c.nombre for c in servicio_categorias.listar_activas()]
+    assert categoria.nombre in [o.categoria.nombre for o in servicio_categorias.obtener_arbol().en_orden(solo_activas=True)]
 
 
 def test_actualizar_categoria_edita_el_nombre_y_conserva_el_id(base_datos_temporal):

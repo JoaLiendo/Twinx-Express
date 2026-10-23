@@ -252,13 +252,6 @@ def actualizar_datos_en_conexion(
     return _fila_a_producto(fila)
 
 
-def actualizar_datos(producto: Producto, usuario_id: int | None = None) -> Producto:
-    """Actualiza los datos editables de un producto en su propia transacción
-    (ver `actualizar_datos_en_conexion`)."""
-    with obtener_conexion(inmediata=True) as conexion:
-        return actualizar_datos_en_conexion(conexion, producto, usuario_id)
-
-
 def obtener_por_codigo_barras_en_conexion(conexion: sqlite3.Connection, codigo_barras: str) -> Producto | None:
     """Producto con ese código de barras, activo o no, dentro de la transacción
     recibida (una importación necesita distinguir "no existe" de "está dado de baja")."""

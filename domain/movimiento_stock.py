@@ -16,6 +16,14 @@ TIPO_AJUSTE = "AJUSTE"
 TIPO_RECUENTO = "RECUENTO"
 TIPO_STOCK_INICIAL = "STOCK_INICIAL"
 
+# Nombre de negocio de los tipos cuyo código interno no se entiende fuera del sistema (pantalla y CSV
+# del kardex). El código sigue disponible para filtros y tests (`data-tipo` en la web).
+ETIQUETAS_TIPO = {TIPO_RECUENTO: "Ajuste de inventario", TIPO_STOCK_INICIAL: "Stock inicial"}
+
+
+def etiqueta_de_tipo(tipo: str) -> str:
+    return ETIQUETAS_TIPO.get(tipo, tipo)
+
 
 @dataclass(frozen=True)
 class MovimientoStock:

@@ -8,10 +8,12 @@ deberían usar para operar sobre productos: no deben llamar a
 """
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import ajustes_stock as repositorio_ajustes_stock
+from db.repositorios import etiquetas as repositorio_etiquetas
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
@@ -37,7 +39,7 @@ from excepciones import (
     StockInsuficienteError,
 )
 from db.repositorios import auditoria as repositorio_auditoria
-from services import servicio_categorias, servicio_imagenes
+from services import servicio_categorias, servicio_etiquetas, servicio_imagenes
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +64,9 @@ def registrar_producto(
     categoria_id: int | None = None,
     unidad_medida: str = "UNIDAD",
     usuario_id: int | None = None,
+    etiqueta_ids: Iterable[int] = (),
 ) -> Producto:
-    """Da de alta un nuevo producto.
+    """Da de alta un nuevo producto, con sus etiquetas (V1.11-E) en la misma transacción.
 
     Los precios se reciben en centavos (`int`, ver `domain.dinero`).
     La validación de negocio (precios/stock no negativos, campos
@@ -76,6 +79,7 @@ def registrar_producto(
     "sin categoría", un valor válido.
     """
     _validar_categoria_si_corresponde(categoria_id)
+    etiquetas = servicio_etiquetas.validar_ids(etiqueta_ids)
     producto = Producto(
         codigo_barras=codigo_barras,
         nombre=nombre,
@@ -88,6 +92,7 @@ def registrar_producto(
     )
     with obtener_conexion() as conexion:
         producto_creado = repositorio_productos.crear_producto_en_conexion(conexion, producto)
+        repositorio_etiquetas.reemplazar_de_producto_en_conexion(conexion, producto_creado.id, etiquetas)
         registrar_stock_inicial_en_conexion(
             conexion, producto_creado, usuario_id, producto_creado.precio_costo_centavos
         )
@@ -408,8 +413,12 @@ def actualizar_producto(
     categoria_id: int | None = None,
     unidad_medida: str = "UNIDAD",
     usuario_id: int | None = None,
+    etiqueta_ids: Iterable[int] | None = None,
 ) -> Producto:
     """Actualiza los datos editables de un producto existente.
+
+    `etiqueta_ids` (V1.11-E) deja al producto exactamente con esas etiquetas, en la misma
+    transacción y auditado; `None` no las toca.
 
     El stock actual no se modifica acá: solo cambia con las ventas
     (ver `services.servicio_ventas.registrar_venta`). Los precios se
@@ -428,6 +437,7 @@ def actualizar_producto(
     if producto_actual is None:
         raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
     _validar_categoria_si_corresponde(categoria_id)
+    etiquetas = servicio_etiquetas.validar_ids(etiqueta_ids) if etiqueta_ids is not None else None
 
     producto_actualizado = Producto(
         id=producto_id,
@@ -440,7 +450,20 @@ def actualizar_producto(
         categoria_id=categoria_id,
         unidad_medida=unidad_medida,
     )
-    resultado = repositorio_productos.actualizar_datos(producto_actualizado, usuario_id=usuario_id)
+    with obtener_conexion(inmediata=True) as conexion:
+        resultado = repositorio_productos.actualizar_datos_en_conexion(conexion, producto_actualizado, usuario_id)
+        etiquetas_cambiaron = etiquetas is not None and repositorio_etiquetas.reemplazar_de_producto_en_conexion(
+            conexion, producto_id, etiquetas
+        )
+        if etiquetas_cambiaron and usuario_id is not None:
+            repositorio_auditoria.registrar_en_conexion(
+                conexion,
+                usuario_id,
+                "PRODUCTO_EDITADO",
+                "PRODUCTO",
+                producto_id,
+                f"{resultado.nombre}: se modificaron las etiquetas",
+            )
     logger.info("Producto actualizado: %s (id=%s)", resultado.nombre, resultado.id)
     return resultado
 
@@ -482,6 +505,45 @@ def motivos_de_conservacion(producto_id: int) -> list[str]:
     """Qué registros asociados (ventas, compras, ajustes de stock, cambios de
     precio) tiene un producto y por qué una baja se conserva como baja lógica."""
     return repositorio_productos.listar_motivos_de_conservacion(producto_id)
+
+
+FILTROS_DE_STOCK = {
+    "critico": lambda producto: producto.tiene_stock_critico,
+    "sin_stock": lambda producto: producto.stock_actual == 0,
+    "con_stock": lambda producto: producto.stock_actual > 0,
+}
+
+
+def listar_para_administracion(
+    texto: str = "",
+    categoria_id: int | None = None,
+    estado_stock: str = "",
+    inactivos: bool = False,
+    etiqueta_id: int | None = None,
+) -> list[Producto]:
+    """Listado administrativo de productos (V1.11-E), con filtros combinables.
+
+    `texto` busca en el nombre (sin distinguir mayúsculas) o en el código de barras;
+    `categoria_id` incluye sus subcategorías; `estado_stock` es una clave de
+    `FILTROS_DE_STOCK` (otra cosa no filtra); `inactivos` lista los dados de baja en vez de los
+    activos. El catálogo de un kiosco es chico: se filtra en memoria sobre un único listado en
+    vez de sumar una consulta por cada combinación de filtros.
+    """
+    productos = listar_inactivos() if inactivos else listar_todos()
+    texto = texto.strip()
+    if texto:
+        buscado = texto.casefold()
+        productos = [p for p in productos if buscado in p.nombre.casefold() or texto in p.codigo_barras]
+    if categoria_id is not None:
+        incluidas = servicio_categorias.obtener_arbol().ids_con_descendientes(categoria_id)
+        productos = [p for p in productos if p.categoria_id in incluidas]
+    filtro_stock = FILTROS_DE_STOCK.get(estado_stock)
+    if filtro_stock is not None:
+        productos = [p for p in productos if filtro_stock(p)]
+    if etiqueta_id is not None:
+        etiquetados = servicio_etiquetas.ids_por_producto()
+        productos = [p for p in productos if etiqueta_id in etiquetados.get(p.id, [])]
+    return productos
 
 
 def listar_inactivos() -> list[Producto]:

@@ -41,8 +41,8 @@
           <select id="alcance" name="alcance" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
             <option value="TODOS">Todos</option>
             <option value="SIN_CATEGORIA">Sin categoría</option>
-            {% for categoria in categorias %}
-              <option value="CATEGORIA:{{ categoria.id }}">Categoría: {{ categoria.nombre }}</option>
+            {% for opcion in categorias %}
+              <option value="CATEGORIA:{{ opcion.categoria.id }}">Categoría: {{ opcion.ruta }}</option>
             {% endfor %}
           </select>
         </div>

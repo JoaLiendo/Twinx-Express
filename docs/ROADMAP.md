@@ -19,6 +19,16 @@
 - **V1.11-D (cerrado)**: reporte de pérdidas de stock (`/reportes/perdidas` + CSV): filtros por
   fecha, producto y motivo; costo histórico, responsable y reversa; totales vigentes, valor conocido
   a costo y filas con costo histórico desconocido (nunca valorizadas).
+- **V1.11-E (cerrado)**: categorías jerárquicas (`categorias.categoria_padre_id`, sin ciclos por
+  trigger, nombre único global; la interfaz admite hasta 3 niveles y filtrar por una categoría
+  incluye sus subcategorías; un producto tiene una sola categoría de cualquier nivel) y etiquetas
+  planas (`etiquetas`, `producto_etiquetas`; migración 030). Productos en tabla con filtros
+  (texto/código, categoría, stock crítico/sin/con stock, etiqueta, activos/dados de baja; costo solo
+  OWNER). Inventario por categoría (con o sin subcategorías). Dashboard con cuatro accesos (venta,
+  consulta, mercadería o caja según rol, actividad); el CASHIER no recibe costos ni valorizaciones.
+  Índice `ajustes_stock(fecha)` (migración 031). Kardex CSV con "Ajuste de inventario"/"Stock
+  inicial" en vez de códigos internos. La actualización masiva de precios por categoría sigue siendo
+  exacta (no incluye subcategorías).
 
 ## V1.12 — partidas / lotes (a definir)
 

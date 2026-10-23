@@ -60,12 +60,11 @@
             </tr>
           </thead>
           <tbody>
-            {% set etiquetas_tipo = {'RECUENTO': 'Ajuste de inventario', 'STOCK_INICIAL': 'Stock inicial'} %}
             {% for m in kardex.movimientos %}
               <tr data-tipo="{{ m.tipo }}" data-referencia="{{ m.referencia }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800">
                 <td class="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ m.fecha }}</td>
                 {# `data-tipo` arriba conserva el código interno (filtros/tests); solo el texto visible se traduce. #}
-                <td class="px-5 py-3">{{ ui.badge(etiquetas_tipo.get(m.tipo, m.tipo), 'exito' if m.cantidad > 0 else 'advertencia') }}</td>
+                <td class="px-5 py-3">{{ ui.badge(etiqueta_de_tipo(m.tipo),'exito' if m.cantidad > 0 else 'advertencia') }}</td>
                 <td class="px-5 py-3 whitespace-nowrap">{{ m.referencia }}</td>
                 <td class="px-5 py-3 text-right tabular-nums">{{ m.entrada if m.entrada else '' }}</td>
                 <td class="px-5 py-3 text-right tabular-nums">{{ m.salida if m.salida else '' }}</td>

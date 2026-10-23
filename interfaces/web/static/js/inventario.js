@@ -17,11 +17,16 @@
 
   const alcances = document.querySelectorAll('[data-alcance]');
   const seleccionManual = document.getElementById('seleccion-manual');
+  const seleccionCategoria = document.getElementById('seleccion-categoria');
   if (alcances.length && seleccionManual) {
     const actualizar = () => {
-      const manual = document.querySelector('[data-alcance]:checked').value === 'manual';
-      seleccionManual.classList.toggle('hidden', !manual);
-      for (const casilla of seleccionManual.querySelectorAll('[data-producto]')) casilla.disabled = !manual;
+      const alcance = document.querySelector('[data-alcance]:checked').value;
+      seleccionManual.classList.toggle('hidden', alcance !== 'manual');
+      for (const casilla of seleccionManual.querySelectorAll('[data-producto]')) casilla.disabled = alcance !== 'manual';
+      if (seleccionCategoria) {
+        seleccionCategoria.classList.toggle('hidden', alcance !== 'categoria');
+        for (const campo of seleccionCategoria.querySelectorAll('[data-campo-categoria]')) campo.disabled = alcance !== 'categoria';
+      }
     };
     for (const radio of alcances) radio.addEventListener('change', actualizar);
     actualizar();

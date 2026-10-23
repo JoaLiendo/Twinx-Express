@@ -20,6 +20,7 @@ from collections.abc import Iterable, Sequence
 
 from domain.celdas_seguras import Numero, neutralizar_texto
 from domain.dinero import centavos_a_texto
+from domain.movimiento_stock import etiqueta_de_tipo
 from domain.reportes_operativos import FilaPerdida, ProductoRotacion
 from services import (
     servicio_compras,
@@ -181,7 +182,7 @@ def csv_kardex(producto_id: int, fecha_desde: str | None, fecha_hasta: str | Non
     )
     movimientos = (
         (
-            m.fecha, m.tipo, m.referencia, numero(m.entrada) if m.entrada else None,
+            m.fecha, etiqueta_de_tipo(m.tipo), m.referencia, numero(m.entrada) if m.entrada else None,
             numero(m.salida) if m.salida else None, numero(m.saldo), m.descripcion,
         )
         for m in kardex.movimientos

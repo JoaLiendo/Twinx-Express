@@ -10,6 +10,7 @@ de `db.repositorios.productos` ni de sus `UPDATE ... RETURNING`.
 """
 
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from db.conexion import obtener_conexion
@@ -175,6 +176,19 @@ def obtener_estado_producto_en_conexion(conexion: sqlite3.Connection, producto_i
 
 def listar_ids_productos_activos_en_conexion(conexion: sqlite3.Connection) -> list[int]:
     filas = conexion.execute("SELECT id FROM productos WHERE activo = 1 ORDER BY id").fetchall()
+    return [fila["id"] for fila in filas]
+
+
+def listar_ids_productos_activos_de_categorias_en_conexion(
+    conexion: sqlite3.Connection, categoria_ids: Iterable[int]
+) -> list[int]:
+    ids = sorted(set(categoria_ids))
+    if not ids:
+        return []
+    marcadores = ", ".join("?" for _ in ids)
+    filas = conexion.execute(
+        f"SELECT id FROM productos WHERE activo = 1 AND categoria_id IN ({marcadores}) ORDER BY id", ids
+    ).fetchall()
     return [fila["id"] for fila in filas]
 
 

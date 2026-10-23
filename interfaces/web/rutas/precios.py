@@ -23,7 +23,7 @@ router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 def ver_precios(request: Request):
     contexto = {
         **contexto_base(request),
-        "categorias": servicio_categorias.listar_activas(),
+        "categorias": servicio_categorias.obtener_arbol().en_orden(solo_activas=True),
         "lotes": servicio_precios.listar_lotes_recientes(),
     }
     return templates.TemplateResponse(request, "precios.html", contexto)

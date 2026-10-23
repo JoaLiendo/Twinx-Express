@@ -15,8 +15,8 @@ from excepciones import DatosInvalidosError, InventarioNoAbiertoError, Inventari
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.esquemas import ConteoEntrada, ConteoSalida
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
-from services import servicio_inventario, servicio_stock
+from interfaces.web.utilidades import contexto_base, entero_opcional, nueva_clave_idempotencia, redireccionar_con_mensaje
+from services import servicio_categorias, servicio_inventario, servicio_stock
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
 _SOLO_OWNER = Depends(requiere_rol("OWNER"))
@@ -59,6 +59,7 @@ def formulario_nuevo_inventario(request: Request, usuario_actual: Usuario = Depe
         **contexto_base(request),
         "productos": servicio_stock.listar_todos(),
         "productos_inactivos_con_stock": [p for p in servicio_stock.listar_inactivos() if p.stock_actual > 0],
+        "categorias": servicio_categorias.obtener_arbol().en_orden(solo_activas=True),
     }
     return templates.TemplateResponse(request, "inventario/nuevo.html", contexto)
 
@@ -67,17 +68,24 @@ def formulario_nuevo_inventario(request: Request, usuario_actual: Usuario = Depe
 def crear_inventario(
     alcance: str = Form("todos"),
     producto_id: list[int] = Form([]),
+    categoria_id: str = Form(""),
+    incluir_subcategorias: bool = Form(False),
     observaciones: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
-    if alcance not in ("todos", "manual"):
-        raise DatosInvalidosError("El alcance del inventario debe ser 'todos' o 'manual'.")
+    if alcance not in ("todos", "manual", "categoria"):
+        raise DatosInvalidosError("El alcance del inventario debe ser 'todos', 'manual' o 'categoria'.")
     if alcance == "manual" and not producto_id:
         raise DatosInvalidosError("Elegí al menos un producto para el inventario.")
+    categoria = entero_opcional(categoria_id, "La categoría elegida no es válida.") if alcance == "categoria" else None
+    if alcance == "categoria" and categoria is None:
+        raise DatosInvalidosError("Elegí una categoría para el inventario.")
     inventario = servicio_inventario.crear_inventario(
         usuario_actual.id,
         producto_ids=producto_id if alcance == "manual" else None,
         observaciones=observaciones,
+        categoria_id=categoria,
+        incluir_subcategorias=incluir_subcategorias,
     )
     return redireccionar_con_mensaje(
         f"/inventario/{inventario.id}", "success", f"Inventario #{inventario.id} iniciado. Ya se puede contar."

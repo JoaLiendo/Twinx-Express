@@ -1,0 +1,17 @@
+{# Etiquetas del producto (V1.11-E): casillas, lo no marcado se guarda sin esa etiqueta. #}
+{% if etiquetas %}
+  <fieldset>
+    <legend class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Etiquetas</legend>
+    <div class="flex flex-wrap gap-2">
+      {% for etiqueta in etiquetas %}
+        <label class="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 cursor-pointer
+                      has-[:checked]:border-primary has-[:checked]:bg-primary/10
+                      dark:border-slate-700 dark:text-slate-300">
+          <input type="checkbox" name="etiqueta_id" value="{{ etiqueta.id }}" class="accent-primary"
+                 {{ 'checked' if etiqueta.id in etiquetas_del_producto else '' }} />
+          {{ etiqueta.nombre }}
+        </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+{% endif %}

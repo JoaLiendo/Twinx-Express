@@ -35,6 +35,7 @@ from domain.inventario import (
 from domain.usuario import exigir_rol
 from excepciones import (
     MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
+    CategoriaNoEncontradaError,
     ClaveIdempotenciaReutilizadaError,
     DatosInvalidosError,
     InventarioDesactualizadoError,
@@ -44,7 +45,7 @@ from excepciones import (
     ProductoFueraDeInventarioError,
     ProductoNoEncontradoError,
 )
-from services import servicio_stock
+from services import servicio_categorias, servicio_stock
 
 logger = logging.getLogger(__name__)
 
@@ -87,28 +88,51 @@ def _resolver_productos(conexion: ConexionBD, producto_ids: list[int] | None) ->
 
 
 def crear_inventario(
-    usuario_id: int, producto_ids: list[int] | None = None, observaciones: str | None = None
+    usuario_id: int,
+    producto_ids: list[int] | None = None,
+    observaciones: str | None = None,
+    categoria_id: int | None = None,
+    incluir_subcategorias: bool = True,
 ) -> Inventario:
     """Abre un inventario con las líneas fijadas: `producto_ids=None` toma todos los productos activos;
-    una lista es la selección manual (puede incluir inactivos con stock).
+    una lista es la selección manual (puede incluir inactivos con stock). Con `categoria_id` (V1.11-E)
+    toma los productos activos de esa categoría y, si `incluir_subcategorias`, de todas sus
+    subcategorías; el alcance queda en la auditoría.
 
     Raises:
         PermisoDenegadoError: si `usuario_id` no es un OWNER activo.
         InventarioAbiertoExistenteError: si ya hay un inventario abierto.
-        DatosInvalidosError: si no queda ningún producto o uno inactivo no tiene stock.
+        DatosInvalidosError: si no queda ningún producto, uno inactivo no tiene stock o se combinan
+            selección manual y categoría.
         ProductoNoEncontradoError: si algún producto no existe.
+        CategoriaNoEncontradaError: si la categoría no existe.
     """
     observaciones = (observaciones or "").strip() or None
+    alcance = ""
+    categoria_ids: set[int] = set()
+    if categoria_id is not None:
+        if producto_ids is not None:
+            raise DatosInvalidosError("Un inventario es por categoría o por selección manual, no ambas.")
+        arbol = servicio_categorias.obtener_arbol()
+        if arbol.obtener(categoria_id) is None:
+            raise CategoriaNoEncontradaError(f"No existe una categoría con id {categoria_id}.")
+        categoria_ids = arbol.ids_con_descendientes(categoria_id) if incluir_subcategorias else {categoria_id}
+        alcance = f" de la categoría {arbol.ruta(categoria_id)}" + (
+            " (con subcategorías)" if incluir_subcategorias and len(categoria_ids) > 1 else ""
+        )
     with obtener_conexion(inmediata=True) as conexion:
         _exigir_usuario(conexion, usuario_id, _SOLO_OWNER)
-        ids = _resolver_productos(conexion, producto_ids)
+        if categoria_id is not None:
+            ids = repositorio_inventarios.listar_ids_productos_activos_de_categorias_en_conexion(conexion, categoria_ids)
+        else:
+            ids = _resolver_productos(conexion, producto_ids)
         if not ids:
             raise DatosInvalidosError("El inventario no tiene ningún producto para contar.")
         inventario = repositorio_inventarios.crear_inventario_en_conexion(conexion, usuario_id, observaciones)
         repositorio_inventarios.agregar_lineas_en_conexion(conexion, inventario.id, ids)
         repositorio_auditoria.registrar_en_conexion(
             conexion, usuario_id, "INVENTARIO_CREADO", "INVENTARIO", inventario.id,
-            f"Inventario #{inventario.id} iniciado con {len(ids)} producto(s)",
+            f"Inventario #{inventario.id} iniciado con {len(ids)} producto(s){alcance}",
         )
     logger.info("Inventario #%s creado por usuario %s (%s productos)", inventario.id, usuario_id, len(ids))
     return inventario

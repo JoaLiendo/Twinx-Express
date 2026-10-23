@@ -131,6 +131,14 @@ class CategoriaNoEncontradaError(ErrorAplicacion):
     """No existe una categoría con el id o nombre solicitado."""
 
 
+class NombreEtiquetaDuplicadoError(ErrorAplicacion):
+    """Ya existe una etiqueta con ese nombre (sin distinguir mayúsculas)."""
+
+
+class EtiquetaNoEncontradaError(ErrorAplicacion):
+    """No existe una etiqueta con el id solicitado."""
+
+
 class ArchivoImagenInvalidoError(DatosInvalidosError):
     """La imagen subida para un producto no tiene un formato, tamaño o
     contenido válido (ver `services.servicio_imagenes`)."""
