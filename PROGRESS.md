@@ -1,6 +1,6 @@
 # PROGRESS.md — Estado del proyecto
 
-> Contexto resumido para retomar en la próxima sesión. Última actualización: release Twinx Express 1.10.0 (2026-09-30). El detalle por versión está en `README.md` y las novedades para el usuario en `LEEME.txt`.
+> Contexto resumido para retomar en la próxima sesión. Última actualización: release Twinx Express 1.11.0 (2026-10-23). El detalle por versión está en `README.md` y las novedades para el usuario en `LEEME.txt`.
 
 ## 1. Funcionalidad implementada
 
@@ -12,6 +12,7 @@
 - **V1.8**: compras paginadas y filtrables (proveedor, fechas, estado, producto), ficha de proveedor con estado de cada compra, historial de compras y última compra válida por producto, exportaciones CSV operativas (compras, ventas, deuda de clientes, rotación, kardex) y protección contra inyección de fórmulas en todas las exportaciones, incluido el CSV/XLSX de productos. Sin migraciones.
 - **V1.9**: cuentas a pagar a proveedores (migración 025). Compras CONTADO/CREDITO con `CARGO_COMPRA` automático al saldo del proveedor; anulación de compra a crédito genera `REVERSA_COMPRA` si no tuvo pagos posteriores (bloqueo conservador si los tuvo); pagos a proveedor en efectivo (origen de caja `PAGO_PROVEEDOR`) o transferencia, con idempotencia y sobrepago bloqueado; historial/ficha de proveedor con saldo. Fuera de alcance: vencimientos, órdenes de compra, imputación de pagos a compras concretas, saldos a favor, devoluciones.
 - **V1.10**: vencimientos de compras a crédito y deuda a proveedores (migración 026). `compras.fecha_vencimiento` opcional (alta y edición auditada, informativa; históricas `NULL`); FIFO causal de lectura como estimación por antigüedad (los pagos NO se imputan a compras concretas; no se persiste); clasificación vencida/próxima (7 días)/vigente/sin vencimiento; reporte `/reportes/deuda-proveedores` con filtros y CSV; ficha del proveedor con resumen, próximo vencimiento y compras abiertas; columna «Vence» en compras y pendiente estimado en el detalle; libro imposible informado como «Datos inconsistentes» sin cifras FIFO.
+- **V1.11**: trazabilidad de stock y catálogo (migraciones 027–031). Motivos de baja vigentes con snapshot de costo, reversas auditables (solo OWNER), `STOCK_INICIAL` trazable (sin inferir históricos), reporte de pérdidas con costo histórico, categorías jerárquicas (hasta 3 niveles en UI, sin ciclos) y etiquetas, productos en tabla con filtros, inventario por categoría, dashboard de cuatro accesos sin costos para CASHIER, índice `ajustes_stock(fecha)`. Detalle en `docs/ROADMAP.md`.
 
 ## 2. Pendiente / fuera de alcance actual
 
@@ -20,9 +21,9 @@
 - **Backup automático/programado**: no existe; solo el manual desde `/backup` y el preventivo previo a migrar una base existente.
 - **CLI (`interfaces/cli/main.py`)**: interfaz secundaria no sincronizada con los flujos de la web.
 - Anulación de ventas a cuenta corriente: no permitida (decisión de V1.3).
-- El stock cargado al dar de alta un producto no es un movimiento propio: el kardex lo refleja dentro del saldo inicial reconstruido.
+- Productos anteriores a V1.11 no tienen movimiento de stock inicial (no se infiere): su stock de alta sigue dentro del saldo inicial reconstruido del kardex.
 
 ## 3. Estado de tests
 
-- Suite completa (`python -m pytest`): **4253 tests, 0 fallos** al cierre de V1.10 (26 migraciones).
+- Suite completa (`python -m pytest`): **4544 tests, 0 fallos** al cierre de V1.11 (31 migraciones). JS: 33. E2E: 30 desktop + 12 responsive.
 - Cobertura: `db/`, `domain/`, `services/` y rutas de la interfaz web; E2E con Playwright (`npm run test:e2e`, `npm run test:e2e:responsive`) y pruebas JS (`tests_js/`).

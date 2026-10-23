@@ -598,6 +598,30 @@ Una migración nueva (026, aditiva; 26 en total), sin dependencias nuevas.
 **Actualizar desde V1.9.** Se crea un backup automático y se aplica la migración 026; los datos quedan
 intactos, las compras existentes quedan sin vencimiento y los saldos de proveedores no cambian.
 
+## Trazabilidad de stock y catálogo (V1.11)
+
+Cinco migraciones nuevas (027–031; 31 en total), sin dependencias nuevas.
+
+- **Motivos de baja** (027): `VENCIMIENTO`, `ROTURA`, `ROBO`, `FALLA_FABRICA` (solo restan);
+  `MERMA`/`PERDIDA`/`OTRO` quedan como historial. Cada ajuste guarda el costo vigente
+  (`costo_unitario_centavos`, `NULL` en los históricos).
+- **Reversas auditables** (028): una por ajuste manual, solo OWNER, con `reversa_de_id`; el
+  inventario (`RECUENTO`) no se revierte.
+- **Stock inicial trazable** (029): un alta con stock registra un movimiento `STOCK_INICIAL` (sin
+  inventar usuario ni costo); los productos históricos no se tocan.
+- **Reporte de pérdidas** `/reportes/perdidas` + CSV: costo histórico, responsable y reversa; las
+  filas sin costo histórico se cuentan aparte y nunca se valorizan.
+- **Categorías jerárquicas y etiquetas** (030): `categorias.categoria_padre_id` sin ciclos (trigger),
+  hasta 3 niveles en la interfaz, filtros que incluyen subcategorías; etiquetas planas
+  (`etiquetas`, `producto_etiquetas`). Un producto tiene una sola categoría.
+- **Productos en tabla** con filtros (nombre/código, categoría, estado de stock, etiqueta,
+  activos/baja); costo solo OWNER. **Inventario por categoría.** **Dashboard** de cuatro accesos; el
+  CASHIER no recibe costos ni valorizaciones.
+- Índice `ajustes_stock(fecha)` (031). Kardex con "Ajuste de inventario"/"Stock inicial" también en CSV.
+
+**Actualizar desde V1.10.** Se crea un backup automático y se aplican las migraciones 027–031; los
+datos quedan intactos y las categorías existentes quedan como principales.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -621,5 +645,6 @@ intactos, las compras existentes quedan sin vencimiento y los saldos de proveedo
 - [x] Compras paginadas y filtrables, historial por producto, exportaciones CSV operativas y protección contra inyección de fórmulas (V1.8, ver «Compras operativas, exportaciones y seguridad (V1.8)»)
 - [x] Cuentas a pagar a proveedores: compras CONTADO/CREDITO, saldo, anulación con reversa y pagos en efectivo/transferencia (V1.9, ver «Cuentas a pagar a proveedores (V1.9)»)
 - [x] Vencimientos de compras a crédito, deuda a proveedores estimada por antigüedad (FIFO), reporte y CSV (V1.10, ver «Vencimientos y deuda a proveedores (V1.10)»)
+- [x] Trazabilidad de stock (motivos, reversas, stock inicial, pérdidas), categorías jerárquicas, etiquetas y dashboard operativo (V1.11, ver «Trazabilidad de stock y catálogo (V1.11)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

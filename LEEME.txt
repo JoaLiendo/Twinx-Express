@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.10.0
+Twinx Express 1.11.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -650,3 +650,58 @@ e) AL ACTUALIZAR DESDE LA VERSION 1.9
    (26): tus datos quedan tal cual. Las compras que ya tenias cargadas
    quedan sin vencimiento (no se inventa ninguna fecha) y los saldos de
    tus proveedores no cambian. Si algo sale mal, segui el punto 7.
+
+
+20) NOVEDADES DE LA VERSION 1.11: TRAZABILIDAD DE STOCK Y CATALOGO
+----------------------------------------------------------------------------------
+
+a) MOTIVOS DE BAJA Y COSTO DE LA PERDIDA
+   Al dar de baja mercaderia elegis el motivo: Vencimiento, Rotura, Robo
+   o Falla de fabrica. Cada baja guarda el costo que tenia el producto en
+   ese momento.
+
+b) CORREGIR UNA BAJA MAL CARGADA (solo el dueño)
+   Desde los ajustes de un producto podes "Revertir" una baja: queda
+   registrada como reversa, con quien la hizo y por que. La baja original
+   no se borra.
+
+c) STOCK INICIAL
+   Cuando das de alta un producto con stock, ese stock queda como un
+   movimiento "Stock inicial" en los movimientos del producto. Los
+   productos que ya tenias no cambian: no se inventa ningun dato.
+
+d) REPORTE DE PERDIDAS (solo el dueño)
+   En Reportes > Perdidas ves las bajas por fecha, producto y motivo, con
+   su costo y el total perdido. Las bajas viejas sin costo guardado se
+   cuentan aparte y no se valorizan.
+
+e) CATEGORIAS Y SUBCATEGORIAS
+   En Stock > Categorias y etiquetas podes crear una categoria dentro de
+   otra (por ejemplo Alimentos > Panificados > Criollos, hasta 3 niveles).
+   Al filtrar por una categoria tambien ves los productos de sus
+   subcategorias.
+
+f) ETIQUETAS
+   Marcas libres como "Frio", "Sin TACC" u "Oferta". Se crean en la misma
+   pantalla y se asignan al cargar o editar un producto. Un producto
+   puede tener varias.
+
+g) LISTADO DE PRODUCTOS EN TABLA
+   Stock se ve ahora como tabla, con busqueda por nombre o codigo y
+   filtros por categoria, stock (critico, sin stock, con stock), etiqueta
+   y productos dados de baja. El costo solo lo ve el dueño.
+
+h) INVENTARIO POR CATEGORIA
+   Al iniciar un inventario podes elegir una categoria (con o sin sus
+   subcategorias), ademas de todos los productos o una seleccion manual.
+
+i) PANTALLA DE INICIO
+   Cuatro accesos directos: Iniciar venta, Consultar producto, Ingreso de
+   mercaderia (el cajero ve Caja) y Actividad. El dueño ve ademas el stock
+   valorizado a costo y las perdidas de los ultimos 7 dias; el cajero no
+   ve costos.
+
+j) AL ACTUALIZAR DESDE LA VERSION 1.10
+   KioscoApp crea automaticamente un backup y aplica 5 migraciones nuevas
+   (27 a 31): tus datos quedan tal cual. Las categorias que ya tenias
+   quedan como categorias principales. Si algo sale mal, segui el punto 7.
