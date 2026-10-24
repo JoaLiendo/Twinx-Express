@@ -160,6 +160,10 @@ class NombreProveedorDuplicadoError(ErrorAplicacion):
     """Ya existe un proveedor registrado con ese nombre."""
 
 
+class CuitProveedorDuplicadoError(ErrorAplicacion):
+    """Ya existe un proveedor (activo o dado de baja) con ese CUIT (V1.13-A)."""
+
+
 class ProveedorNoEncontradoError(ErrorAplicacion):
     """No existe un proveedor con el id solicitado."""
 

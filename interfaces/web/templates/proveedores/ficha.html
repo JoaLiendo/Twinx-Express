@@ -40,6 +40,33 @@
       {% if proveedor.notas %}
         <div class="sm:col-span-2"><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Notas</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.notas }}</dd></div>
       {% endif %}
+      <div class="sm:col-span-2" id="categorias-proveedor"><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Categorías</dt>
+        <dd class="mt-1">
+          {% if ficha.categorias %}
+            <ul class="flex flex-wrap gap-1.5">
+              {% for categoria in ficha.categorias %}
+                <li class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  <a href="/proveedores?categoria_id={{ categoria.id }}" class="hover:text-primary">{{ categoria.ruta }}</a>
+                  {% if not categoria.activa %}<span class="text-slate-400">(dada de baja)</span>{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <span class="text-slate-500 dark:text-slate-400">Sin clasificar</span>
+          {% endif %}
+        </dd>
+      </div>
+    </dl>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900" id="datos-fiscales">
+    <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">Datos fiscales</h2>
+    <dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Razón social</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.razon_social or '—' }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">CUIT</dt><dd id="cuit-proveedor" class="text-slate-800 dark:text-slate-200 tabular-nums">{{ proveedor.cuit_formateado or '—' }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Condición fiscal</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.condicion_fiscal_etiqueta or 'Sin informar' }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Ingresos Brutos</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.ingresos_brutos or '—' }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Convenio Multilateral</dt><dd class="text-slate-800 dark:text-slate-200">{{ 'Sí' if proveedor.convenio_multilateral else 'No informado' }}</dd></div>
     </dl>
   </div>
 

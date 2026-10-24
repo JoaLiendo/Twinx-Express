@@ -1,4 +1,4 @@
-"""Repositorio de acceso a datos de proveedores (Fase 4A).
+"""Repositorio de acceso a datos de proveedores (Fase 4A) y de su clasificación por categorías (V1.13-A).
 
 Contiene únicamente consultas SQL parametrizadas (nunca se concatenan
 strings para construir SQL). No contiene reglas de negocio: la
@@ -8,12 +8,21 @@ llegar acá. Cualquier caso de uso que necesite proveedores pasa por
 """
 
 import sqlite3
+from collections.abc import Iterable
 
 from db.conexion import obtener_conexion
 from domain.proveedor import Proveedor
-from excepciones import NombreProveedorDuplicadoError, ProveedorNoEncontradoError
+from excepciones import (
+    CuitProveedorDuplicadoError,
+    DatosInvalidosError,
+    NombreProveedorDuplicadoError,
+    ProveedorNoEncontradoError,
+)
 
-_COLUMNAS = "id, nombre, contacto_nombre, telefono, email, direccion, notas, activo, fecha_creacion"
+_COLUMNAS = (
+    "id, nombre, contacto_nombre, telefono, email, direccion, notas, activo, fecha_creacion,"
+    " razon_social, cuit, condicion_fiscal, ingresos_brutos, convenio_multilateral"
+)
 
 
 def _fila_a_proveedor(fila: sqlite3.Row) -> Proveedor:
@@ -28,31 +37,57 @@ def _fila_a_proveedor(fila: sqlite3.Row) -> Proveedor:
         notas=fila["notas"],
         activo=bool(fila["activo"]),
         fecha_creacion=fila["fecha_creacion"],
+        razon_social=fila["razon_social"],
+        cuit=fila["cuit"],
+        condicion_fiscal=fila["condicion_fiscal"],
+        ingresos_brutos=fila["ingresos_brutos"],
+        convenio_multilateral=bool(fila["convenio_multilateral"]),
     )
 
 
-def crear_proveedor_en_conexion(conexion: sqlite3.Connection, proveedor: Proveedor) -> Proveedor:
-    """Inserta un nuevo proveedor dentro de la transacción recibida.
-
-    Traduce la violación de UNIQUE sobre `nombre` en `NombreProveedorDuplicadoError`.
-    """
-    consulta = f"""
-        INSERT INTO proveedores (nombre, contacto_nombre, telefono, email, direccion, notas)
-        VALUES (?, ?, ?, ?, ?, ?)
-        RETURNING {_COLUMNAS}
-    """
-    parametros = (
+def _parametros_de_datos(proveedor: Proveedor) -> tuple:
+    return (
         proveedor.nombre,
         proveedor.contacto_nombre,
         proveedor.telefono,
         proveedor.email,
         proveedor.direccion,
         proveedor.notas,
+        proveedor.razon_social,
+        proveedor.cuit,
+        proveedor.condicion_fiscal,
+        proveedor.ingresos_brutos,
+        int(proveedor.convenio_multilateral),
     )
+
+
+def _traducir_integridad(error: sqlite3.IntegrityError, proveedor: Proveedor) -> Exception:
+    """Traduce los UNIQUE de `nombre` y `cuit`; cualquier otra violación (un CHECK que el dominio ya
+    valida) es un dato inválido."""
+    texto = str(error)
+    if "proveedores.cuit" in texto:
+        return CuitProveedorDuplicadoError(f"Ya existe un proveedor con el CUIT {proveedor.cuit_formateado}.")
+    if "proveedores.nombre" in texto:
+        return NombreProveedorDuplicadoError(f"Ya existe un proveedor con el nombre '{proveedor.nombre}'.")
+    return DatosInvalidosError("Los datos del proveedor no son válidos.")
+
+
+def crear_proveedor_en_conexion(conexion: sqlite3.Connection, proveedor: Proveedor) -> Proveedor:
+    """Inserta un nuevo proveedor dentro de la transacción recibida.
+
+    Traduce la violación de UNIQUE sobre `nombre` en `NombreProveedorDuplicadoError` y sobre `cuit` en
+    `CuitProveedorDuplicadoError`.
+    """
+    consulta = f"""
+        INSERT INTO proveedores (nombre, contacto_nombre, telefono, email, direccion, notas,
+                                 razon_social, cuit, condicion_fiscal, ingresos_brutos, convenio_multilateral)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING {_COLUMNAS}
+    """
     try:
-        fila = conexion.execute(consulta, parametros).fetchone()
+        fila = conexion.execute(consulta, _parametros_de_datos(proveedor)).fetchone()
     except sqlite3.IntegrityError as error:
-        raise NombreProveedorDuplicadoError(f"Ya existe un proveedor con el nombre '{proveedor.nombre}'.") from error
+        raise _traducir_integridad(error, proveedor) from error
     return _fila_a_proveedor(fila)
 
 
@@ -122,19 +157,34 @@ def _escapar_comodines_like(texto: str) -> str:
     return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def buscar(texto: str, incluir_inactivos: bool = False) -> list[Proveedor]:
-    """Proveedores cuyo nombre, contacto, teléfono o email contienen `texto` (sin distinguir
-    mayúsculas), ordenados por nombre. Los comodines LIKE se buscan como texto literal."""
-    patron = f"%{_escapar_comodines_like(texto.strip())}%"
-    condicion_activo = "" if incluir_inactivos else "activo = 1 AND "
-    consulta = f"""
-        SELECT {_COLUMNAS} FROM proveedores
-        WHERE {condicion_activo}(nombre LIKE ? ESCAPE '\\' OR contacto_nombre LIKE ? ESCAPE '\\'
-                                 OR telefono LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
-        ORDER BY nombre
-    """
+def buscar(
+    texto: str, incluir_inactivos: bool = False, categoria_ids: Iterable[int] | None = None
+) -> list[Proveedor]:
+    """Proveedores cuyo nombre, razón social, contacto, teléfono, email o CUIT contienen `texto` (sin
+    distinguir mayúsculas; el CUIT se compara sin guiones), ordenados por nombre. Con `categoria_ids`,
+    solo los clasificados en alguna de esas categorías. Los comodines LIKE se buscan como texto literal."""
+    condiciones = [] if incluir_inactivos else ["activo = 1"]
+    parametros: list[object] = []
+    texto = texto.strip()
+    if texto:
+        patron = f"%{_escapar_comodines_like(texto)}%"
+        digitos = "".join(caracter for caracter in texto if caracter.isdigit())
+        condiciones.append(
+            "(nombre LIKE ? ESCAPE '\\' OR razon_social LIKE ? ESCAPE '\\' OR contacto_nombre LIKE ? ESCAPE '\\'"
+            " OR telefono LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR (? <> '' AND cuit LIKE ?))"
+        )
+        parametros += [patron] * 5 + [digitos, f"%{digitos}%"]
+    if categoria_ids is not None:
+        ids = sorted(set(categoria_ids))
+        marcadores = ", ".join("?" for _ in ids) or "NULL"
+        condiciones.append(
+            f"id IN (SELECT proveedor_id FROM proveedor_categorias WHERE categoria_id IN ({marcadores}))"
+        )
+        parametros += ids
+    donde = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    consulta = f"SELECT {_COLUMNAS} FROM proveedores {donde} ORDER BY nombre"
     with obtener_conexion() as conexion:
-        filas = conexion.execute(consulta, (patron, patron, patron, patron)).fetchall()
+        filas = conexion.execute(consulta, parametros).fetchall()
     return [_fila_a_proveedor(fila) for fila in filas]
 
 
@@ -145,23 +195,15 @@ def actualizar_datos_en_conexion(conexion: sqlite3.Connection, proveedor: Provee
 
     consulta = f"""
         UPDATE proveedores
-        SET nombre = ?, contacto_nombre = ?, telefono = ?, email = ?, direccion = ?, notas = ?
+        SET nombre = ?, contacto_nombre = ?, telefono = ?, email = ?, direccion = ?, notas = ?,
+            razon_social = ?, cuit = ?, condicion_fiscal = ?, ingresos_brutos = ?, convenio_multilateral = ?
         WHERE id = ?
         RETURNING {_COLUMNAS}
     """
-    parametros = (
-        proveedor.nombre,
-        proveedor.contacto_nombre,
-        proveedor.telefono,
-        proveedor.email,
-        proveedor.direccion,
-        proveedor.notas,
-        proveedor.id,
-    )
     try:
-        fila = conexion.execute(consulta, parametros).fetchone()
+        fila = conexion.execute(consulta, (*_parametros_de_datos(proveedor), proveedor.id)).fetchone()
     except sqlite3.IntegrityError as error:
-        raise NombreProveedorDuplicadoError(f"Ya existe un proveedor con el nombre '{proveedor.nombre}'.") from error
+        raise _traducir_integridad(error, proveedor) from error
 
     if fila is None:
         raise ProveedorNoEncontradoError(f"No existe un proveedor con id {proveedor.id}.")
@@ -178,9 +220,11 @@ def eliminar_proveedor_en_conexion(conexion: sqlite3.Connection, proveedor_id: i
     """Da de baja un proveedor activo dentro de la transacción recibida. Devuelve `True` si la
     baja fue lógica.
 
-    Intenta primero un `DELETE` físico. Si el proveedor tiene compras o productos vinculados, la
-    FK `ON DELETE RESTRICT` lo impide (`sqlite3.IntegrityError`; el `DELETE` fallido no deja ningún
-    efecto) y se lo desactiva (mismo patrón que `db.repositorios.productos.eliminar_producto_en_conexion`).
+    Intenta primero un `DELETE` físico. Si el proveedor tiene compras, productos vinculados o, desde
+    V1.13, evaluaciones, reclamos o documentos, la FK `ON DELETE RESTRICT` lo impide
+    (`sqlite3.IntegrityError`; el `DELETE` fallido no deja ningún efecto) y se lo desactiva (mismo patrón
+    que `db.repositorios.productos.eliminar_producto_en_conexion`). Su clasificación por categorías no es
+    historia: se borra en cascada con él.
     """
     try:
         cursor = conexion.execute("DELETE FROM proveedores WHERE id = ? AND activo = 1", (proveedor_id,))
@@ -220,3 +264,46 @@ def reactivar_proveedor(proveedor_id: int) -> Proveedor:
     """Reactiva un proveedor dado de baja lógica en su propia transacción."""
     with obtener_conexion() as conexion:
         return reactivar_proveedor_en_conexion(conexion, proveedor_id)
+
+
+# --- clasificación por categorías (V1.13-A) --------------------------------------------------------
+
+
+def ids_categorias_en_conexion(conexion: sqlite3.Connection, proveedor_id: int) -> set[int]:
+    filas = conexion.execute(
+        "SELECT categoria_id FROM proveedor_categorias WHERE proveedor_id = ?", (proveedor_id,)
+    ).fetchall()
+    return {fila["categoria_id"] for fila in filas}
+
+
+def reemplazar_categorias_en_conexion(
+    conexion: sqlite3.Connection, proveedor_id: int, agregar: Iterable[int], quitar: Iterable[int]
+) -> None:
+    """Agrega y quita vínculos proveedor-categoría. Nunca toca las categorías en sí."""
+    conexion.executemany(
+        "DELETE FROM proveedor_categorias WHERE proveedor_id = ? AND categoria_id = ?",
+        [(proveedor_id, categoria_id) for categoria_id in quitar],
+    )
+    conexion.executemany(
+        "INSERT INTO proveedor_categorias (proveedor_id, categoria_id) VALUES (?, ?)",
+        [(proveedor_id, categoria_id) for categoria_id in agregar],
+    )
+
+
+def categorias_por_proveedor(proveedor_ids: Iterable[int] | None = None) -> dict[int, list[int]]:
+    """Ids de categoría de cada proveedor (todos, o solo los indicados), en una única consulta."""
+    if proveedor_ids is None:
+        consulta, parametros = "SELECT proveedor_id, categoria_id FROM proveedor_categorias", []
+    else:
+        ids = sorted(set(proveedor_ids))
+        if not ids:
+            return {}
+        marcadores = ", ".join("?" for _ in ids)
+        consulta = f"SELECT proveedor_id, categoria_id FROM proveedor_categorias WHERE proveedor_id IN ({marcadores})"
+        parametros = ids
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(consulta, parametros).fetchall()
+    resultado: dict[int, list[int]] = {}
+    for fila in filas:
+        resultado.setdefault(fila["proveedor_id"], []).append(fila["categoria_id"])
+    return resultado

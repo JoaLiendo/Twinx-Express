@@ -13,31 +13,60 @@ la restricción se declara una sola vez a nivel de router.
 from fastapi import APIRouter, Depends, Form, Request
 
 from domain.dinero import texto_a_centavos
+from domain.proveedor import CONDICIONES_FISCALES
 from domain.usuario import Usuario
 from excepciones import ProveedorNoEncontradoError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
+from interfaces.web.utilidades import (
+    contexto_base,
+    entero_opcional,
+    nueva_clave_idempotencia,
+    redireccionar_con_mensaje,
+)
 from services import servicio_caja, servicio_deuda_proveedores, servicio_pagos_proveedor, servicio_proveedores, servicio_stock
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
 
 @router.get("/proveedores")
-def listar_proveedores(request: Request, mostrar_inactivos: bool = False, q: str = ""):
-    proveedores = servicio_proveedores.buscar_proveedores(q, incluir_inactivos=mostrar_inactivos)
+def listar_proveedores(request: Request, mostrar_inactivos: bool = False, q: str = "", categoria_id: str = ""):
+    id_categoria = entero_opcional(categoria_id, "La categoría elegida no es válida.")
     contexto = {
         **contexto_base(request),
-        "proveedores": proveedores,
+        "resumenes": servicio_proveedores.listar_resumen(q, mostrar_inactivos, id_categoria),
         "mostrar_inactivos": mostrar_inactivos,
         "q": q,
+        "categoria_id": id_categoria,
+        "opciones_categorias": servicio_proveedores.opciones_de_clasificacion(),
     }
     return templates.TemplateResponse(request, "proveedores/lista.html", contexto)
 
 
+def _contexto_formulario(request: Request, categorias_elegidas: set[int]) -> dict:
+    return {
+        **contexto_base(request),
+        "opciones_categorias": servicio_proveedores.opciones_de_clasificacion(categorias_elegidas),
+        "categorias_elegidas": categorias_elegidas,
+        "condiciones_fiscales": CONDICIONES_FISCALES,
+    }
+
+
+def _datos_fiscales(
+    razon_social: str, cuit: str, condicion_fiscal: str, ingresos_brutos: str, convenio_multilateral: str
+) -> servicio_proveedores.DatosFiscales:
+    return servicio_proveedores.DatosFiscales(
+        razon_social=razon_social,
+        cuit=cuit,
+        condicion_fiscal=condicion_fiscal,
+        ingresos_brutos=ingresos_brutos,
+        convenio_multilateral=bool(convenio_multilateral),
+    )
+
+
 @router.get("/proveedores/nuevo")
 def formulario_nuevo_proveedor(request: Request):
-    return templates.TemplateResponse(request, "proveedores/nuevo.html", contexto_base(request))
+    return templates.TemplateResponse(request, "proveedores/nuevo.html", _contexto_formulario(request, set()))
 
 
 @router.post("/proveedores/nuevo")
@@ -48,6 +77,12 @@ def crear_proveedor(
     email: str = Form(""),
     direccion: str = Form(""),
     notas: str = Form(""),
+    razon_social: str = Form(""),
+    cuit: str = Form(""),
+    condicion_fiscal: str = Form(""),
+    ingresos_brutos: str = Form(""),
+    convenio_multilateral: str = Form(""),
+    categoria_id: list[int] = Form([]),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     proveedor = servicio_proveedores.crear_proveedor(
@@ -58,6 +93,8 @@ def crear_proveedor(
         direccion=direccion,
         notas=notas,
         usuario_id=usuario_actual.id,
+        fiscales=_datos_fiscales(razon_social, cuit, condicion_fiscal, ingresos_brutos, convenio_multilateral),
+        categoria_ids=categoria_id,
     )
     return redireccionar_con_mensaje(
         "/proveedores", "success", f"Proveedor '{proveedor.nombre}' creado correctamente."
@@ -70,7 +107,10 @@ def formulario_editar_proveedor(request: Request, proveedor_id: int):
     if proveedor is None:
         return redireccionar_con_mensaje("/proveedores", "error", "El proveedor no existe.")
 
-    contexto = {**contexto_base(request), "proveedor": proveedor}
+    contexto = {
+        **_contexto_formulario(request, servicio_proveedores.ids_categorias(proveedor_id)),
+        "proveedor": proveedor,
+    }
     return templates.TemplateResponse(request, "proveedores/editar.html", contexto)
 
 
@@ -83,6 +123,12 @@ def editar_proveedor(
     email: str = Form(""),
     direccion: str = Form(""),
     notas: str = Form(""),
+    razon_social: str = Form(""),
+    cuit: str = Form(""),
+    condicion_fiscal: str = Form(""),
+    ingresos_brutos: str = Form(""),
+    convenio_multilateral: str = Form(""),
+    categoria_id: list[int] = Form([]),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     proveedor = servicio_proveedores.actualizar_proveedor(
@@ -94,6 +140,8 @@ def editar_proveedor(
         direccion=direccion,
         notas=notas,
         usuario_id=usuario_actual.id,
+        fiscales=_datos_fiscales(razon_social, cuit, condicion_fiscal, ingresos_brutos, convenio_multilateral),
+        categoria_ids=categoria_id,
     )
     return redireccionar_con_mensaje(
         "/proveedores", "success", f"Proveedor '{proveedor.nombre}' actualizado correctamente."

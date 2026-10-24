@@ -1,28 +1,40 @@
-"""Casos de uso de gestión de proveedores (Fase 4A) y de su relación con los productos (V1.4).
+"""Casos de uso de gestión de proveedores (Fase 4A), de su relación con los productos (V1.4) y de su
+clasificación por categorías y datos fiscales (V1.13-A).
 
 Orquesta `domain.proveedor`, `domain.producto_proveedor` y sus repositorios. Las reglas
-son pocas: el nombre no puede repetirse, un proveedor con compras o productos vinculados
-no se borra físicamente (se desactiva) y los vínculos producto-proveedor solo los
-gestiona un OWNER activo. Cuando se informa `usuario_id`, cada operación deja su registro
-de auditoría en la misma transacción que el cambio.
+son pocas: el nombre y el CUIT no pueden repetirse, un proveedor con historia (compras,
+productos vinculados) no se borra físicamente (se desactiva), la clasificación usa el árbol
+de categorías del catálogo y nunca restringe qué se le compra, y los vínculos
+producto-proveedor solo los gestiona un OWNER activo. Cuando se informa `usuario_id`, cada
+operación deja su registro de auditoría en la misma transacción que el cambio.
 """
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
+from db.repositorios import categorias as repositorio_categorias
 from db.repositorios import compras as repositorio_compras
 from db.repositorios import movimientos_proveedor as repositorio_movimientos_proveedor
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import proveedores as repositorio_proveedores
 from db.repositorios import usuarios as repositorio_usuarios
+from domain.categoria import ArbolCategorias, CategoriaEnArbol
 from domain.compra import ResumenCompra
 from domain.deuda_proveedores import CuentaProveedor, cuenta_vacia
 from domain.producto import Producto
 from domain.producto_proveedor import ProductoDeProveedor, VinculoProveedor, normalizar_codigo_proveedor
-from domain.proveedor import MovimientoProveedor, Proveedor
+from domain.proveedor import (
+    CategoriaDeProveedor,
+    MovimientoProveedor,
+    Proveedor,
+    cambios_de_categorias,
+    normalizar_cuit,
+    texto_opcional,
+)
 from domain.usuario import exigir_rol
 from excepciones import (
     ProductoNoEncontradoError,
@@ -30,7 +42,7 @@ from excepciones import (
     VinculoProveedorExistenteError,
     VinculoProveedorNoEncontradoError,
 )
-from services import servicio_deuda_proveedores
+from services import servicio_categorias, servicio_deuda_proveedores
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +67,7 @@ class FichaProveedor:
     proveedor: Proveedor
     productos: list[ProductoDeProveedor]
     compras: list[ResumenCompra]
+    categorias: list[CategoriaDeProveedor] = field(default_factory=list)
     total_compras: int = 0
     saldo_centavos: int = 0
     movimientos: list[MovimientoProveedor] = field(default_factory=list)
@@ -68,6 +81,69 @@ def _auditar(
         repositorio_auditoria.registrar_en_conexion(conexion, usuario_id, accion, entidad, entidad_id, resumen)
 
 
+@dataclass(frozen=True)
+class DatosFiscales:
+    """Datos fiscales declarados del proveedor (V1.13-A), tal como llegan del formulario: el CUIT puede
+    traer guiones y los textos espacios; `_construir_proveedor` los normaliza y valida."""
+
+    razon_social: str | None = None
+    cuit: str | None = None
+    condicion_fiscal: str | None = None
+    ingresos_brutos: str | None = None
+    convenio_multilateral: bool = False
+
+
+@dataclass(frozen=True)
+class ResumenProveedor:
+    """Un proveedor del listado con su clasificación (V1.13-A)."""
+
+    proveedor: Proveedor
+    categorias: list[CategoriaDeProveedor]
+
+
+def _construir_proveedor(
+    nombre: str,
+    contacto_nombre: str | None,
+    telefono: str | None,
+    email: str | None,
+    direccion: str | None,
+    notas: str | None,
+    fiscales: DatosFiscales,
+    proveedor_id: int | None = None,
+) -> Proveedor:
+    return Proveedor(
+        id=proveedor_id,
+        nombre=nombre,
+        contacto_nombre=contacto_nombre or None,
+        telefono=telefono or None,
+        email=email or None,
+        direccion=direccion or None,
+        notas=notas or None,
+        razon_social=texto_opcional(fiscales.razon_social),
+        cuit=normalizar_cuit(fiscales.cuit),
+        condicion_fiscal=texto_opcional(fiscales.condicion_fiscal),
+        ingresos_brutos=texto_opcional(fiscales.ingresos_brutos),
+        convenio_multilateral=fiscales.convenio_multilateral,
+    )
+
+
+def _aplicar_categorias(
+    conexion: ConexionBD, usuario_id: int | None, proveedor: Proveedor, categoria_ids: Iterable[int]
+) -> None:
+    """Deja al proveedor clasificado exactamente en `categoria_ids` y audita el cambio, si lo hubo."""
+    arbol = ArbolCategorias(repositorio_categorias.listar_todas_en_conexion(conexion))
+    actuales = repositorio_proveedores.ids_categorias_en_conexion(conexion, proveedor.id)
+    agregar, quitar = cambios_de_categorias(categoria_ids, actuales, arbol)
+    if not agregar and not quitar:
+        return
+    repositorio_proveedores.reemplazar_categorias_en_conexion(conexion, proveedor.id, agregar, quitar)
+    finales = sorted(arbol.ruta(categoria_id) for categoria_id in (actuales | agregar) - quitar)
+    _auditar(
+        conexion, usuario_id, "PROVEEDOR_CATEGORIAS_CAMBIADAS", "PROVEEDOR", proveedor.id,
+        f"{proveedor.nombre}: categorías {', '.join(finales) or '(ninguna)'}",
+    )
+
+
 def crear_proveedor(
     nombre: str,
     contacto_nombre: str | None = None,
@@ -76,27 +152,25 @@ def crear_proveedor(
     direccion: str | None = None,
     notas: str | None = None,
     usuario_id: int | None = None,
+    fiscales: DatosFiscales = DatosFiscales(),
+    categoria_ids: Iterable[int] = (),
 ) -> Proveedor:
-    """Da de alta un nuevo proveedor.
+    """Da de alta un nuevo proveedor, con sus datos fiscales y su clasificación por categorías.
 
     Raises:
-        DatosInvalidosError: si el nombre está vacío.
+        DatosInvalidosError: si el nombre está vacío, un dato fiscal es inválido (CUIT mal formado,
+            condición inexistente) o una categoría elegida no existe o está dada de baja.
         NombreProveedorDuplicadoError: si ya existe un proveedor con ese nombre.
+        CuitProveedorDuplicadoError: si ya existe un proveedor con ese CUIT.
     """
-    proveedor = Proveedor(
-        nombre=nombre,
-        contacto_nombre=contacto_nombre or None,
-        telefono=telefono or None,
-        email=email or None,
-        direccion=direccion or None,
-        notas=notas or None,
-    )
+    proveedor = _construir_proveedor(nombre, contacto_nombre, telefono, email, direccion, notas, fiscales)
     with obtener_conexion(inmediata=True) as conexion:
         proveedor_creado = repositorio_proveedores.crear_proveedor_en_conexion(conexion, proveedor)
         _auditar(
             conexion, usuario_id, "PROVEEDOR_CREADO", "PROVEEDOR", proveedor_creado.id,
             f"Proveedor creado: {proveedor_creado.nombre}",
         )
+        _aplicar_categorias(conexion, usuario_id, proveedor_creado, categoria_ids)
     logger.info("Proveedor creado: %s (id=%s)", proveedor_creado.nombre, proveedor_creado.id)
     return proveedor_creado
 
@@ -116,12 +190,54 @@ def listar_todos() -> list[Proveedor]:
     return repositorio_proveedores.listar_todos()
 
 
-def buscar_proveedores(texto: str, incluir_inactivos: bool = False) -> list[Proveedor]:
-    """Proveedores cuyo nombre, contacto, teléfono o email contienen `texto`. Un texto vacío
-    devuelve el listado normal (activos, o todos con `incluir_inactivos`)."""
-    if not texto.strip():
-        return listar_todos() if incluir_inactivos else listar_activos()
-    return repositorio_proveedores.buscar(texto, incluir_inactivos)
+def buscar_proveedores(
+    texto: str, incluir_inactivos: bool = False, categoria_id: int | None = None
+) -> list[Proveedor]:
+    """Proveedores cuyo nombre, razón social, contacto, teléfono, email o CUIT contienen `texto` (vacío =
+    todos los activos, o todos con `incluir_inactivos`). Con `categoria_id`, solo los clasificados en esa
+    categoría o en alguna de sus subcategorías (mismo criterio que el filtro de productos)."""
+    categoria_ids = None
+    if categoria_id is not None:
+        categoria_ids = servicio_categorias.obtener_arbol().ids_con_descendientes(categoria_id)
+    return repositorio_proveedores.buscar(texto, incluir_inactivos, categoria_ids)
+
+
+def _categorias_de(ids: Iterable[int], arbol: ArbolCategorias) -> list[CategoriaDeProveedor]:
+    categorias = [arbol.obtener(categoria_id) for categoria_id in ids]
+    return sorted(
+        (
+            CategoriaDeProveedor(c.id, c.nombre, arbol.ruta(c.id), c.activa)
+            for c in categorias
+            if c is not None
+        ),
+        key=lambda c: c.ruta.casefold(),
+    )
+
+
+def opciones_de_clasificacion(elegidas: Iterable[int] = ()) -> list[CategoriaEnArbol]:
+    """Categorías que ofrece el formulario del proveedor, en orden de árbol: todas las activas y, además,
+    las dadas de baja que ya lo clasificaban (para que editarlo no las quite sin que nadie lo pida)."""
+    arbol = servicio_categorias.obtener_arbol()
+    elegidas_set = set(elegidas)
+    return [
+        opcion
+        for opcion in arbol.en_orden()
+        if opcion.categoria.id in elegidas_set or all(c.activa for c in arbol.ancestros(opcion.categoria.id))
+    ]
+
+
+def ids_categorias(proveedor_id: int) -> set[int]:
+    return set(repositorio_proveedores.categorias_por_proveedor([proveedor_id]).get(proveedor_id, []))
+
+
+def listar_resumen(
+    texto: str = "", incluir_inactivos: bool = False, categoria_id: int | None = None
+) -> list[ResumenProveedor]:
+    """Listado de proveedores (mismos filtros que `buscar_proveedores`) con su clasificación."""
+    proveedores = buscar_proveedores(texto, incluir_inactivos, categoria_id)
+    arbol = servicio_categorias.obtener_arbol()
+    por_proveedor = repositorio_proveedores.categorias_por_proveedor(p.id for p in proveedores)
+    return [ResumenProveedor(p, _categorias_de(por_proveedor.get(p.id, []), arbol)) for p in proveedores]
 
 
 def obtener_ficha(proveedor_id: int) -> FichaProveedor:
@@ -134,8 +250,10 @@ def obtener_ficha(proveedor_id: int) -> FichaProveedor:
     if proveedor is None:
         raise ProveedorNoEncontradoError(f"No existe un proveedor con id {proveedor_id}.")
     cuenta = servicio_deuda_proveedores.generar_cuenta_proveedor(proveedor_id)
+    categoria_ids = repositorio_proveedores.categorias_por_proveedor([proveedor_id]).get(proveedor_id, [])
     return FichaProveedor(
         proveedor=proveedor,
+        categorias=_categorias_de(categoria_ids, servicio_categorias.obtener_arbol()),
         productos=repositorio_producto_proveedor.listar_por_proveedor(proveedor_id),
         compras=repositorio_compras.listar_resumen(proveedor_id, limite=COMPRAS_EN_FICHA),
         total_compras=repositorio_compras.contar_resumen(proveedor_id),
@@ -154,22 +272,21 @@ def actualizar_proveedor(
     direccion: str | None = None,
     notas: str | None = None,
     usuario_id: int | None = None,
+    fiscales: DatosFiscales = DatosFiscales(),
+    categoria_ids: Iterable[int] | None = None,
 ) -> Proveedor:
-    """Actualiza los datos editables de un proveedor existente.
+    """Actualiza los datos editables de un proveedor existente y, si se indica `categoria_ids`, deja su
+    clasificación exactamente en esas categorías (`None` = no la toca).
 
     Raises:
         ProveedorNoEncontradoError: si no existe un proveedor activo con ese id.
-        DatosInvalidosError: si el nombre está vacío.
+        DatosInvalidosError: si el nombre está vacío, un dato fiscal es inválido o una categoría nueva
+            no existe o está dada de baja.
         NombreProveedorDuplicadoError: si el nombre ya pertenece a otro proveedor.
+        CuitProveedorDuplicadoError: si el CUIT ya pertenece a otro proveedor.
     """
-    proveedor_actualizado = Proveedor(
-        id=proveedor_id,
-        nombre=nombre,
-        contacto_nombre=contacto_nombre or None,
-        telefono=telefono or None,
-        email=email or None,
-        direccion=direccion or None,
-        notas=notas or None,
+    proveedor_actualizado = _construir_proveedor(
+        nombre, contacto_nombre, telefono, email, direccion, notas, fiscales, proveedor_id=proveedor_id
     )
     with obtener_conexion(inmediata=True) as conexion:
         resultado = repositorio_proveedores.actualizar_datos_en_conexion(conexion, proveedor_actualizado)
@@ -177,6 +294,8 @@ def actualizar_proveedor(
             conexion, usuario_id, "PROVEEDOR_EDITADO", "PROVEEDOR", resultado.id,
             f"Proveedor editado: {resultado.nombre}",
         )
+        if categoria_ids is not None:
+            _aplicar_categorias(conexion, usuario_id, resultado, categoria_ids)
     logger.info("Proveedor actualizado: %s (id=%s)", resultado.nombre, resultado.id)
     return resultado
 

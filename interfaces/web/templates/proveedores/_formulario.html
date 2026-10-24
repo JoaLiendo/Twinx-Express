@@ -1,0 +1,100 @@
+{# Alta y edición de proveedor. `proveedor` es None en el alta; `opciones_categorias` es el árbol activo
+   (más las categorías dadas de baja que ya lo clasificaban) y `categorias_elegidas` el set marcado. #}
+{% set clase_campo = "w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" %}
+{% set clase_label = "block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" %}
+<form method="post" action="{{ accion }}" class="space-y-5" id="form-proveedor">
+
+  <div>
+    <label for="nombre" class="{{ clase_label }}">Nombre comercial</label>
+    <input type="text" name="nombre" id="nombre" required autofocus value="{{ proveedor.nombre if proveedor else '' }}" class="{{ clase_campo }}" />
+  </div>
+
+  <div>
+    <label for="contacto_nombre" class="{{ clase_label }}">Persona de contacto</label>
+    <input type="text" name="contacto_nombre" id="contacto_nombre" value="{{ (proveedor.contacto_nombre or '') if proveedor else '' }}" class="{{ clase_campo }}" />
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div>
+      <label for="telefono" class="{{ clase_label }}">Teléfono</label>
+      <input type="text" name="telefono" id="telefono" value="{{ (proveedor.telefono or '') if proveedor else '' }}" class="{{ clase_campo }}" />
+    </div>
+    <div>
+      <label for="email" class="{{ clase_label }}">Email</label>
+      <input type="email" name="email" id="email" value="{{ (proveedor.email or '') if proveedor else '' }}" class="{{ clase_campo }}" />
+    </div>
+  </div>
+
+  <div>
+    <label for="direccion" class="{{ clase_label }}">Dirección</label>
+    <input type="text" name="direccion" id="direccion" value="{{ (proveedor.direccion or '') if proveedor else '' }}" class="{{ clase_campo }}" />
+  </div>
+
+  <div>
+    <label for="notas" class="{{ clase_label }}">Notas</label>
+    <textarea name="notas" id="notas" rows="3" class="{{ clase_campo }}">{{ (proveedor.notas or '') if proveedor else '' }}</textarea>
+  </div>
+
+  <fieldset id="campos-categorias" class="space-y-2">
+    <legend class="{{ clase_label }}">Categorías que provee <span class="font-normal text-slate-400">(opcional, varias)</span></legend>
+    {% if opciones_categorias %}
+      <div class="max-h-60 overflow-y-auto rounded-lg border border-slate-200 p-3 space-y-1 dark:border-slate-700">
+        {% for opcion in opciones_categorias %}
+          <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer" style="padding-left: {{ (opcion.nivel - 1) * 1.25 }}rem">
+            <input type="checkbox" name="categoria_id" value="{{ opcion.categoria.id }}" class="accent-primary"
+                   {{ 'checked' if opcion.categoria.id in categorias_elegidas else '' }} />
+            {{ opcion.categoria.nombre }}
+            {% if not opcion.categoria.activa %}<span class="text-xs text-slate-400">(dada de baja)</span>{% endif %}
+          </label>
+        {% endfor %}
+      </div>
+      <p class="text-xs text-slate-500 dark:text-slate-400">Sirve para buscar y organizar: no limita qué productos se le pueden comprar.</p>
+    {% else %}
+      <p class="text-sm text-slate-500 dark:text-slate-400">Todavía no hay categorías. Se crean en Stock › Categorías.</p>
+    {% endif %}
+  </fieldset>
+
+  <fieldset id="campos-fiscales" class="space-y-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+    <legend class="px-1 text-sm font-semibold text-slate-800 dark:text-slate-200">Datos fiscales <span class="font-normal text-slate-400">(opcionales)</span></legend>
+    <div>
+      <label for="razon_social" class="{{ clase_label }}">Razón social</label>
+      <input type="text" name="razon_social" id="razon_social" maxlength="150" value="{{ (proveedor.razon_social or '') if proveedor else '' }}" class="{{ clase_campo }}" />
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label for="cuit" class="{{ clase_label }}">CUIT</label>
+        <input type="text" name="cuit" id="cuit" inputmode="numeric" maxlength="13" placeholder="30-71234567-1"
+               value="{{ (proveedor.cuit_formateado or '') if proveedor else '' }}" class="{{ clase_campo }}" />
+      </div>
+      <div>
+        <label for="condicion_fiscal" class="{{ clase_label }}">Condición fiscal</label>
+        <select name="condicion_fiscal" id="condicion_fiscal" class="{{ clase_campo }}">
+          <option value="">Sin informar</option>
+          {% for valor, etiqueta in condiciones_fiscales.items() %}
+            <option value="{{ valor }}" {{ 'selected' if proveedor and proveedor.condicion_fiscal == valor else '' }}>{{ etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:items-end">
+      <div>
+        <label for="ingresos_brutos" class="{{ clase_label }}">Inscripción en Ingresos Brutos</label>
+        <input type="text" name="ingresos_brutos" id="ingresos_brutos" maxlength="30" value="{{ (proveedor.ingresos_brutos or '') if proveedor else '' }}" class="{{ clase_campo }}" />
+      </div>
+      <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer py-2.5">
+        <input type="checkbox" name="convenio_multilateral" value="1" class="accent-primary" {{ 'checked' if proveedor and proveedor.convenio_multilateral else '' }} />
+        Inscripto en Convenio Multilateral
+      </label>
+    </div>
+    <p class="text-xs text-slate-500 dark:text-slate-400">Se guardan tal como los declara el proveedor. El sistema no los valida contra ARCA ni deduce qué puede facturar.</p>
+  </fieldset>
+
+  <div class="flex items-center gap-3 pt-2">
+    <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">
+      {{ texto_boton }}
+    </button>
+    <a href="{{ volver }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+  </div>
+</form>

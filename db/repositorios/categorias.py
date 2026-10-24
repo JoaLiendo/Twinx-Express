@@ -76,9 +76,14 @@ def obtener_por_nombre(nombre: str) -> Categoria | None:
 def listar_todas() -> list[Categoria]:
     """Devuelve todas las categorías (activas e inactivas), ordenadas
     por nombre (para la pantalla de gestión de categorías)."""
-    consulta = f"SELECT {_COLUMNAS} FROM categorias ORDER BY nombre"
     with obtener_conexion() as conexion:
-        filas = conexion.execute(consulta).fetchall()
+        return listar_todas_en_conexion(conexion)
+
+
+def listar_todas_en_conexion(conexion: sqlite3.Connection) -> list[Categoria]:
+    """Igual que `listar_todas`, dentro de una transacción ya abierta (clasificar un proveedor valida
+    las categorías en la misma transacción en la que las vincula)."""
+    filas = conexion.execute(f"SELECT {_COLUMNAS} FROM categorias ORDER BY nombre").fetchall()
     return [_fila_a_categoria(fila) for fila in filas]
 
 

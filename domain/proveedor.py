@@ -1,4 +1,5 @@
-"""Entidad Proveedor y reglas de negocio asociadas (Fase 4A), y su cuenta a pagar (V1.9).
+"""Entidad Proveedor y reglas de negocio asociadas (Fase 4A), su cuenta a pagar (V1.9) y, desde V1.13-A, sus
+datos fiscales declarados y su clasificación por categorías del catálogo.
 
 `Proveedor` representa a quien se le compra mercadería, sin depender de cómo se persiste (db/) ni
 de cómo se presenta (interfaces/). Valida sus propios invariantes al construirse, mismo patrón que
@@ -14,11 +15,26 @@ una compra a crédito sin pagos posteriores (V1.9-B). El saldo nunca se guarda: 
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 
+from domain.categoria import ArbolCategorias
 from excepciones import DatosInvalidosError, PagoProveedorInvalidoError
 
 LONGITUD_MAXIMA_OBSERVACION_PAGO = 250
+LONGITUD_MAXIMA_RAZON_SOCIAL = 150
+LONGITUD_MAXIMA_INGRESOS_BRUTOS = 30
+
+# Condición frente al IVA tal como la declara el proveedor (V1.13-A). Es un dato informativo: ninguna
+# regla del sistema deduce de ella qué comprobantes puede emitir (eso es V1.16, fiscal).
+CONDICIONES_FISCALES = {
+    "RESPONSABLE_INSCRIPTO": "Responsable inscripto",
+    "MONOTRIBUTO": "Monotributo",
+    "EXENTO": "Exento",
+    "OTRA": "Otra",
+}
+
+_PESOS_DIGITO_VERIFICADOR_CUIT = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
 
 # Un cobro de cliente (domain.cliente) es siempre en efectivo; un pago a proveedor admite además
 # transferencia, porque el kiosco sí paga a proveedores por ese medio en la práctica (V1.9-C).
@@ -42,10 +58,99 @@ class Proveedor:
     notas: str | None = None
     activo: bool = True
     fecha_creacion: str | None = None
+    razon_social: str | None = None
+    cuit: str | None = None
+    condicion_fiscal: str | None = None
+    ingresos_brutos: str | None = None
+    convenio_multilateral: bool = False
 
     def __post_init__(self) -> None:
         if not self.nombre or not self.nombre.strip():
             raise DatosInvalidosError("El nombre del proveedor no puede estar vacío.")
+        if self.razon_social is not None and len(self.razon_social) > LONGITUD_MAXIMA_RAZON_SOCIAL:
+            raise DatosInvalidosError(
+                f"La razón social no puede superar los {LONGITUD_MAXIMA_RAZON_SOCIAL} caracteres."
+            )
+        if self.cuit is not None and normalizar_cuit(self.cuit) != self.cuit:
+            raise DatosInvalidosError("El CUIT debe guardarse normalizado (11 dígitos, sin guiones).")
+        if self.condicion_fiscal is not None and self.condicion_fiscal not in CONDICIONES_FISCALES:
+            raise DatosInvalidosError(f"Condición fiscal inválida: {self.condicion_fiscal!r}.")
+        if self.ingresos_brutos is not None and len(self.ingresos_brutos) > LONGITUD_MAXIMA_INGRESOS_BRUTOS:
+            raise DatosInvalidosError(
+                f"La inscripción de Ingresos Brutos no puede superar los {LONGITUD_MAXIMA_INGRESOS_BRUTOS} caracteres."
+            )
+
+    @property
+    def cuit_formateado(self) -> str | None:
+        """CUIT legible: "30-71234567-1"."""
+        return f"{self.cuit[:2]}-{self.cuit[2:10]}-{self.cuit[10]}" if self.cuit else None
+
+    @property
+    def condicion_fiscal_etiqueta(self) -> str | None:
+        return CONDICIONES_FISCALES.get(self.condicion_fiscal) if self.condicion_fiscal else None
+
+
+@dataclass(frozen=True)
+class CategoriaDeProveedor:
+    """Una categoría del catálogo que clasifica a un proveedor (V1.13-A), con su ruta en el árbol."""
+
+    id: int
+    nombre: str
+    ruta: str
+    activa: bool
+
+
+def normalizar_cuit(texto: str | None) -> str | None:
+    """CUIT de 11 dígitos sin separadores, o `None` si viene vacío. Acepta guiones, puntos y espacios
+    ("30-71234567-1"). Solo valida el formato y el dígito verificador (módulo 11): un error de tipeo no
+    llega a la base, pero nada de esto afirma que el CUIT exista ni su situación fiscal.
+
+    Raises:
+        DatosInvalidosError: si no son 11 dígitos o el dígito verificador no corresponde.
+    """
+    if texto is None:
+        return None
+    limpio = "".join(caracter for caracter in texto if caracter not in "-. ")
+    if not limpio:
+        return None
+    if len(limpio) != 11 or not limpio.isascii() or not limpio.isdigit():
+        raise DatosInvalidosError("El CUIT debe tener 11 dígitos (por ejemplo 30-71234567-1).")
+    resto = sum(int(digito) * peso for digito, peso in zip(limpio, _PESOS_DIGITO_VERIFICADOR_CUIT)) % 11
+    verificador = 0 if resto == 0 else 11 - resto
+    if verificador == 10 or verificador != int(limpio[10]):
+        raise DatosInvalidosError("El CUIT no es válido: revisá los dígitos (el verificador no coincide).")
+    return limpio
+
+
+def cambios_de_categorias(
+    elegidas: Iterable[int], actuales: Iterable[int], arbol: ArbolCategorias
+) -> tuple[set[int], set[int]]:
+    """`(agregar, quitar)` para dejar al proveedor clasificado exactamente en `elegidas`.
+
+    Una categoría nueva para el proveedor tiene que existir y estar activa; una que ya lo clasificaba se
+    conserva aunque después se haya dado de baja (el vínculo no se pierde por editar otros datos). Elegir
+    una categoría y también una de sus subcategorías es válido: la clasificación es organizativa.
+
+    Raises:
+        DatosInvalidosError: si una categoría nueva no existe o está dada de baja.
+    """
+    elegidas_set, actuales_set = set(elegidas), set(actuales)
+    agregar = elegidas_set - actuales_set
+    for categoria_id in sorted(agregar):
+        categoria = arbol.obtener(categoria_id)
+        if categoria is None:
+            raise DatosInvalidosError("Una de las categorías elegidas no existe.")
+        if not categoria.activa:
+            raise DatosInvalidosError(f"La categoría '{categoria.nombre}' está dada de baja.")
+    return agregar, actuales_set - elegidas_set
+
+
+def texto_opcional(texto: str | None) -> str | None:
+    """Recorta un dato opcional de la ficha; `None` si queda vacío."""
+    if texto is None:
+        return None
+    limpio = texto.strip()
+    return limpio or None
 
 
 @dataclass(frozen=True)
