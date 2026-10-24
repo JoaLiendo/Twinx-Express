@@ -150,7 +150,6 @@ def aplicar_ajuste_en_conexion(
     origen_ingreso: str,
     *,
     reversa_de_id: int | None = None,
-    costo_unitario_centavos: int | None = None,
     partida_elegida_id: int | None = None,
 ) -> None:
     """Refleja un ajuste de stock en las partidas.
@@ -158,8 +157,9 @@ def aplicar_ajuste_en_conexion(
     - Una reversa deshace los movimientos de su ajuste original; si el original es anterior a V1.12 (sin
       movimientos), se trata como un ajuste nuevo del mismo signo.
     - `delta < 0`: consume (partida elegida, única o FEFO).
-    - `delta > 0`: nueva partida de `origen_ingreso` (sin vencimiento: no se conoce), con el costo
-      indicado (el snapshot real del ajuste, o `None`).
+    - `delta > 0` (un RECUENTO, o la reversa de una baja anterior a V1.12): nueva partida de
+      `origen_ingreso` sin vencimiento ni costo. No se sabe de qué existencia eran esas unidades: el
+      snapshot del ajuste es el costo vigente de entonces, no el costo real de una partida.
     """
     if reversa_de_id is not None:
         if revertir_causa_en_conexion(conexion, ajuste_original_id=reversa_de_id, ajuste_reversa_id=ajuste_id):
@@ -168,10 +168,7 @@ def aplicar_ajuste_en_conexion(
     if delta < 0:
         consumir_en_conexion(conexion, producto_id, -delta, ajuste_id=ajuste_id, partida_elegida_id=partida_elegida_id)
     else:
-        registrar_ingreso_en_conexion(
-            conexion, producto_id, origen_ingreso, delta, ajuste_id=ajuste_id,
-            costo_unitario_centavos=costo_unitario_centavos,
-        )
+        registrar_ingreso_en_conexion(conexion, producto_id, origen_ingreso, delta, ajuste_id=ajuste_id)
 
 
 def unidades_vencidas_a_consumir_en_conexion(

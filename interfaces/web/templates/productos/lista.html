@@ -206,7 +206,7 @@
                     <a href="/productos/{{ producto.id }}/movimientos" data-accion="movimientos"
                        class="text-center rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-xs font-semibold px-3 py-1.5
                               dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Movimientos</a>
-                    {% if not mostrar_inactivos and producto.stock_actual > 0 %}
+                    {% if producto.stock_actual > 0 %}
                       <a href="/productos/{{ producto.id }}/vencimientos" data-accion="vencimientos"
                          class="text-center rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-xs font-semibold px-3 py-1.5
                                 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Vencimientos</a>

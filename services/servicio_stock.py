@@ -159,6 +159,11 @@ def obtener_por_id(producto_id: int) -> Producto | None:
     return repositorio_productos.obtener_por_id(producto_id)
 
 
+def obtener_por_id_incluyendo_inactivos(producto_id: int) -> Producto | None:
+    """Busca un producto activo o dado de baja (retirar lo vencido de un producto inactivo)."""
+    return repositorio_productos.obtener_por_id_incluyendo_inactivos(producto_id)
+
+
 def buscar_por_codigo_barras(codigo_barras: str) -> Producto | None:
     """Busca un producto por código de barras exacto (lector USB)."""
     return repositorio_productos.buscar_por_codigo_barras(codigo_barras)
@@ -709,8 +714,8 @@ def aplicar_ajuste_en_conexion(
     ajuste_creado = repositorio_ajustes_stock.registrar_ajuste_en_conexion(
         conexion, ajuste, clave_idempotencia=clave_idempotencia
     )
-    # V1.12: una unidad que aparece en un recuento no trae ningún dato conocido (ni vencimiento ni costo);
-    # la que devuelve una reversa de un ajuste anterior a V1.12 conserva el costo histórico del original.
+    # V1.12: una unidad que aparece en un recuento, o que vuelve por la reversa de una baja anterior a
+    # V1.12, no trae ningún dato conocido (ni vencimiento ni costo real de partida).
     servicio_partidas.aplicar_ajuste_en_conexion(
         conexion,
         producto.id,
@@ -718,7 +723,6 @@ def aplicar_ajuste_en_conexion(
         ajuste_creado.id,
         ORIGEN_RECUENTO if motivo == "RECUENTO" else ORIGEN_AJUSTE,
         reversa_de_id=reversa_de_id,
-        costo_unitario_centavos=None if motivo == "RECUENTO" else costo,
         partida_elegida_id=partida_id,
     )
     servicio_partidas.verificar_conciliacion_en_conexion(conexion, [producto.id])
@@ -766,10 +770,12 @@ def ajustar_stock(
     directamente, sin pasar por esta función). Al ser todos de pérdida, `delta` debe ser negativo.
 
     `partida_id` (V1.12-D): la partida de la que sale la baja, si se conoce; su costo real (o `None`)
-    valoriza la pérdida. Una baja por VENCIMIENTO siempre sale de una partida conocida.
+    valoriza la pérdida. Sin partida elegida, el costo es el de la única partida con disponible, o
+    `None` si hay varias (la asignación FEFO es técnica, no un dato). Una baja por VENCIMIENTO siempre
+    sale de una partida conocida y admite un producto dado de baja.
 
     Raises:
-        ProductoNoEncontradoError: si no existe un producto activo con ese id.
+        ProductoNoEncontradoError: si no existe el producto (activo, salvo en una baja por VENCIMIENTO).
         StockInsuficienteError: si el ajuste dejaría el stock en negativo.
         DatosInvalidosError: si `motivo`/`delta`/`observaciones` son inválidos
             (ver `domain.ajuste_stock.AjusteStock` y `domain.ajuste_stock.validar_motivo_manual`).
@@ -790,28 +796,35 @@ def ajustar_stock(
                     raise ClaveIdempotenciaReutilizadaError(MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS)
                 return existente
 
-        producto = repositorio_productos.obtener_por_id_en_conexion(conexion, producto_id)
+        # Lo vencido de un producto dado de baja también tiene que poder retirarse (si no, su alerta no se
+        # apaga nunca); las demás pérdidas siguen exigiendo un producto activo.
+        if motivo == MOTIVO_VENCIMIENTO:
+            producto = repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos(conexion, producto_id)
+        else:
+            producto = repositorio_productos.obtener_por_id_en_conexion(conexion, producto_id)
         if producto is None:
             raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
 
-        # V1.12-D: si se sabe de qué partida es la baja (elegida, o la única con disponible en una baja por
-        # vencimiento), la pérdida se valoriza con el costo real de ESA partida, o queda sin costo si no se
-        # conoce: nunca se reemplaza por el costo actual. Sin partida conocida (otras pérdidas con varias
-        # partidas), la partida se asigna por FEFO y el costo sigue siendo el vigente (regla de V1.11-A).
-        costo: int | None | object = _COSTO_VIGENTE_DEL_PRODUCTO
+        # V1.12: la pérdida se valoriza con el costo real de la partida de la que sale cuando esa partida se
+        # conoce (elegida, o la única con disponible), o queda sin costo si la partida no lo tiene. Si hay
+        # varias y nadie eligió, la asignación es FEFO (técnica) y el costo queda desconocido: nunca el
+        # costo actual ni el de una partida supuesta.
+        con_disponible = [
+            p for p in repositorio_partidas.listar_de_producto_en_conexion(conexion, producto_id)
+            if p.cantidad_disponible > 0
+        ]
         if partida_id is None and motivo == MOTIVO_VENCIMIENTO:
-            con_disponible = [
-                p for p in repositorio_partidas.listar_de_producto_en_conexion(conexion, producto_id)
-                if p.cantidad_disponible > 0
-            ]
             if len(con_disponible) > 1:
                 raise DatosInvalidosError("El producto tiene varias partidas: elegí cuál venció.")
             partida_id = con_disponible[0].id if con_disponible else None
+        costo: int | None = None
         if partida_id is not None:
             partida = repositorio_partidas.obtener_en_conexion(conexion, partida_id)
             if partida is None or partida.producto_id != producto_id:
                 raise DatosInvalidosError("La partida elegida no corresponde a este producto.")
             costo = partida.costo_unitario_centavos
+        elif len(con_disponible) == 1:
+            costo = con_disponible[0].costo_unitario_centavos
 
         ajuste_creado = aplicar_ajuste_en_conexion(
             conexion, producto, delta, motivo, usuario_id, observaciones, clave_idempotencia,

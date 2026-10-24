@@ -169,6 +169,11 @@ class ProductoMasVendido:
     porción con costo conocido -- nunca se inventa el costo faltante ni
     se trata como cero (ver `services.servicio_reportes` para el
     tratamiento completo de este caso).
+
+    Desde V1.12 ese costo es el de REFERENCIA (vigente al vender), no el
+    costo real de la mercadería vendida: el real sale del libro de partidas
+    (`movimientos_partida` de la línea × costo de cada partida, ver
+    `docs/V1.12_PARTIDAS.md`).
     """
 
     producto_id: int

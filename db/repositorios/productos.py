@@ -464,6 +464,9 @@ _CONSULTAS_DE_MOTIVOS = (
     ("cambios de precio", "SELECT 1 FROM historial_precios WHERE producto_id = ? LIMIT 1"),
     ("proveedores vinculados", "SELECT 1 FROM producto_proveedor WHERE producto_id = ? LIMIT 1"),
     ("inventarios", "SELECT 1 FROM inventario_lineas WHERE producto_id = ? LIMIT 1"),
+    # V1.12: las demás partidas tienen una causa ya listada arriba (compra, venta, ajuste); la heredada no,
+    # y también impide el borrado físico (un producto anterior a V1.12 sin otro historial).
+    ("existencia heredada", "SELECT 1 FROM partidas_stock WHERE producto_id = ? AND origen = 'HEREDADA' LIMIT 1"),
 )
 
 

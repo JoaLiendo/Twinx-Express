@@ -31,9 +31,10 @@
     </div>
   {% endcall %}
   <p class="text-xs text-slate-500 dark:text-slate-400">
-    Ajustes de pérdida entre {{ reporte.fecha_desde }} y {{ reporte.fecha_hasta }}, valorizados con el costo que tenía el producto
-    <strong>al momento de cada ajuste</strong>. Un ajuste revertido se muestra pero no suma. Si el costo histórico es desconocido
-    (ajustes anteriores a la versión 1.11) la fila no se valoriza: se informa aparte. El stock inicial, los ajustes de inventario
+    Ajustes de pérdida entre {{ reporte.fecha_desde }} y {{ reporte.fecha_hasta }}, valorizados con el costo real de la partida
+    de la que salieron (desde la versión 1.12; antes, el costo que tenía el producto <strong>al momento de cada ajuste</strong>).
+    Un ajuste revertido se muestra pero no suma. Si el costo es desconocido (ajustes anteriores a la versión 1.11, existencia
+    heredada, o una baja con varias partidas sin elegir) la fila no se valoriza: se informa aparte. El stock inicial, los ajustes de inventario
     y las reversas no son pérdidas. Solo consulta.
   </p>
 

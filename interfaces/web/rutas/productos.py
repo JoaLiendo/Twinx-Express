@@ -473,8 +473,9 @@ def ajustar_stock(
 
 @router.get("/productos/{producto_id}/vencimientos", dependencies=[_SOLO_OWNER])
 def ver_vencimientos_de_producto(request: Request, producto_id: int):
-    """Partidas con disponible, en orden de salida (FEFO), con su estado; desde acá se retira lo vencido."""
-    producto = servicio_stock.obtener_por_id(producto_id)
+    """Partidas con disponible, en orden de salida (FEFO), con su estado; desde acá se retira lo vencido,
+    también de un producto dado de baja (su alerta de vencido no se apagaría nunca)."""
+    producto = servicio_stock.obtener_por_id_incluyendo_inactivos(producto_id)
     if producto is None:
         return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
     contexto = {

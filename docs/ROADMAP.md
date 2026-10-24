@@ -63,6 +63,12 @@ Diseño e invariantes: `docs/V1.12_PARTIDAS.md`.
   modifica o descarta; el cambio queda en el historial de precios (edición) y en la auditoría
   (`PRECIO_LIQUIDACION_APLICADO`), sin pisar un precio que cambió mientras tanto. Sin migración ni
   dependencias externas.
+- **Auditoría de cierre (1.12.0)**: toda pérdida manual se valoriza con el costo de su partida cuando se
+  conoce (elegida o única) y queda sin costo si hay varias sin elegir (nunca el vigente); la reversa de
+  una baja anterior a V1.12 devuelve una partida sin costo inventado; lo vencido de un producto dado de
+  baja se puede retirar desde su pantalla de vencimientos; un producto con partidas (ej. existencia
+  heredada sin otro historial) se conserva como baja lógica sin borrar su imagen. Semántica de costos y
+  limitaciones aceptadas en `docs/V1.12_PARTIDAS.md`. Sin migración.
 
 ## V1.13 — a definir
 

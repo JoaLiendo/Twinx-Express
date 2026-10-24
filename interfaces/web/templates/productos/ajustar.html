@@ -59,7 +59,7 @@
             <option value="{{ partida.id }}">{{ partida.etiqueta_origen }} · {{ 'vence ' ~ (partida.fecha_vencimiento | fecha_corta) if partida.fecha_vencimiento else 'vencimiento desconocido' }} · {{ partida.cantidad_disponible }} u.{{ ' · VENCIDA' if estado == 'VENCIDO' else '' }}</option>
           {% endfor %}
         </select>
-        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Para una baja por vencimiento hay que elegirla: su costo real es el de la pérdida.</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Para una baja por vencimiento hay que elegirla. El costo de la pérdida es el real de la partida elegida; si no sabés cuál, queda sin costo.</p>
       </div>
       {% endif %}
 
