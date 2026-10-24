@@ -9,8 +9,9 @@
 
   <div class="flex flex-wrap items-center justify-between gap-4 gap-y-3">
     <div class="flex flex-wrap items-center gap-3">
-      <form method="get" action="/proveedores" class="flex items-center gap-2" role="search">
+      <form method="get" action="/proveedores" class="flex flex-wrap items-center gap-2" role="search">
         {% if mostrar_inactivos %}<input type="hidden" name="mostrar_inactivos" value="true" />{% endif %}
+        {% if filtro %}<input type="hidden" name="filtro" value="{{ filtro }}" />{% endif %}
         <input type="search" name="q" value="{{ q }}" placeholder="Buscar por nombre, razón social, CUIT o contacto" aria-label="Buscar proveedores"
                class="w-72 max-w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 placeholder:text-slate-400
                       dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
@@ -28,9 +29,9 @@
                                      dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Buscar</button>
       </form>
       {% if mostrar_inactivos %}
-        <a href="/proveedores?{{ {'q': q, 'categoria_id': categoria_id or ''} | urlencode }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2">Ver proveedores activos</a>
+        <a href="/proveedores?{{ {'q': q, 'categoria_id': categoria_id or '', 'filtro': filtro} | urlencode }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2">Ver proveedores activos</a>
       {% else %}
-        <a href="/proveedores?{{ {'mostrar_inactivos': 'true', 'q': q, 'categoria_id': categoria_id or ''} | urlencode }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2">Ver dados de baja</a>
+        <a href="/proveedores?{{ {'mostrar_inactivos': 'true', 'q': q, 'categoria_id': categoria_id or '', 'filtro': filtro} | urlencode }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2">Ver dados de baja</a>
       {% endif %}
     </div>
     <a href="/proveedores/nuevo" class="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
@@ -38,6 +39,17 @@
       Nuevo proveedor
     </a>
   </div>
+
+  {# Atajos del resumen OWNER: cada uno mira una sola dimensión (calificación, reclamos o deuda). #}
+  <nav aria-label="Filtrar proveedores" id="filtros-proveedores" class="flex flex-wrap gap-2 text-sm">
+    {% for valor, etiqueta in filtros.items() %}
+      {% set parametros = {'q': q, 'categoria_id': categoria_id or '', 'filtro': valor} %}
+      {% if mostrar_inactivos %}{% set _ = parametros.update({'mostrar_inactivos': 'true'}) %}{% endif %}
+      <a href="/proveedores?{{ parametros | urlencode }}"
+         {{ 'aria-current="true"' | safe if filtro == valor else '' }} data-filtro="{{ valor }}"
+         class="rounded-full border px-3 py-1 font-medium {{ 'border-primary bg-primary/10 text-primary' if filtro == valor else 'border-slate-200 text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300' }}">{{ etiqueta }}</a>
+    {% endfor %}
+  </nav>
 
   {% if mostrar_inactivos %}
     <div class="inline-flex items-center gap-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 text-sm font-medium px-3.5 py-2
@@ -58,7 +70,7 @@
               {% if proveedor.contacto_nombre %}
                 <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{{ proveedor.contacto_nombre }}</p>
               {% endif %}
-              <div class="mt-1 flex items-center gap-2 text-xs" data-calificacion="{{ resumen.calificacion or '' }}">
+              <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs" data-calificacion="{{ resumen.calificacion or '' }}">
                 {% if resumen.calificacion %}
                   {{ ui.estrellas(resumen.calificacion) }}
                   {% if resumen.requiere_advertencia %}<span class="font-semibold text-error">Baja calificación</span>{% endif %}
@@ -69,6 +81,12 @@
                   <span data-reclamos-abiertos="{{ resumen.reclamos_abiertos }}" class="font-medium text-warning">· {{ resumen.reclamos_abiertos }} reclamo(s) abierto(s)</span>
                 {% endif %}
               </div>
+              {% if resumen.deuda %}
+                <p class="mt-0.5 text-xs font-medium tabular-nums text-error" data-deuda>
+                  {% if resumen.deuda.saldo_total_centavos is not none %}Deuda ${{ resumen.deuda.saldo_total_centavos | dinero_ar }}{% else %}Deuda: datos inconsistentes{% endif %}
+                  {% if resumen.deuda.vencida_centavos %} · vencida ${{ resumen.deuda.vencida_centavos | dinero_ar }}{% endif %}
+                </p>
+              {% endif %}
             </div>
             {% if proveedor.activo %}
               {{ ui.badge('Activo', 'exito') }}
@@ -144,7 +162,7 @@
       {% endfor %}
     </div>
   {% else %}
-    {{ ui.estado_vacio("No se encontraron proveedores con esa búsqueda." if (q or categoria_id) else ("No hay proveedores dados de baja." if mostrar_inactivos else "Todavía no hay proveedores cargados.")) }}
+    {{ ui.estado_vacio("No se encontraron proveedores con esa búsqueda." if (q or categoria_id or filtro) else ("No hay proveedores dados de baja." if mostrar_inactivos else "Todavía no hay proveedores cargados.")) }}
   {% endif %}
 
 </div>

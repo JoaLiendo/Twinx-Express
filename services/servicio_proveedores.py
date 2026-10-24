@@ -24,7 +24,8 @@ from db.repositorios import proveedores as repositorio_proveedores
 from db.repositorios import usuarios as repositorio_usuarios
 from domain.categoria import ArbolCategorias, CategoriaEnArbol
 from domain.compra import ResumenCompra
-from domain.deuda_proveedores import CuentaProveedor, cuenta_vacia
+from domain.deuda_proveedores import CuentaProveedor, FilaDeudaProveedor, cuenta_vacia
+from domain.documento_proveedor import DocumentoProveedor
 from domain.evaluacion_proveedor import EvaluacionProveedor, requiere_advertencia
 from domain.producto import Producto
 from domain.producto_proveedor import ProductoDeProveedor, VinculoProveedor, normalizar_codigo_proveedor
@@ -39,6 +40,7 @@ from domain.proveedor import (
 from domain.reclamo_proveedor import ReclamoProveedor
 from domain.usuario import exigir_rol
 from excepciones import (
+    DatosInvalidosError,
     ProductoNoEncontradoError,
     ProveedorNoEncontradoError,
     VinculoProveedorExistenteError,
@@ -47,6 +49,7 @@ from excepciones import (
 from services import (
     servicio_categorias,
     servicio_deuda_proveedores,
+    servicio_documentos_proveedor,
     servicio_evaluaciones_proveedor,
     servicio_reclamos_proveedor,
 )
@@ -77,6 +80,7 @@ class FichaProveedor:
     categorias: list[CategoriaDeProveedor] = field(default_factory=list)
     evaluaciones: list[EvaluacionProveedor] = field(default_factory=list)
     reclamos: list[ReclamoProveedor] = field(default_factory=list)
+    documentos: list[DocumentoProveedor] = field(default_factory=list)
     total_compras: int = 0
     saldo_centavos: int = 0
     movimientos: list[MovimientoProveedor] = field(default_factory=list)
@@ -114,17 +118,38 @@ class DatosFiscales:
 
 @dataclass(frozen=True)
 class ResumenProveedor:
-    """Un proveedor del listado con su clasificación (V1.13-A) y su calificación actual (V1.13-B, `None` si
-    nunca se lo evaluó)."""
+    """Un proveedor del listado con su clasificación (V1.13-A), su calificación actual (V1.13-B, `None` si
+    nunca se lo evaluó), sus reclamos abiertos (V1.13-C) y su deuda (V1.13-D: la fila del reporte de deuda
+    de V1.10, `None` si no debe nada). Son dimensiones independientes: nada las combina en un puntaje."""
 
     proveedor: Proveedor
     categorias: list[CategoriaDeProveedor]
     calificacion: int | None = None
     reclamos_abiertos: int = 0
+    deuda: FilaDeudaProveedor | None = None
 
     @property
     def requiere_advertencia(self) -> bool:
         return requiere_advertencia(self.calificacion)
+
+
+# Atajos del listado (V1.13-D): cada uno mira UNA dimensión; se combinan con búsqueda y categoría.
+FILTROS_LISTADO = {
+    "": "Todos",
+    "baja_calificacion": "Con baja calificación",
+    "reclamos_abiertos": "Con reclamos abiertos",
+    "con_deuda": "Con deuda",
+}
+
+
+def _cumple_filtro(resumen: ResumenProveedor, filtro: str) -> bool:
+    if filtro == "baja_calificacion":
+        return resumen.requiere_advertencia
+    if filtro == "reclamos_abiertos":
+        return resumen.reclamos_abiertos > 0
+    if filtro == "con_deuda":
+        return resumen.deuda is not None
+    return True
 
 
 def _construir_proveedor(
@@ -269,21 +294,34 @@ def ids_categorias(proveedor_id: int) -> set[int]:
 
 
 def listar_resumen(
-    texto: str = "", incluir_inactivos: bool = False, categoria_id: int | None = None
+    texto: str = "", incluir_inactivos: bool = False, categoria_id: int | None = None, filtro: str = ""
 ) -> list[ResumenProveedor]:
-    """Listado de proveedores (mismos filtros que `buscar_proveedores`) con su clasificación."""
+    """Listado de proveedores (mismos filtros que `buscar_proveedores`) con su clasificación, calificación,
+    reclamos abiertos y deuda; `filtro` (ver `FILTROS_LISTADO`) deja solo los que cumplen esa dimensión.
+
+    Raises:
+        DatosInvalidosError: si el filtro no es uno de los admitidos.
+    """
+    if filtro not in FILTROS_LISTADO:
+        raise DatosInvalidosError(f"Filtro de proveedores inválido: {filtro!r}.")
     proveedores = buscar_proveedores(texto, incluir_inactivos, categoria_id)
     arbol = servicio_categorias.obtener_arbol()
     ids = [p.id for p in proveedores]
     por_proveedor = repositorio_proveedores.categorias_por_proveedor(ids)
     calificaciones = servicio_evaluaciones_proveedor.calificaciones_actuales(ids)
     abiertos = servicio_reclamos_proveedor.abiertos_por_proveedor()
-    return [
+    deudas = {fila.proveedor_id: fila for fila in servicio_deuda_proveedores.generar_reporte_deuda_proveedores().filas}
+    resumenes = [
         ResumenProveedor(
-            p, _categorias_de(por_proveedor.get(p.id, []), arbol), calificaciones.get(p.id), abiertos.get(p.id, 0)
+            p,
+            _categorias_de(por_proveedor.get(p.id, []), arbol),
+            calificaciones.get(p.id),
+            abiertos.get(p.id, 0),
+            deudas.get(p.id),
         )
         for p in proveedores
     ]
+    return [resumen for resumen in resumenes if _cumple_filtro(resumen, filtro)]
 
 
 def obtener_ficha(proveedor_id: int) -> FichaProveedor:
@@ -302,6 +340,7 @@ def obtener_ficha(proveedor_id: int) -> FichaProveedor:
         categorias=_categorias_de(categoria_ids, servicio_categorias.obtener_arbol()),
         evaluaciones=servicio_evaluaciones_proveedor.historial(proveedor_id),
         reclamos=servicio_reclamos_proveedor.listar_de_proveedor(proveedor_id),
+        documentos=servicio_documentos_proveedor.listar_de_proveedor(proveedor_id),
         productos=repositorio_producto_proveedor.listar_por_proveedor(proveedor_id),
         compras=repositorio_compras.listar_resumen(proveedor_id, limite=COMPRAS_EN_FICHA),
         total_compras=repositorio_compras.contar_resumen(proveedor_id),

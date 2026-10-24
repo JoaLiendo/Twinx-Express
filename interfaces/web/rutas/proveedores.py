@@ -13,6 +13,7 @@ la restricción se declara una sola vez a nivel de router.
 from fastapi import APIRouter, Depends, Form, Request
 
 from domain.dinero import texto_a_centavos
+from domain.documento_proveedor import TIPOS_DOCUMENTO
 from domain.evaluacion_proveedor import CRITERIOS
 from domain.proveedor import CONDICIONES_FISCALES
 from domain.reclamo_proveedor import ESTADOS_RECLAMO, TIPOS_RECLAMO
@@ -30,6 +31,7 @@ from services import (
     servicio_caja,
     servicio_compras,
     servicio_deuda_proveedores,
+    servicio_documentos_proveedor,
     servicio_evaluaciones_proveedor,
     servicio_pagos_proveedor,
     servicio_proveedores,
@@ -41,14 +43,18 @@ router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
 
 @router.get("/proveedores")
-def listar_proveedores(request: Request, mostrar_inactivos: bool = False, q: str = "", categoria_id: str = ""):
+def listar_proveedores(
+    request: Request, mostrar_inactivos: bool = False, q: str = "", categoria_id: str = "", filtro: str = ""
+):
     id_categoria = entero_opcional(categoria_id, "La categoría elegida no es válida.")
     contexto = {
         **contexto_base(request),
-        "resumenes": servicio_proveedores.listar_resumen(q, mostrar_inactivos, id_categoria),
+        "resumenes": servicio_proveedores.listar_resumen(q, mostrar_inactivos, id_categoria, filtro),
         "mostrar_inactivos": mostrar_inactivos,
         "q": q,
         "categoria_id": id_categoria,
+        "filtro": filtro,
+        "filtros": servicio_proveedores.FILTROS_LISTADO,
         "opciones_categorias": servicio_proveedores.opciones_de_clasificacion(),
     }
     return templates.TemplateResponse(request, "proveedores/lista.html", contexto)
@@ -192,6 +198,8 @@ def ver_proveedor(request: Request, proveedor_id: int):
         "productos_disponibles": [p for p in servicio_stock.listar_todos() if p.id not in ids_vinculados],
         "clave_idempotencia_pago": nueva_clave_idempotencia(),
         "clave_idempotencia_evaluacion": nueva_clave_idempotencia(),
+        "clave_idempotencia_documento": nueva_clave_idempotencia(),
+        "tipos_documento": TIPOS_DOCUMENTO,
         "criterio_fifo": servicio_deuda_proveedores.CRITERIO_FIFO,
         "criterios_evaluacion": CRITERIOS,
     }
@@ -264,6 +272,22 @@ def registrar_evaluacion(
         proveedor_id, usuario_actual.id, general, comentario, criterios, clave_idempotencia or None
     )
     return redireccionar_con_mensaje(f"/proveedores/{proveedor_id}", "success", "Evaluación registrada.")
+
+
+@router.post("/proveedores/{proveedor_id}/documentos")
+def registrar_documento(
+    proveedor_id: int,
+    tipo: str = Form(""),
+    fecha_documento: str = Form(""),
+    referencia: str = Form(""),
+    observacion: str = Form(""),
+    clave_idempotencia: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    servicio_documentos_proveedor.registrar_documento(
+        proveedor_id, usuario_actual.id, tipo, fecha_documento, referencia, observacion, clave_idempotencia or None
+    )
+    return redireccionar_con_mensaje(f"/proveedores/{proveedor_id}", "success", "Documento registrado.")
 
 
 @router.post("/proveedores/{proveedor_id}/productos")

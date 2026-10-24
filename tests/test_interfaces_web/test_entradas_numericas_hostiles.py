@@ -17,7 +17,7 @@ from domain.compra import ItemCompra
 from domain.venta import ItemVenta
 from interfaces.web.app import app
 from services import servicio_caja, servicio_clientes, servicio_compras, servicio_inventario, servicio_proveedores
-from services import servicio_ventas
+from services import servicio_categorias, servicio_reclamos_proveedor, servicio_ventas
 from tests.utilidades_clientes import consultar, crear_producto, usuario_logueado
 
 from ._asgi_cliente import solicitud
@@ -40,6 +40,8 @@ TABLAS = (
     "ventas", "detalle_venta", "compras", "detalle_compra", "caja_movimientos", "sesiones_caja", "movimientos_cuenta",
     "movimientos_proveedor", "ajustes_stock", "auditoria", "inventarios", "inventario_lineas", "productos",
     "clientes", "proveedores", "producto_proveedor", "historial_precios", "lotes_precios",
+    "proveedor_categorias", "evaluaciones_proveedor", "reclamos_proveedor", "reclamos_proveedor_cambios",
+    "documentos_proveedor",
 )
 
 
@@ -57,6 +59,8 @@ def e(base_datos_temporal, caja_abierta):
         proveedor.id, owner.id, [ItemCompra(producto.id, 10, 100)], condicion_pago="CREDITO"
     )  # deuda de 1000 centavos, para poder probar pagos a proveedor
     inventario = servicio_inventario.crear_inventario(owner.id, [producto.id])
+    categoria = servicio_categorias.crear_categoria("Bebidas")
+    reclamo = servicio_reclamos_proveedor.crear_reclamo(proveedor.id, owner.id, "ENTREGA", "tarde")
     return type(
         "E",
         (),
@@ -69,6 +73,8 @@ def e(base_datos_temporal, caja_abierta):
             "vid": venta.id,
             "prov": proveedor.id,
             "iid": inventario.id,
+            "cat": categoria.id,
+            "rec": reclamo.id,
         },
     )
 
@@ -166,6 +172,25 @@ CASOS = [
     ("auditoria_listado", "GET", "/auditoria", {"usuario_id": "1"}, {"usuario_id": "entero"}),
     ("historial_cliente", "GET", "/ventas/historial", {"cliente_id": "1"}, {"cliente_id": "entero"}),
     ("ventas_exportar", "GET", "/ventas/historial/exportar", {"cliente_id": "1"}, {"cliente_id": "entero"}),
+    # V1.13
+    ("proveedores_listado", "GET", "/proveedores", {"categoria_id": "{cat}"}, {"categoria_id": "entero"}),
+    ("proveedor_nuevo", "POST", "/proveedores/nuevo", {"nombre": "Nuevo", "categoria_id": "{cat}"}, {"categoria_id": "entero"}),
+    (
+        "evaluacion",
+        "POST",
+        "/proveedores/{prov}/evaluaciones",
+        {"estrellas": "4", "comentario": "cumple", "precio": "3", "clave_idempotencia": "k-ev"},
+        {"estrellas": "entero", "precio": "entero"},
+    ),
+    ("reclamo_formulario", "GET", "/proveedores/reclamos/nuevo", {"proveedor_id": "{prov}"}, {"proveedor_id": "entero", "ajuste_id": "entero"}),
+    (
+        "reclamo_nuevo",
+        "POST",
+        "/proveedores/reclamos/nuevo",
+        {"proveedor_id": "{prov}", "tipo": "CALIDAD", "descripcion": "x", "producto_id": "{pid}", "compra_id": "",
+         "ajuste_id": "", "cantidad": "1", "clave_idempotencia": "k-rec"},
+        {"proveedor_id": "entero", "producto_id": "entero", "compra_id": "entero", "ajuste_id": "entero", "cantidad": "entero"},
+    ),
 ]
 
 # Estado previo que necesitan algunos casos (el escenario base tiene caja abierta e inventario abierto).
@@ -235,6 +260,10 @@ RUTAS_CON_ID = [
     ("POST", "/empleados/{id}/desactivar"),
     ("POST", "/empleados/{id}/rol"),
     ("GET", "/api/productos/buscar-codigo/{id}"),
+    ("POST", "/proveedores/{id}/evaluaciones"),
+    ("POST", "/proveedores/{id}/documentos"),
+    ("GET", "/proveedores/{id}/reclamos/{id}"),
+    ("POST", "/proveedores/{id}/reclamos/{id}/estado"),
 ]
 
 

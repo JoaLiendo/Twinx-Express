@@ -30,6 +30,29 @@
     </div>
   </div>
 
+  {# Navegación por secciones: anclas simples, sin JS. #}
+  <nav aria-label="Secciones de la ficha" id="secciones-ficha" class="-mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+    {% for ancla, texto in [('seccion-cuenta', 'Compras y cuenta'), ('evaluacion', 'Evaluación'), ('reclamos', 'Reclamos'), ('fiscal', 'Fiscal')] %}
+      <a href="#{{ ancla }}" class="font-medium text-slate-500 hover:text-primary dark:text-slate-400">{{ texto }}</a>
+    {% endfor %}
+  </nav>
+
+  {% set actual = ficha.evaluacion_actual %}
+  <dl id="indicadores-proveedor" class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Calificación</dt>
+      <dd class="mt-1">{% if actual %}<a href="#evaluacion">{{ ui.estrellas(actual.estrellas, 'text-lg') }}</a>{% else %}<span class="text-slate-500 dark:text-slate-400">Sin calificación</span>{% endif %}</dd>
+    </div>
+    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Próximo vencimiento</dt>
+      <dd class="mt-1 font-semibold tabular-nums text-slate-800 dark:text-slate-200">{% if ficha.cuenta.consistente and ficha.cuenta.proximo_vencimiento %}{{ ficha.cuenta.proximo_vencimiento.fecha.isoformat() }}{% else %}—{% endif %}</dd>
+    </div>
+    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Reclamos abiertos</dt>
+      <dd class="mt-1 font-semibold tabular-nums {{ 'text-warning' if ficha.reclamos_abiertos else 'text-slate-800 dark:text-slate-200' }}"><a href="#reclamos">{{ ficha.reclamos_abiertos | length }}</a></dd>
+    </div>
+  </dl>
+
   <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900" id="datos-proveedor">
     <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
       <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Contacto</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.contacto_nombre or '—' }}</dd></div>
@@ -59,132 +82,7 @@
     </dl>
   </div>
 
-  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900" id="datos-fiscales">
-    <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">Datos fiscales</h2>
-    <dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 text-sm">
-      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Razón social</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.razon_social or '—' }}</dd></div>
-      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">CUIT</dt><dd id="cuit-proveedor" class="text-slate-800 dark:text-slate-200 tabular-nums">{{ proveedor.cuit_formateado or '—' }}</dd></div>
-      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Condición fiscal</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.condicion_fiscal_etiqueta or 'Sin informar' }}</dd></div>
-      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Ingresos Brutos</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.ingresos_brutos or '—' }}</dd></div>
-      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Convenio Multilateral</dt><dd class="text-slate-800 dark:text-slate-200">{{ 'Sí' if proveedor.convenio_multilateral else 'No informado' }}</dd></div>
-    </dl>
-  </div>
-
-  {% set actual = ficha.evaluacion_actual %}
-  <section class="space-y-3" id="evaluacion" aria-labelledby="titulo-evaluacion">
-    <h2 id="titulo-evaluacion" class="text-base font-semibold text-slate-900 dark:text-slate-100">Evaluación</h2>
-    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
-      {% if actual %}
-        <div id="calificacion-actual" class="flex flex-wrap items-start gap-x-6 gap-y-3">
-          <div>
-            <p class="text-xs font-medium text-slate-500 dark:text-slate-400">Calificación actual</p>
-            {{ ui.estrellas(actual.estrellas, 'text-2xl') }}
-            {% if actual.requiere_advertencia %}<div class="mt-1">{{ ui.badge('Baja calificación', 'alerta') }}</div>{% endif %}
-          </div>
-          <div class="min-w-0 flex-1">
-            <p class="text-xs font-medium text-slate-500 dark:text-slate-400">Última observación · {{ actual.fecha }} · {{ actual.usuario_nombre_completo or '—' }}</p>
-            <p class="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-line break-words">{{ actual.comentario }}</p>
-            {% if actual.criterios %}
-              <dl class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400" data-criterios>
-                {% for criterio, etiqueta in criterios_evaluacion.items() if criterio in actual.criterios %}
-                  <div class="flex items-center gap-1"><dt>{{ etiqueta }}</dt><dd>{{ ui.estrellas(actual.criterios[criterio]) }}</dd></div>
-                {% endfor %}
-              </dl>
-            {% endif %}
-          </div>
-        </div>
-      {% else %}
-        <p id="sin-calificacion" class="text-sm text-slate-500 dark:text-slate-400">Todavía no se evaluó a este proveedor.</p>
-      {% endif %}
-
-      <details id="nueva-evaluacion" class="rounded-lg border border-slate-200 dark:border-slate-700">
-        <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-semibold text-primary">{{ 'Registrar una nueva evaluación' if actual else 'Evaluar proveedor' }}</summary>
-        <form method="post" action="/proveedores/{{ proveedor.id }}/evaluaciones" class="space-y-4 p-4 pt-2" id="form-evaluacion">
-          <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia_evaluacion }}" />
-          <fieldset>
-            <legend class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Calificación general</legend>
-            <div class="flex flex-wrap gap-2">
-              {% for valor in range(1, 6) %}
-                <label class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm cursor-pointer has-[:checked]:border-primary has-[:checked]:bg-primary/10 dark:border-slate-700 dark:text-slate-300">
-                  <input type="radio" name="estrellas" value="{{ valor }}" required class="accent-primary" /> {{ valor }} ★
-                </label>
-              {% endfor %}
-            </div>
-          </fieldset>
-          <div>
-            <label for="comentario-evaluacion" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Comentario <span class="font-normal text-slate-400">(obligatorio)</span></label>
-            <textarea name="comentario" id="comentario-evaluacion" rows="2" required maxlength="500"
-                      class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"></textarea>
-          </div>
-          <fieldset>
-            <legend class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Criterios <span class="font-normal text-slate-400">(opcionales, 5 = mejor; no cambian la calificación general)</span></legend>
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {% for criterio, etiqueta in criterios_evaluacion.items() %}
-                <label class="text-xs text-slate-600 dark:text-slate-400">{{ etiqueta }}
-                  <select name="{{ criterio | lower }}" class="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-                    <option value="">—</option>
-                    {% for valor in range(1, 6) %}<option value="{{ valor }}">{{ valor }}</option>{% endfor %}
-                  </select>
-                </label>
-              {% endfor %}
-            </div>
-          </fieldset>
-          <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">Guardar evaluación</button>
-          <p class="text-xs text-slate-500 dark:text-slate-400">Las evaluaciones anteriores no se modifican: quedan en el historial.</p>
-        </form>
-      </details>
-
-      {% if ficha.evaluaciones | length > 1 %}
-        <details id="historial-evaluaciones">
-          <summary class="cursor-pointer select-none text-sm font-medium text-slate-600 dark:text-slate-400">Historial ({{ ficha.evaluaciones | length }} evaluaciones)</summary>
-          <ol class="mt-3 space-y-3">
-            {% for evaluacion in ficha.evaluaciones %}
-              <li class="border-l-2 border-slate-200 pl-3 dark:border-slate-700" data-evaluacion="{{ evaluacion.id }}">
-                <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  {{ ui.estrellas(evaluacion.estrellas) }} <span>{{ evaluacion.fecha }} · {{ evaluacion.usuario_nombre_completo or '—' }}</span>
-                </div>
-                <p class="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line break-words">{{ evaluacion.comentario }}</p>
-                {% if evaluacion.criterios %}
-                  <p class="text-xs text-slate-500 dark:text-slate-400">
-                    {% for criterio, etiqueta in criterios_evaluacion.items() if criterio in evaluacion.criterios %}{{ etiqueta }}: {{ evaluacion.criterios[criterio] }}{{ ' · ' if not loop.last else '' }}{% endfor %}
-                  </p>
-                {% endif %}
-              </li>
-            {% endfor %}
-          </ol>
-        </details>
-      {% endif %}
-    </div>
-  </section>
-
-  {% set variante_reclamo = {'PENDIENTE': 'advertencia', 'RECONOCIDO': 'info', 'RECHAZADO': 'alerta', 'RESUELTO': 'exito'} %}
-  <section class="space-y-3" id="reclamos" aria-labelledby="titulo-reclamos">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h2 id="titulo-reclamos" class="text-base font-semibold text-slate-900 dark:text-slate-100">
-        Reclamos
-        <span id="resumen-reclamos" class="ml-1 text-sm font-normal text-slate-500 dark:text-slate-400">{{ ficha.reclamos_abiertos | length }} abierto(s) · {{ ficha.reclamos | length }} en total</span>
-      </h2>
-      <a href="/proveedores/reclamos/nuevo?proveedor_id={{ proveedor.id }}" id="boton-nuevo-reclamo"
-         class="rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-sm font-semibold px-3 py-1.5 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Nuevo reclamo</a>
-    </div>
-    {% if ficha.reclamos %}
-      <ul class="rounded-xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:divide-slate-800" id="lista-reclamos">
-        {% for reclamo in ficha.reclamos %}
-          <li data-reclamo="{{ reclamo.id }}" data-estado="{{ reclamo.estado }}" class="{{ '' if reclamo.abierto else 'opacity-70' }}">
-            <a href="/proveedores/{{ proveedor.id }}/reclamos/{{ reclamo.id }}" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60">
-              <span class="text-sm font-medium text-primary">#{{ reclamo.id }}</span>
-              {{ ui.badge(reclamo.estado_etiqueta, variante_reclamo[reclamo.estado]) }}
-              <span class="text-xs text-slate-500 dark:text-slate-400">{{ reclamo.tipo_etiqueta }} · {{ reclamo.fecha }}{% if reclamo.producto_nombre %} · {{ reclamo.producto_nombre }}{% endif %}</span>
-              <span class="w-full sm:w-auto sm:flex-1 text-sm text-slate-700 dark:text-slate-300 truncate">{{ reclamo.descripcion }}</span>
-            </a>
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p id="sin-reclamos" class="text-sm text-slate-500 dark:text-slate-400">Sin reclamos registrados.</p>
-    {% endif %}
-  </section>
-
+  <div id="seccion-cuenta" class="space-y-6 scroll-mt-4">
 {% set etiqueta_estado = {'VENCIDA': ('Vencida', 'alerta'), 'PROXIMA_A_VENCER': ('Próxima a vencer', 'advertencia'), 'PENDIENTE': ('Vigente', 'info'), 'SIN_VENCIMIENTO': ('Sin vencimiento', 'neutral')} %}
   {% set cuenta = ficha.cuenta %}
   <section class="space-y-3" id="cuenta-a-pagar" aria-labelledby="titulo-cuenta-a-pagar">
@@ -436,6 +334,177 @@
     {% else %}
       {{ ui.estado_vacio("Sin movimientos", "Este proveedor todavía no tiene compras a crédito ni pagos.") }}
     {% endif %}
+  </section>
+  </div>
+
+  <section class="space-y-3" id="evaluacion" aria-labelledby="titulo-evaluacion">
+    <h2 id="titulo-evaluacion" class="text-base font-semibold text-slate-900 dark:text-slate-100">Evaluación</h2>
+    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+      {% if actual %}
+        <div id="calificacion-actual" class="flex flex-wrap items-start gap-x-6 gap-y-3">
+          <div>
+            <p class="text-xs font-medium text-slate-500 dark:text-slate-400">Calificación actual</p>
+            {{ ui.estrellas(actual.estrellas, 'text-2xl') }}
+            {% if actual.requiere_advertencia %}<div class="mt-1">{{ ui.badge('Baja calificación', 'alerta') }}</div>{% endif %}
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="text-xs font-medium text-slate-500 dark:text-slate-400">Última observación · {{ actual.fecha }} · {{ actual.usuario_nombre_completo or '—' }}</p>
+            <p class="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-line break-words">{{ actual.comentario }}</p>
+            {% if actual.criterios %}
+              <dl class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400" data-criterios>
+                {% for criterio, etiqueta in criterios_evaluacion.items() if criterio in actual.criterios %}
+                  <div class="flex items-center gap-1"><dt>{{ etiqueta }}</dt><dd>{{ ui.estrellas(actual.criterios[criterio]) }}</dd></div>
+                {% endfor %}
+              </dl>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <p id="sin-calificacion" class="text-sm text-slate-500 dark:text-slate-400">Todavía no se evaluó a este proveedor.</p>
+      {% endif %}
+
+      <details id="nueva-evaluacion" class="rounded-lg border border-slate-200 dark:border-slate-700">
+        <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-semibold text-primary">{{ 'Registrar una nueva evaluación' if actual else 'Evaluar proveedor' }}</summary>
+        <form method="post" action="/proveedores/{{ proveedor.id }}/evaluaciones" class="space-y-4 p-4 pt-2" id="form-evaluacion">
+          <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia_evaluacion }}" />
+          <fieldset>
+            <legend class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Calificación general</legend>
+            <div class="flex flex-wrap gap-2">
+              {% for valor in range(1, 6) %}
+                <label class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm cursor-pointer has-[:checked]:border-primary has-[:checked]:bg-primary/10 dark:border-slate-700 dark:text-slate-300">
+                  <input type="radio" name="estrellas" value="{{ valor }}" required class="accent-primary" /> {{ valor }} ★
+                </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+          <div>
+            <label for="comentario-evaluacion" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Comentario <span class="font-normal text-slate-400">(obligatorio)</span></label>
+            <textarea name="comentario" id="comentario-evaluacion" rows="2" required maxlength="500"
+                      class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"></textarea>
+          </div>
+          <fieldset>
+            <legend class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Criterios <span class="font-normal text-slate-400">(opcionales, 5 = mejor; no cambian la calificación general)</span></legend>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {% for criterio, etiqueta in criterios_evaluacion.items() %}
+                <label class="text-xs text-slate-600 dark:text-slate-400">{{ etiqueta }}
+                  <select name="{{ criterio | lower }}" class="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                    <option value="">—</option>
+                    {% for valor in range(1, 6) %}<option value="{{ valor }}">{{ valor }}</option>{% endfor %}
+                  </select>
+                </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+          <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">Guardar evaluación</button>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Las evaluaciones anteriores no se modifican: quedan en el historial.</p>
+        </form>
+      </details>
+
+      {% if ficha.evaluaciones | length > 1 %}
+        <details id="historial-evaluaciones">
+          <summary class="cursor-pointer select-none text-sm font-medium text-slate-600 dark:text-slate-400">Historial ({{ ficha.evaluaciones | length }} evaluaciones)</summary>
+          <ol class="mt-3 space-y-3">
+            {% for evaluacion in ficha.evaluaciones %}
+              <li class="border-l-2 border-slate-200 pl-3 dark:border-slate-700" data-evaluacion="{{ evaluacion.id }}">
+                <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  {{ ui.estrellas(evaluacion.estrellas) }} <span>{{ evaluacion.fecha }} · {{ evaluacion.usuario_nombre_completo or '—' }}</span>
+                </div>
+                <p class="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line break-words">{{ evaluacion.comentario }}</p>
+                {% if evaluacion.criterios %}
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    {% for criterio, etiqueta in criterios_evaluacion.items() if criterio in evaluacion.criterios %}{{ etiqueta }}: {{ evaluacion.criterios[criterio] }}{{ ' · ' if not loop.last else '' }}{% endfor %}
+                  </p>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        </details>
+      {% endif %}
+    </div>
+  </section>
+
+  {% set variante_reclamo = {'PENDIENTE': 'advertencia', 'RECONOCIDO': 'info', 'RECHAZADO': 'alerta', 'RESUELTO': 'exito'} %}
+  <section class="space-y-3" id="reclamos" aria-labelledby="titulo-reclamos">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 id="titulo-reclamos" class="text-base font-semibold text-slate-900 dark:text-slate-100">
+        Reclamos
+        <span id="resumen-reclamos" class="ml-1 text-sm font-normal text-slate-500 dark:text-slate-400">{{ ficha.reclamos_abiertos | length }} abierto(s) · {{ ficha.reclamos | length }} en total</span>
+      </h2>
+      <a href="/proveedores/reclamos/nuevo?proveedor_id={{ proveedor.id }}" id="boton-nuevo-reclamo"
+         class="rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-sm font-semibold px-3 py-1.5 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Nuevo reclamo</a>
+    </div>
+    {% if ficha.reclamos %}
+      <ul class="rounded-xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:divide-slate-800" id="lista-reclamos">
+        {% for reclamo in ficha.reclamos %}
+          <li data-reclamo="{{ reclamo.id }}" data-estado="{{ reclamo.estado }}" class="{{ '' if reclamo.abierto else 'opacity-70' }}">
+            <a href="/proveedores/{{ proveedor.id }}/reclamos/{{ reclamo.id }}" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60">
+              <span class="text-sm font-medium text-primary">#{{ reclamo.id }}</span>
+              {{ ui.badge(reclamo.estado_etiqueta, variante_reclamo[reclamo.estado]) }}
+              <span class="text-xs text-slate-500 dark:text-slate-400">{{ reclamo.tipo_etiqueta }} · {{ reclamo.fecha }}{% if reclamo.producto_nombre %} · {{ reclamo.producto_nombre }}{% endif %}</span>
+              <span class="w-full sm:w-auto sm:flex-1 text-sm text-slate-700 dark:text-slate-300 truncate">{{ reclamo.descripcion }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p id="sin-reclamos" class="text-sm text-slate-500 dark:text-slate-400">Sin reclamos registrados.</p>
+    {% endif %}
+  </section>
+
+  <section class="space-y-3" id="fiscal" aria-labelledby="titulo-fiscal">
+    <h2 id="titulo-fiscal" class="text-base font-semibold text-slate-900 dark:text-slate-100">Datos y documentación fiscal</h2>
+    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-5" id="datos-fiscales">
+      <dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+        <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Razón social</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.razon_social or '—' }}</dd></div>
+        <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">CUIT</dt><dd id="cuit-proveedor" class="text-slate-800 dark:text-slate-200 tabular-nums">{{ proveedor.cuit_formateado or '—' }}</dd></div>
+        <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Condición fiscal</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.condicion_fiscal_etiqueta or 'Sin informar' }}</dd></div>
+        <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Ingresos Brutos</dt><dd class="text-slate-800 dark:text-slate-200">{{ proveedor.ingresos_brutos or '—' }}</dd></div>
+        <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Convenio Multilateral</dt><dd class="text-slate-800 dark:text-slate-200">{{ 'Sí' if proveedor.convenio_multilateral else 'No informado' }}</dd></div>
+      </dl>
+
+      <div id="documentos-proveedor" class="space-y-2">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Documentación registrada</h3>
+        {% if ficha.documentos %}
+          <ul class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+            {% for documento in ficha.documentos %}
+              <li class="py-2 flex flex-wrap gap-x-3 gap-y-0.5" data-documento="{{ documento.id }}" data-tipo="{{ documento.tipo }}">
+                <span class="font-medium text-slate-800 dark:text-slate-200">{{ documento.tipo_etiqueta }}</span>
+                <span class="text-slate-600 dark:text-slate-400 tabular-nums">{{ documento.fecha_documento }}</span>
+                {% if documento.referencia %}<span class="text-slate-600 dark:text-slate-400">{{ documento.referencia }}</span>{% endif %}
+                <span class="w-full text-xs text-slate-500 dark:text-slate-400">{% if documento.observacion %}{{ documento.observacion }} · {% endif %}Registrado {{ documento.fecha_registro }} por {{ documento.usuario_nombre_completo or '—' }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p id="sin-documentos" class="text-sm text-slate-500 dark:text-slate-400">Sin documentación registrada.</p>
+        {% endif %}
+        <p class="text-xs text-slate-500 dark:text-slate-400">Es lo que se declaró haber recibido: el sistema no consulta ARCA ni afirma que un documento esté vigente.</p>
+      </div>
+
+      <details id="nuevo-documento" class="rounded-lg border border-slate-200 dark:border-slate-700">
+        <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-semibold text-primary">Registrar documento</summary>
+        <form method="post" action="/proveedores/{{ proveedor.id }}/documentos" class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 pt-2" id="form-documento">
+          <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia_documento }}" />
+          <label class="text-xs text-slate-600 dark:text-slate-400">Tipo
+            <select name="tipo" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+              {% for valor, etiqueta in tipos_documento.items() %}<option value="{{ valor }}">{{ etiqueta }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="text-xs text-slate-600 dark:text-slate-400">Fecha del documento
+            <input type="date" name="fecha_documento" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+          </label>
+          <label class="text-xs text-slate-600 dark:text-slate-400 sm:col-span-2">Período o referencia <span class="text-slate-400">(opcional)</span>
+            <input type="text" name="referencia" maxlength="100" placeholder="Ej. 2026, N.º de constancia" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+          </label>
+          <label class="text-xs text-slate-600 dark:text-slate-400 sm:col-span-2">Observación <span class="text-slate-400">(opcional)</span>
+            <textarea name="observacion" rows="2" maxlength="500" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"></textarea>
+          </label>
+          <div class="sm:col-span-2">
+            <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">Guardar documento</button>
+          </div>
+        </form>
+      </details>
+    </div>
   </section>
 
 </div>
