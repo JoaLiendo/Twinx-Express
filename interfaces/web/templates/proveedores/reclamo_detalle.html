@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% set variante_estado = {'PENDIENTE': 'advertencia', 'RECONOCIDO': 'info', 'RECHAZADO': 'alerta', 'RESUELTO': 'exito'} %}
+
+{% block titulo %}Reclamo #{{ reclamo.id }}{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Reclamo #{{ reclamo.id }} · {{ reclamo.proveedor_nombre }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+  <a href="/proveedores/{{ reclamo.proveedor_id }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← {{ reclamo.proveedor_nombre }}</a>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4" id="datos-reclamo">
+    <div class="flex flex-wrap items-center gap-2">
+      <span id="estado-reclamo" data-estado="{{ reclamo.estado }}">{{ ui.badge(reclamo.estado_etiqueta, variante_estado[reclamo.estado]) }}</span>
+      {{ ui.badge(reclamo.tipo_etiqueta, 'neutral') }}
+    </div>
+    <p class="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-line break-words">{{ reclamo.descripcion }}</p>
+    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Registrado</dt><dd class="text-slate-800 dark:text-slate-200">{{ reclamo.fecha }} · {{ reclamo.usuario_nombre_completo or '—' }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Producto</dt><dd class="text-slate-800 dark:text-slate-200">{{ reclamo.producto_nombre or '—' }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Cantidad</dt><dd class="text-slate-800 dark:text-slate-200">{{ reclamo.cantidad or '—' }}</dd></div>
+      <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Compra</dt>
+        <dd>{% if reclamo.compra_id %}<a href="/compras/{{ reclamo.compra_id }}" class="font-medium text-primary hover:text-primary-hover">Compra #{{ reclamo.compra_id }}</a>{% else %}—{% endif %}</dd></div>
+      {% if reclamo.ajuste_id %}
+        <div><dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Ajuste de stock</dt>
+          <dd><a href="/productos/{{ reclamo.producto_id }}/ajustes" class="font-medium text-primary hover:text-primary-hover">Falla de fábrica #{{ reclamo.ajuste_id }}</a></dd></div>
+      {% endif %}
+    </dl>
+  </div>
+
+  <section class="space-y-3" aria-labelledby="titulo-historial-reclamo">
+    <h2 id="titulo-historial-reclamo" class="text-base font-semibold text-slate-900 dark:text-slate-100">Historial</h2>
+    <ol class="space-y-3" id="historial-reclamo">
+      <li class="border-l-2 border-slate-200 pl-3 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-400">{{ reclamo.fecha }} · Registrado como pendiente · {{ reclamo.usuario_nombre_completo or '—' }}</li>
+      {% for cambio in reclamo.cambios %}
+        <li class="border-l-2 border-slate-200 pl-3 dark:border-slate-700" data-cambio="{{ cambio.id }}">
+          <p class="text-xs text-slate-500 dark:text-slate-400">{{ cambio.fecha }} · {{ cambio.usuario_nombre_completo or '—' }}</p>
+          <p class="text-sm font-medium text-slate-800 dark:text-slate-200">{{ estados[cambio.estado_anterior] }} → {{ estados[cambio.estado_nuevo] }}</p>
+          <p class="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-line break-words">{{ cambio.observacion }}</p>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <form method="post" action="/proveedores/{{ reclamo.proveedor_id }}/reclamos/{{ reclamo.id }}/estado" id="form-estado-reclamo"
+        class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+    <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia }}" />
+    <input type="hidden" name="estado_actual" value="{{ reclamo.estado }}" />
+    <fieldset>
+      <legend class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{{ 'Reabrir o cambiar estado' if not reclamo.abierto else 'Cambiar estado' }}</legend>
+      <div class="flex flex-wrap gap-2">
+        {% for estado in reclamo.transiciones_posibles %}
+          <label class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm cursor-pointer has-[:checked]:border-primary has-[:checked]:bg-primary/10 dark:border-slate-700 dark:text-slate-300">
+            <input type="radio" name="estado_nuevo" value="{{ estado }}" required class="accent-primary" />
+            {{ 'Reabrir (pendiente)' if estado == 'PENDIENTE' else estados[estado] }}
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div>
+      <label for="observacion" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Observación / resolución</label>
+      <textarea name="observacion" id="observacion" rows="2" required maxlength="500"
+                class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"></textarea>
+    </div>
+    <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">Registrar cambio</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block titulo %}Nuevo reclamo{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Nuevo reclamo a proveedor</h1>{% endblock %}
+
+{% set clase_campo = "w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
+                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" %}
+{% set clase_label = "block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <form method="post" action="/proveedores/reclamos/nuevo" class="space-y-5" id="form-reclamo">
+      <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia }}" />
+
+      {% if reclamable %}
+        {% set ajuste = reclamable.ajuste %}
+        <input type="hidden" name="ajuste_id" value="{{ ajuste.id }}" />
+        <input type="hidden" name="tipo" value="FALLA_FABRICA" />
+        <div id="origen-ajuste" class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+          Falla de fábrica: ajuste #{{ ajuste.id }} del {{ ajuste.fecha }}, {{ -ajuste.delta }} unidad(es) dadas de baja.
+          {% if reclamable.origen %}
+            <span class="block mt-1 text-xs">La mercadería salió de compras de este proveedor{% if reclamable.origen.compra_id %} (compra #{{ reclamable.origen.compra_id }}){% endif %}.</span>
+          {% else %}
+            <span class="block mt-1 text-xs" id="proveedor-no-identificado">No se puede saber con certeza de qué proveedor era esa mercadería: elegilo vos.</span>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <div>
+        <label for="proveedor_id" class="{{ clase_label }}">Proveedor</label>
+        {% if proveedor_fijo %}
+          <input type="hidden" name="proveedor_id" value="{{ proveedor_fijo.id }}" />
+          <p id="proveedor-fijo" class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ proveedor_fijo.nombre }}</p>
+        {% else %}
+          <select name="proveedor_id" id="proveedor_id" required class="{{ clase_campo }}">
+            <option value="">Elegí el proveedor…</option>
+            {% for proveedor in proveedores %}
+              <option value="{{ proveedor.id }}" {{ 'selected' if proveedor.id == proveedor_preseleccionado else '' }}>{{ proveedor.nombre }}{{ '' if proveedor.activo else ' (dado de baja)' }}</option>
+            {% endfor %}
+          </select>
+        {% endif %}
+      </div>
+
+      {% if not reclamable %}
+        <div>
+          <label for="tipo" class="{{ clase_label }}">Tipo</label>
+          <select name="tipo" id="tipo" required class="{{ clase_campo }}">
+            {% for valor, etiqueta in tipos.items() %}<option value="{{ valor }}">{{ etiqueta }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="producto_id" class="{{ clase_label }}">Producto <span class="font-normal text-slate-400">(si corresponde)</span></label>
+          <select name="producto_id" id="producto_id" class="{{ clase_campo }}">
+            <option value="">Sin producto puntual</option>
+            {% for producto in productos %}<option value="{{ producto.id }}">{{ producto.nombre }} ({{ producto.codigo_barras }})</option>{% endfor %}
+          </select>
+        </div>
+      {% endif %}
+
+      {% if compras %}
+        <div>
+          <label for="compra_id" class="{{ clase_label }}">Compra <span class="font-normal text-slate-400">(si el reclamo es por una compra puntual)</span></label>
+          <select name="compra_id" id="compra_id" class="{{ clase_campo }}">
+            <option value="">Sin compra puntual</option>
+            {% for compra in compras %}<option value="{{ compra.id }}">#{{ compra.id }} · {{ compra.fecha }} · ${{ compra.total_centavos | dinero_ar }}{{ ' · ANULADA' if compra.estado == 'ANULADA' else '' }}</option>{% endfor %}
+          </select>
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Con compra y producto, el reclamo queda ligado a esa línea; el producto tiene que estar en la compra.</p>
+        </div>
+      {% endif %}
+
+      <div>
+        <label for="cantidad" class="{{ clase_label }}">Cantidad <span class="font-normal text-slate-400">(si se conoce)</span></label>
+        <input type="number" name="cantidad" id="cantidad" min="1" step="1" inputmode="numeric"
+               {% if reclamable %}max="{{ -reclamable.ajuste.delta }}" value="{{ -reclamable.ajuste.delta }}"{% endif %} class="{{ clase_campo }}" />
+      </div>
+
+      <div>
+        <label for="descripcion" class="{{ clase_label }}">Descripción</label>
+        <textarea name="descripcion" id="descripcion" rows="3" required maxlength="500" class="{{ clase_campo }}"></textarea>
+      </div>
+
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">Registrar reclamo</button>
+        <a href="{{ '/proveedores/' ~ proveedor_fijo.id if proveedor_fijo else '/proveedores' }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+      <p class="text-xs text-slate-500 dark:text-slate-400">Un reclamo no cambia la calificación del proveedor: la evaluación es aparte.</p>
+    </form>
+  </div>
+</div>
+{% endblock %}

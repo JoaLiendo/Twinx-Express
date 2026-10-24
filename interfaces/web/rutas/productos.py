@@ -39,6 +39,7 @@ from services import (
     servicio_movimientos_stock,
     servicio_partidas,
     servicio_precios,
+    servicio_reclamos_proveedor,
     servicio_stock,
 )
 
@@ -535,7 +536,12 @@ def listar_ajustes_de_producto(request: Request, producto_id: int):
         return redireccionar_con_mensaje("/productos", "error", "El producto no existe.")
 
     ajustes = servicio_stock.listar_ajustes(producto_id)
-    contexto = {**contexto_base(request), "producto": producto, "ajustes": ajustes}
+    contexto = {
+        **contexto_base(request),
+        "producto": producto,
+        "ajustes": ajustes,
+        "reclamos_de_ajustes": servicio_reclamos_proveedor.reclamos_de_ajustes(a.id for a in ajustes),
+    }
     return templates.TemplateResponse(request, "productos/ajustes.html", contexto)
 
 

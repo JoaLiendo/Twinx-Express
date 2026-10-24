@@ -168,6 +168,23 @@ class ProveedorNoEncontradoError(ErrorAplicacion):
     """No existe un proveedor con el id solicitado."""
 
 
+class ReclamoNoEncontradoError(ErrorAplicacion):
+    """No existe un reclamo a proveedor con el id solicitado (o no es de ese proveedor) (V1.13-C)."""
+
+
+class TransicionReclamoInvalidaError(DatosInvalidosError):
+    """El cambio de estado pedido no está permitido desde el estado actual del reclamo (V1.13-C)."""
+
+
+class ReclamoDesactualizadoError(ErrorAplicacion):
+    """El reclamo cambió de estado desde que se abrió el formulario: no se aplica un cambio pensado
+    sobre un estado que ya no es el vigente (V1.13-C)."""
+
+
+class AjusteYaReclamadoError(ErrorAplicacion):
+    """Ese ajuste FALLA_FABRICA ya originó un reclamo: se sigue desde ese reclamo (V1.13-C)."""
+
+
 class VinculoProveedorExistenteError(ErrorAplicacion):
     """El producto ya está vinculado a ese proveedor."""
 

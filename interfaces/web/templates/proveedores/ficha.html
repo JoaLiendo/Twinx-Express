@@ -157,6 +157,34 @@
     </div>
   </section>
 
+  {% set variante_reclamo = {'PENDIENTE': 'advertencia', 'RECONOCIDO': 'info', 'RECHAZADO': 'alerta', 'RESUELTO': 'exito'} %}
+  <section class="space-y-3" id="reclamos" aria-labelledby="titulo-reclamos">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 id="titulo-reclamos" class="text-base font-semibold text-slate-900 dark:text-slate-100">
+        Reclamos
+        <span id="resumen-reclamos" class="ml-1 text-sm font-normal text-slate-500 dark:text-slate-400">{{ ficha.reclamos_abiertos | length }} abierto(s) · {{ ficha.reclamos | length }} en total</span>
+      </h2>
+      <a href="/proveedores/reclamos/nuevo?proveedor_id={{ proveedor.id }}" id="boton-nuevo-reclamo"
+         class="rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-sm font-semibold px-3 py-1.5 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Nuevo reclamo</a>
+    </div>
+    {% if ficha.reclamos %}
+      <ul class="rounded-xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:divide-slate-800" id="lista-reclamos">
+        {% for reclamo in ficha.reclamos %}
+          <li data-reclamo="{{ reclamo.id }}" data-estado="{{ reclamo.estado }}" class="{{ '' if reclamo.abierto else 'opacity-70' }}">
+            <a href="/proveedores/{{ proveedor.id }}/reclamos/{{ reclamo.id }}" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60">
+              <span class="text-sm font-medium text-primary">#{{ reclamo.id }}</span>
+              {{ ui.badge(reclamo.estado_etiqueta, variante_reclamo[reclamo.estado]) }}
+              <span class="text-xs text-slate-500 dark:text-slate-400">{{ reclamo.tipo_etiqueta }} · {{ reclamo.fecha }}{% if reclamo.producto_nombre %} · {{ reclamo.producto_nombre }}{% endif %}</span>
+              <span class="w-full sm:w-auto sm:flex-1 text-sm text-slate-700 dark:text-slate-300 truncate">{{ reclamo.descripcion }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p id="sin-reclamos" class="text-sm text-slate-500 dark:text-slate-400">Sin reclamos registrados.</p>
+    {% endif %}
+  </section>
+
 {% set etiqueta_estado = {'VENCIDA': ('Vencida', 'alerta'), 'PROXIMA_A_VENCER': ('Próxima a vencer', 'advertencia'), 'PENDIENTE': ('Vigente', 'info'), 'SIN_VENCIMIENTO': ('Sin vencimiento', 'neutral')} %}
   {% set cuenta = ficha.cuenta %}
   <section class="space-y-3" id="cuenta-a-pagar" aria-labelledby="titulo-cuenta-a-pagar">

@@ -36,6 +36,7 @@ from domain.proveedor import (
     normalizar_cuit,
     texto_opcional,
 )
+from domain.reclamo_proveedor import ReclamoProveedor
 from domain.usuario import exigir_rol
 from excepciones import (
     ProductoNoEncontradoError,
@@ -43,7 +44,12 @@ from excepciones import (
     VinculoProveedorExistenteError,
     VinculoProveedorNoEncontradoError,
 )
-from services import servicio_categorias, servicio_deuda_proveedores, servicio_evaluaciones_proveedor
+from services import (
+    servicio_categorias,
+    servicio_deuda_proveedores,
+    servicio_evaluaciones_proveedor,
+    servicio_reclamos_proveedor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +76,7 @@ class FichaProveedor:
     compras: list[ResumenCompra]
     categorias: list[CategoriaDeProveedor] = field(default_factory=list)
     evaluaciones: list[EvaluacionProveedor] = field(default_factory=list)
+    reclamos: list[ReclamoProveedor] = field(default_factory=list)
     total_compras: int = 0
     saldo_centavos: int = 0
     movimientos: list[MovimientoProveedor] = field(default_factory=list)
@@ -79,6 +86,11 @@ class FichaProveedor:
     def evaluacion_actual(self) -> EvaluacionProveedor | None:
         """La más reciente (V1.13-B): su estrella es la calificación actual del proveedor."""
         return self.evaluaciones[0] if self.evaluaciones else None
+
+    @property
+    def reclamos_abiertos(self) -> list[ReclamoProveedor]:
+        """Pendientes o reconocidos (V1.13-C), del más reciente al más antiguo."""
+        return [reclamo for reclamo in self.reclamos if reclamo.abierto]
 
 
 def _auditar(
@@ -108,6 +120,7 @@ class ResumenProveedor:
     proveedor: Proveedor
     categorias: list[CategoriaDeProveedor]
     calificacion: int | None = None
+    reclamos_abiertos: int = 0
 
     @property
     def requiere_advertencia(self) -> bool:
@@ -193,6 +206,18 @@ def obtener_por_id(proveedor_id: int) -> Proveedor | None:
     return repositorio_proveedores.obtener_por_id(proveedor_id)
 
 
+def obtener_incluyendo_inactivos(proveedor_id: int) -> Proveedor:
+    """Un proveedor activo o dado de baja (reclamos sobre compras históricas).
+
+    Raises:
+        ProveedorNoEncontradoError: si no existe.
+    """
+    proveedor = repositorio_proveedores.obtener_por_id_incluyendo_inactivos(proveedor_id)
+    if proveedor is None:
+        raise ProveedorNoEncontradoError(f"No existe un proveedor con id {proveedor_id}.")
+    return proveedor
+
+
 def listar_activos() -> list[Proveedor]:
     """Devuelve los proveedores activos (listado normal)."""
     return repositorio_proveedores.listar_activos()
@@ -252,8 +277,11 @@ def listar_resumen(
     ids = [p.id for p in proveedores]
     por_proveedor = repositorio_proveedores.categorias_por_proveedor(ids)
     calificaciones = servicio_evaluaciones_proveedor.calificaciones_actuales(ids)
+    abiertos = servicio_reclamos_proveedor.abiertos_por_proveedor()
     return [
-        ResumenProveedor(p, _categorias_de(por_proveedor.get(p.id, []), arbol), calificaciones.get(p.id))
+        ResumenProveedor(
+            p, _categorias_de(por_proveedor.get(p.id, []), arbol), calificaciones.get(p.id), abiertos.get(p.id, 0)
+        )
         for p in proveedores
     ]
 
@@ -273,6 +301,7 @@ def obtener_ficha(proveedor_id: int) -> FichaProveedor:
         proveedor=proveedor,
         categorias=_categorias_de(categoria_ids, servicio_categorias.obtener_arbol()),
         evaluaciones=servicio_evaluaciones_proveedor.historial(proveedor_id),
+        reclamos=servicio_reclamos_proveedor.listar_de_proveedor(proveedor_id),
         productos=repositorio_producto_proveedor.listar_por_proveedor(proveedor_id),
         compras=repositorio_compras.listar_resumen(proveedor_id, limite=COMPRAS_EN_FICHA),
         total_compras=repositorio_compras.contar_resumen(proveedor_id),

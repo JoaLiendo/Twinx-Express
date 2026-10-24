@@ -65,6 +65,9 @@
                 {% else %}
                   <span class="text-slate-400 dark:text-slate-500">Sin calificación</span>
                 {% endif %}
+                {% if resumen.reclamos_abiertos %}
+                  <span data-reclamos-abiertos="{{ resumen.reclamos_abiertos }}" class="font-medium text-warning">· {{ resumen.reclamos_abiertos }} reclamo(s) abierto(s)</span>
+                {% endif %}
               </div>
             </div>
             {% if proveedor.activo %}

@@ -15,8 +15,9 @@ from fastapi import APIRouter, Depends, Form, Request
 from domain.dinero import texto_a_centavos
 from domain.evaluacion_proveedor import CRITERIOS
 from domain.proveedor import CONDICIONES_FISCALES
+from domain.reclamo_proveedor import ESTADOS_RECLAMO, TIPOS_RECLAMO
 from domain.usuario import Usuario
-from excepciones import DatosInvalidosError, ProveedorNoEncontradoError
+from excepciones import DatosInvalidosError, ProveedorNoEncontradoError, ReclamoNoEncontradoError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import (
@@ -27,10 +28,12 @@ from interfaces.web.utilidades import (
 )
 from services import (
     servicio_caja,
+    servicio_compras,
     servicio_deuda_proveedores,
     servicio_evaluaciones_proveedor,
     servicio_pagos_proveedor,
     servicio_proveedores,
+    servicio_reclamos_proveedor,
     servicio_stock,
 )
 
@@ -260,7 +263,7 @@ def registrar_evaluacion(
     servicio_evaluaciones_proveedor.registrar_evaluacion(
         proveedor_id, usuario_actual.id, general, comentario, criterios, clave_idempotencia or None
     )
-    return redireccionar_con_mensaje(f"/proveedores/{proveedor_id}#evaluacion", "success", "Evaluación registrada.")
+    return redireccionar_con_mensaje(f"/proveedores/{proveedor_id}", "success", "Evaluación registrada.")
 
 
 @router.post("/proveedores/{proveedor_id}/productos")
@@ -289,4 +292,107 @@ def establecer_principal(
     servicio_proveedores.establecer_principal(proveedor_id, producto_id, usuario_actual.id)
     return redireccionar_con_mensaje(
         f"/proveedores/{proveedor_id}", "success", "Ahora es el proveedor principal de ese producto."
+    )
+
+
+# --- reclamos e incidentes (V1.13-C) ---------------------------------------------------------------
+
+
+@router.get("/proveedores/reclamos/nuevo")
+def formulario_reclamo(request: Request, proveedor_id: str = "", ajuste_id: str = ""):
+    """Alta de un reclamo desde la ficha (`proveedor_id`) o desde un ajuste FALLA_FABRICA (`ajuste_id`).
+    Desde un ajuste, el proveedor queda fijo solo si se conoce de verdad; si no, lo elige el OWNER."""
+    id_proveedor = entero_opcional(proveedor_id, "El proveedor elegido no es válido.")
+    id_ajuste = entero_opcional(ajuste_id, "El ajuste elegido no es válido.")
+    reclamable = servicio_reclamos_proveedor.ajuste_reclamable(id_ajuste) if id_ajuste is not None else None
+    if reclamable is not None and reclamable.reclamo_existente_id is not None:
+        reclamo = servicio_reclamos_proveedor.obtener_por_id(reclamable.reclamo_existente_id)
+        return redireccionar_con_mensaje(
+            f"/proveedores/{reclamo.proveedor_id}/reclamos/{reclamo.id}", "warning", "Ese ajuste ya tiene este reclamo."
+        )
+    proveedor_fijo = None
+    if reclamable is not None and reclamable.origen is not None:
+        id_proveedor = reclamable.origen.proveedor_id
+        proveedor_fijo = servicio_proveedores.obtener_incluyendo_inactivos(id_proveedor)
+    elif reclamable is None and id_proveedor is not None:
+        proveedor_fijo = servicio_proveedores.obtener_incluyendo_inactivos(id_proveedor)
+    compras = []
+    if proveedor_fijo is not None and (reclamable is None or reclamable.origen.compra_id is None):
+        compras = servicio_compras.listar_pagina(proveedor_id=proveedor_fijo.id).compras
+    contexto = {
+        **contexto_base(request),
+        "proveedor_fijo": proveedor_fijo,
+        "proveedor_preseleccionado": id_proveedor,
+        "proveedores": servicio_proveedores.listar_todos() if proveedor_fijo is None else [],
+        "reclamable": reclamable,
+        "compras": compras,
+        "productos": servicio_stock.listar_todos() + servicio_stock.listar_inactivos() if reclamable is None else [],
+        "tipos": TIPOS_RECLAMO,
+        "clave_idempotencia": nueva_clave_idempotencia(),
+    }
+    return templates.TemplateResponse(request, "proveedores/reclamo_nuevo.html", contexto)
+
+
+@router.post("/proveedores/reclamos/nuevo")
+def crear_reclamo(
+    proveedor_id: str = Form(""),
+    tipo: str = Form(""),
+    descripcion: str = Form(""),
+    producto_id: str = Form(""),
+    compra_id: str = Form(""),
+    ajuste_id: str = Form(""),
+    cantidad: str = Form(""),
+    clave_idempotencia: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    id_proveedor = entero_opcional(proveedor_id, "El proveedor elegido no es válido.")
+    if id_proveedor is None:
+        raise DatosInvalidosError("Elegí el proveedor al que se le reclama.")
+    reclamo = servicio_reclamos_proveedor.crear_reclamo(
+        id_proveedor,
+        usuario_actual.id,
+        tipo,
+        descripcion,
+        producto_id=entero_opcional(producto_id, "El producto elegido no es válido."),
+        compra_id=entero_opcional(compra_id, "La compra elegida no es válida."),
+        ajuste_id=entero_opcional(ajuste_id, "El ajuste elegido no es válido."),
+        cantidad=entero_opcional(cantidad, "La cantidad debe ser un número entero."),
+        clave_idempotencia=clave_idempotencia or None,
+    )
+    return redireccionar_con_mensaje(
+        f"/proveedores/{reclamo.proveedor_id}/reclamos/{reclamo.id}", "success", f"Reclamo #{reclamo.id} registrado."
+    )
+
+
+@router.get("/proveedores/{proveedor_id}/reclamos/{reclamo_id}")
+def ver_reclamo(request: Request, proveedor_id: int, reclamo_id: int):
+    try:
+        reclamo = servicio_reclamos_proveedor.obtener(reclamo_id, proveedor_id)
+    except ReclamoNoEncontradoError:
+        return redireccionar_con_mensaje(f"/proveedores/{proveedor_id}", "error", "El reclamo no existe.")
+    contexto = {
+        **contexto_base(request),
+        "reclamo": reclamo,
+        "estados": ESTADOS_RECLAMO,
+        "clave_idempotencia": nueva_clave_idempotencia(),
+    }
+    return templates.TemplateResponse(request, "proveedores/reclamo_detalle.html", contexto)
+
+
+@router.post("/proveedores/{proveedor_id}/reclamos/{reclamo_id}/estado")
+def cambiar_estado_reclamo(
+    proveedor_id: int,
+    reclamo_id: int,
+    estado_nuevo: str = Form(""),
+    estado_actual: str = Form(""),
+    observacion: str = Form(""),
+    clave_idempotencia: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    servicio_reclamos_proveedor.obtener(reclamo_id, proveedor_id)
+    servicio_reclamos_proveedor.cambiar_estado(
+        reclamo_id, usuario_actual.id, estado_nuevo, observacion, estado_actual, clave_idempotencia or None
+    )
+    return redireccionar_con_mensaje(
+        f"/proveedores/{proveedor_id}/reclamos/{reclamo_id}", "success", "Estado del reclamo actualizado."
     )

@@ -57,6 +57,14 @@
                     <a href="/productos/{{ producto.id }}/ajustes/{{ ajuste.id }}/revertir"
                        class="text-sm font-medium text-error hover:underline">Revertir</a>
                   {% endif %}
+                  {# V1.13-C: una baja por falla de fábrica puede originar un reclamo al proveedor (uno por ajuste). #}
+                  {% if ajuste.id in reclamos_de_ajustes %}
+                    <a href="/proveedores/reclamos/nuevo?ajuste_id={{ ajuste.id }}" data-reclamo-de-ajuste="{{ reclamos_de_ajustes[ajuste.id] }}"
+                       class="ml-3 text-sm font-medium text-primary hover:underline">Reclamo #{{ reclamos_de_ajustes[ajuste.id] }}</a>
+                  {% elif ajuste.motivo == 'FALLA_FABRICA' and ajuste.delta < 0 and not ajuste.fue_revertido %}
+                    <a href="/proveedores/reclamos/nuevo?ajuste_id={{ ajuste.id }}" data-reclamar-ajuste="{{ ajuste.id }}"
+                       class="ml-3 text-sm font-medium text-primary hover:underline">Reclamar al proveedor</a>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
