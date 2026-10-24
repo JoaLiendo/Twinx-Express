@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Form, Request
 
 from domain.compra import MOTIVOS_ANULACION_COMPRA_VALIDOS, ItemCompra, parsear_vencimientos_de_producto
 from domain.dinero import texto_a_centavos
+from domain.evaluacion_proveedor import ESTRELLAS_CON_ADVERTENCIA
 from domain.usuario import Usuario
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
@@ -28,6 +29,7 @@ from interfaces.web.utilidades import (
 from services import (
     servicio_compras,
     servicio_deuda_proveedores,
+    servicio_evaluaciones_proveedor,
     servicio_exportacion_csv,
     servicio_partidas,
     servicio_proveedores,
@@ -100,6 +102,9 @@ def respuesta_formulario_compra(request: Request, precarga: ListaReposicion | No
     contexto = {
         **contexto_base(request),
         "proveedores": servicio_proveedores.listar_activos(),
+        # V1.13-B: solo para advertir al elegir un proveedor de 1-2 estrellas; no cambia la compra.
+        "calificaciones": servicio_evaluaciones_proveedor.calificaciones_actuales(),
+        "estrellas_con_advertencia": ESTRELLAS_CON_ADVERTENCIA,
         "productos": servicio_stock.listar_todos(),
         "clave_idempotencia": nueva_clave_idempotencia(),
         "precarga": precarga,

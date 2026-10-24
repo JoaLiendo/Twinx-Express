@@ -82,15 +82,21 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Proveedor</label>
-            <select name="proveedor_id" required
+            <select name="proveedor_id" id="proveedor-compra" required
                     class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
                            dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                            focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
               <option value="">Seleccionar...</option>
               {% for proveedor in proveedores %}
-                <option value="{{ proveedor.id }}" {{ 'selected' if precarga and precarga.proveedor_id == proveedor.id else '' }}>{{ proveedor.nombre }}</option>
+                <option value="{{ proveedor.id }}" data-calificacion="{{ calificaciones.get(proveedor.id, '') }}" {{ 'selected' if precarga and precarga.proveedor_id == proveedor.id else '' }}>{{ proveedor.nombre }}</option>
               {% endfor %}
             </select>
+            {% set calificacion_precargada = calificaciones.get(precarga.proveedor_id) if precarga else none %}
+            <p id="advertencia-calificacion" role="status" data-umbral="{{ estrellas_con_advertencia }}"
+               class="mt-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs font-medium text-warning {{ '' if calificacion_precargada and calificacion_precargada <= estrellas_con_advertencia else 'hidden' }}">
+              Este proveedor tiene una calificación baja (<span data-estrellas-advertencia>{{ calificacion_precargada or '' }}</span> de 5).
+              Podés registrar la compra igual; revisá su evaluación en la ficha.
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Condición de pago</label>
@@ -174,6 +180,22 @@
       if (!credito) vencimiento.value = '';
     }
     condicion.addEventListener('change', sincronizar);
+    sincronizar();
+  })();
+
+  // V1.13-B: advierte (sin bloquear ni cambiar nada de la compra) si el proveedor tiene 1-2 estrellas.
+  (function () {
+    const proveedor = document.getElementById('proveedor-compra');
+    const aviso = document.getElementById('advertencia-calificacion');
+    if (!proveedor || !aviso) return;
+    function sincronizar() {
+      const opcion = proveedor.selectedOptions[0];
+      const estrellas = Number(opcion ? opcion.dataset.calificacion : '');
+      const baja = estrellas >= 1 && estrellas <= Number(aviso.dataset.umbral);
+      aviso.classList.toggle('hidden', !baja);
+      if (baja) aviso.querySelector('[data-estrellas-advertencia]').textContent = String(estrellas);
+    }
+    proveedor.addEventListener('change', sincronizar);
     sincronizar();
   })();
 </script>

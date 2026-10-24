@@ -13,9 +13,10 @@ la restricción se declara una sola vez a nivel de router.
 from fastapi import APIRouter, Depends, Form, Request
 
 from domain.dinero import texto_a_centavos
+from domain.evaluacion_proveedor import CRITERIOS
 from domain.proveedor import CONDICIONES_FISCALES
 from domain.usuario import Usuario
-from excepciones import ProveedorNoEncontradoError
+from excepciones import DatosInvalidosError, ProveedorNoEncontradoError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import (
@@ -24,7 +25,14 @@ from interfaces.web.utilidades import (
     nueva_clave_idempotencia,
     redireccionar_con_mensaje,
 )
-from services import servicio_caja, servicio_deuda_proveedores, servicio_pagos_proveedor, servicio_proveedores, servicio_stock
+from services import (
+    servicio_caja,
+    servicio_deuda_proveedores,
+    servicio_evaluaciones_proveedor,
+    servicio_pagos_proveedor,
+    servicio_proveedores,
+    servicio_stock,
+)
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
@@ -180,7 +188,9 @@ def ver_proveedor(request: Request, proveedor_id: int):
         "ficha": ficha,
         "productos_disponibles": [p for p in servicio_stock.listar_todos() if p.id not in ids_vinculados],
         "clave_idempotencia_pago": nueva_clave_idempotencia(),
+        "clave_idempotencia_evaluacion": nueva_clave_idempotencia(),
         "criterio_fifo": servicio_deuda_proveedores.CRITERIO_FIFO,
+        "criterios_evaluacion": CRITERIOS,
     }
     return templates.TemplateResponse(request, "proveedores/ficha.html", contexto)
 
@@ -220,6 +230,37 @@ def registrar_pago(
         clave_idempotencia=clave_idempotencia or None,
     )
     return redireccionar_con_mensaje(f"/proveedores/{proveedor_id}", "success", "Pago registrado correctamente.")
+
+
+@router.post("/proveedores/{proveedor_id}/evaluaciones")
+def registrar_evaluacion(
+    proveedor_id: int,
+    estrellas: str = Form(""),
+    comentario: str = Form(""),
+    precio: str = Form(""),
+    calidad: str = Form(""),
+    entrega: str = Form(""),
+    cumplimiento: str = Form(""),
+    condiciones_pago: str = Form(""),
+    atencion: str = Form(""),
+    clave_idempotencia: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    general = entero_opcional(estrellas, "La calificación general debe ser un número de 1 a 5.")
+    if general is None:
+        raise DatosInvalidosError("Elegí la calificación general (1 a 5 estrellas).")
+    textos = {
+        "PRECIO": precio, "CALIDAD": calidad, "ENTREGA": entrega, "CUMPLIMIENTO": cumplimiento,
+        "CONDICIONES_PAGO": condiciones_pago, "ATENCION": atencion,
+    }
+    criterios = {
+        criterio: entero_opcional(texto, f"El criterio {CRITERIOS[criterio]} debe ser un número de 1 a 5.")
+        for criterio, texto in textos.items()
+    }
+    servicio_evaluaciones_proveedor.registrar_evaluacion(
+        proveedor_id, usuario_actual.id, general, comentario, criterios, clave_idempotencia or None
+    )
+    return redireccionar_con_mensaje(f"/proveedores/{proveedor_id}#evaluacion", "success", "Evaluación registrada.")
 
 
 @router.post("/proveedores/{proveedor_id}/productos")

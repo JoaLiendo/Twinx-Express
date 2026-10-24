@@ -25,6 +25,7 @@ from db.repositorios import usuarios as repositorio_usuarios
 from domain.categoria import ArbolCategorias, CategoriaEnArbol
 from domain.compra import ResumenCompra
 from domain.deuda_proveedores import CuentaProveedor, cuenta_vacia
+from domain.evaluacion_proveedor import EvaluacionProveedor, requiere_advertencia
 from domain.producto import Producto
 from domain.producto_proveedor import ProductoDeProveedor, VinculoProveedor, normalizar_codigo_proveedor
 from domain.proveedor import (
@@ -42,7 +43,7 @@ from excepciones import (
     VinculoProveedorExistenteError,
     VinculoProveedorNoEncontradoError,
 )
-from services import servicio_categorias, servicio_deuda_proveedores
+from services import servicio_categorias, servicio_deuda_proveedores, servicio_evaluaciones_proveedor
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +69,16 @@ class FichaProveedor:
     productos: list[ProductoDeProveedor]
     compras: list[ResumenCompra]
     categorias: list[CategoriaDeProveedor] = field(default_factory=list)
+    evaluaciones: list[EvaluacionProveedor] = field(default_factory=list)
     total_compras: int = 0
     saldo_centavos: int = 0
     movimientos: list[MovimientoProveedor] = field(default_factory=list)
     cuenta: CuentaProveedor = field(default_factory=cuenta_vacia)
+
+    @property
+    def evaluacion_actual(self) -> EvaluacionProveedor | None:
+        """La más reciente (V1.13-B): su estrella es la calificación actual del proveedor."""
+        return self.evaluaciones[0] if self.evaluaciones else None
 
 
 def _auditar(
@@ -95,10 +102,16 @@ class DatosFiscales:
 
 @dataclass(frozen=True)
 class ResumenProveedor:
-    """Un proveedor del listado con su clasificación (V1.13-A)."""
+    """Un proveedor del listado con su clasificación (V1.13-A) y su calificación actual (V1.13-B, `None` si
+    nunca se lo evaluó)."""
 
     proveedor: Proveedor
     categorias: list[CategoriaDeProveedor]
+    calificacion: int | None = None
+
+    @property
+    def requiere_advertencia(self) -> bool:
+        return requiere_advertencia(self.calificacion)
 
 
 def _construir_proveedor(
@@ -236,8 +249,13 @@ def listar_resumen(
     """Listado de proveedores (mismos filtros que `buscar_proveedores`) con su clasificación."""
     proveedores = buscar_proveedores(texto, incluir_inactivos, categoria_id)
     arbol = servicio_categorias.obtener_arbol()
-    por_proveedor = repositorio_proveedores.categorias_por_proveedor(p.id for p in proveedores)
-    return [ResumenProveedor(p, _categorias_de(por_proveedor.get(p.id, []), arbol)) for p in proveedores]
+    ids = [p.id for p in proveedores]
+    por_proveedor = repositorio_proveedores.categorias_por_proveedor(ids)
+    calificaciones = servicio_evaluaciones_proveedor.calificaciones_actuales(ids)
+    return [
+        ResumenProveedor(p, _categorias_de(por_proveedor.get(p.id, []), arbol), calificaciones.get(p.id))
+        for p in proveedores
+    ]
 
 
 def obtener_ficha(proveedor_id: int) -> FichaProveedor:
@@ -254,6 +272,7 @@ def obtener_ficha(proveedor_id: int) -> FichaProveedor:
     return FichaProveedor(
         proveedor=proveedor,
         categorias=_categorias_de(categoria_ids, servicio_categorias.obtener_arbol()),
+        evaluaciones=servicio_evaluaciones_proveedor.historial(proveedor_id),
         productos=repositorio_producto_proveedor.listar_por_proveedor(proveedor_id),
         compras=repositorio_compras.listar_resumen(proveedor_id, limite=COMPRAS_EN_FICHA),
         total_compras=repositorio_compras.contar_resumen(proveedor_id),

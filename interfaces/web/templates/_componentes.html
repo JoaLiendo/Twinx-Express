@@ -60,6 +60,16 @@
   </span>
 {% endmacro %}
 
+{% macro estrellas(cantidad, extra='') %}
+  {# Calificación de 1 a 5 (V1.13-B). Accesible: el lector de pantalla lee "N de 5 estrellas". #}
+  <span class="inline-flex items-center leading-none {{ extra }}" role="img" aria-label="{{ cantidad }} de 5 estrellas"
+        title="{{ cantidad }} de 5" data-estrellas="{{ cantidad }}">
+    {%- for i in range(1, 6) -%}
+      <span aria-hidden="true" class="{{ 'text-amber-500' if i <= cantidad else 'text-slate-300 dark:text-slate-600' }}">★</span>
+    {%- endfor -%}
+  </span>
+{% endmacro %}
+
 {% macro card(extra='', interactiva=false) %}
   {# `interactiva=true` agrega elevación sutil al hover -- opcional, no rompe
      ningún uso existente de `ui.card()` sin argumentos. #}

@@ -58,6 +58,14 @@
               {% if proveedor.contacto_nombre %}
                 <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{{ proveedor.contacto_nombre }}</p>
               {% endif %}
+              <div class="mt-1 flex items-center gap-2 text-xs" data-calificacion="{{ resumen.calificacion or '' }}">
+                {% if resumen.calificacion %}
+                  {{ ui.estrellas(resumen.calificacion) }}
+                  {% if resumen.requiere_advertencia %}<span class="font-semibold text-error">Baja calificación</span>{% endif %}
+                {% else %}
+                  <span class="text-slate-400 dark:text-slate-500">Sin calificación</span>
+                {% endif %}
+              </div>
             </div>
             {% if proveedor.activo %}
               {{ ui.badge('Activo', 'exito') }}
