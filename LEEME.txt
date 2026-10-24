@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.11.0
+Twinx Express 1.12.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -705,3 +705,48 @@ j) AL ACTUALIZAR DESDE LA VERSION 1.10
    KioscoApp crea automaticamente un backup y aplica 5 migraciones nuevas
    (27 a 31): tus datos quedan tal cual. Las categorias que ya tenias
    quedan como categorias principales. Si algo sale mal, segui el punto 7.
+
+
+21) NOVEDADES DE LA VERSION 1.12: VENCIMIENTOS DE PRODUCTOS
+----------------------------------------------------------------------------------
+
+a) FECHA DE VENCIMIENTO AL INGRESAR MERCADERIA
+   En cada linea de una compra podes cargar el vencimiento del producto
+   ("Vence el producto", opcional). Si llegaron unidades con fechas
+   distintas, toca "Varias fechas" y carga cuantas unidades vencen en
+   cada fecha. Lo que no tenga fecha queda como "vencimiento
+   desconocido".
+
+b) SALE PRIMERO LO QUE VENCE ANTES
+   Al vender, KioscoApp descuenta primero lo que vence antes, despues lo
+   que no tiene fecha y por ultimo lo vencido. El dueño ve en el detalle
+   de cada venta de que existencias salio y su costo real.
+
+c) AVISOS "PROXIMO A VENCER" Y "VENCIDO"
+   Por defecto avisa 10 dias antes (el dueño lo cambia en
+   Configuracion). El listado de productos se puede filtrar por proximo a
+   vencer, vencido o sin vencimiento conocido, y la pantalla de inicio
+   muestra las alertas.
+
+d) RETIRAR LO VENCIDO
+   En Productos > Vencimientos de cada producto ves sus existencias y
+   retiras lo vencido; la perdida queda con el costo real de esa
+   existencia (o sin costo, si no se conoce). Tambien funciona con
+   productos dados de baja.
+
+e) VENDER ALGO VENCIDO
+   Si una venta solo se completa con mercaderia vencida, el sistema la
+   frena: hace falta que el dueño la autorice (en el puesto del cajero,
+   con su usuario y contraseña). Queda registrado quien autorizo.
+
+f) PRECIOS DE LIQUIDACION (solo el dueño)
+   En Precios > Liquidacion KioscoApp sugiere un precio rebajado para lo
+   proximo a vencer, sin bajar del costo mas un margen minimo. Nunca
+   cambia un precio solo: vos lo aplicas, lo modificas o lo descartas.
+
+g) AL ACTUALIZAR DESDE LA VERSION 1.11
+   KioscoApp crea automaticamente un backup y aplica 1 migracion nueva
+   (32): tus datos quedan tal cual. El stock que ya tenias queda como
+   "existencia heredada", sin vencimiento ni costo (no se inventa ningun
+   dato); se vende despues de lo que tenga fecha. Si algo sale mal, segui
+   el punto 7.

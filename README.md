@@ -622,6 +622,27 @@ Cinco migraciones nuevas (027–031; 31 en total), sin dependencias nuevas.
 **Actualizar desde V1.10.** Se crea un backup automático y se aplican las migraciones 027–031; los
 datos quedan intactos y las categorías existentes quedan como principales.
 
+## Partidas, vencimientos y liquidación (V1.12)
+
+Una migración nueva (032; 32 en total), sin dependencias nuevas. Diseño, semántica de costos y
+limitaciones en `docs/V1.12_PARTIDAS.md`.
+
+- **Partidas de stock** (032): `partidas_stock` + `movimientos_partida` (libro inmutable, una causa por
+  movimiento). Toda operación que mueve stock mueve partidas en la misma transacción y exige
+  `stock_actual = SUM(partidas)`; si no, se revierte. Stock previo: una partida `HEREDADA` por producto,
+  sin vencimiento, costo ni fecha.
+- **Vencimientos al ingresar mercadería** (una fecha o varias por línea), incluidos en la idempotencia.
+- **Ventas FEFO** trazables; la anulación devuelve exactamente a las mismas partidas. El costo real de lo
+  vendido sale del libro; `detalle_venta.costo_unitario_centavos` sigue siendo el costo de referencia.
+- **Alertas** "Próximo a vencer" (configurable) y "Vencido", filtros y dashboard; **baja por
+  vencimiento** desde la partida (también de productos dados de baja); pérdidas valorizadas con el costo
+  real de la partida o sin costo si no se conoce; **venta de vencidos** solo con autorización OWNER
+  auditada.
+- **Liquidación sugerida** `/precios/liquidacion` (OWNER): nunca cambia un precio sola.
+
+**Actualizar desde V1.11.** Se crea un backup automático y se aplica la migración 032; los datos quedan
+intactos y el stock existente pasa a una partida heredada por producto.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -646,5 +667,6 @@ datos quedan intactos y las categorías existentes quedan como principales.
 - [x] Cuentas a pagar a proveedores: compras CONTADO/CREDITO, saldo, anulación con reversa y pagos en efectivo/transferencia (V1.9, ver «Cuentas a pagar a proveedores (V1.9)»)
 - [x] Vencimientos de compras a crédito, deuda a proveedores estimada por antigüedad (FIFO), reporte y CSV (V1.10, ver «Vencimientos y deuda a proveedores (V1.10)»)
 - [x] Trazabilidad de stock (motivos, reversas, stock inicial, pérdidas), categorías jerárquicas, etiquetas y dashboard operativo (V1.11, ver «Trazabilidad de stock y catálogo (V1.11)»)
+- [x] Partidas de stock, vencimientos de productos, ventas FEFO, alertas, baja/venta controlada de vencidos y liquidación sugerida (V1.12, ver «Partidas, vencimientos y liquidación (V1.12)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado
