@@ -2,7 +2,7 @@
 
 > Roadmap vivo, no retrospectivo (el detalle de lo ya implementado por versión está en `README.md`,
 > `LEEME.txt` y `PROGRESS.md`). Se actualiza a medida que cada versión se define o se cierra.
-> V1.14 en adelante es **provisional**: orden y alcance pueden cambiar según lo que surja en V1.11–V1.13.
+> V1.11–V1.13 están cerradas; V1.14–V1.18 tienen el alcance acordado que se detalla abajo.
 
 ## V1.11 — Trazabilidad de ajustes de stock
 
@@ -81,15 +81,68 @@ Diseño e invariantes: `docs/V1.12_PARTIDAS.md`.
 - **V1.13-D (cerrado)**: documentación fiscal declarada (036), ficha por secciones y listado con atajos
   por dimensión (baja calificación, reclamos abiertos, deuda).
 
+Limitaciones aceptadas de V1.12 en `docs/V1.12_PARTIDAS.md`; de V1.13, en `PROGRESS.md` (sección 2).
+
 ---
 
-### V1.14–V1.18 (provisional)
+## V1.14 — Clientes y crédito
 
-Sin alcance definido todavía. Candidatas ya mencionadas en `PROGRESS.md` como pendientes/fuera de
-alcance (a priorizar cuando corresponda, no comprometidas a ninguna versión puntual):
+- Personas y empresas.
+- Condición fiscal separada del tipo de cliente.
+- Autorizados.
+- Cuenta corriente.
+- Límites.
+- Pagos parciales.
+- FIFO causal.
+- Estados NORMAL / REGULAR / DEMORADO / CRÍTICA.
+- Cierres.
+- Strikes.
+- Vetado permanente para cuenta corriente.
+- Historial/auditoría.
 
-- Promociones.
-- Órdenes de compra persistentes, imputación de pagos a compras concretas, notificaciones de
-  vencimientos, saldos a favor y devoluciones a proveedor.
-- Backup automático/programado.
-- Sincronizar `interfaces/cli/main.py` con los flujos de la web, o retirarlo.
+## V1.15 — Backups y actualizaciones
+
+- Backups automáticos.
+- Backup al cerrar caja.
+- Backup pre-actualización.
+- Retención.
+- Segundo destino.
+- Validación de integridad.
+- Actualización controlada.
+- Rollback seguro usando ejecutable + backup correspondiente.
+
+## V1.16 — Facturación fiscal ARCA
+
+- Integración fiscal.
+- Comprobantes correspondientes.
+- CAE.
+- Numeración/punto de venta.
+- QR.
+- Notas de crédito/débito.
+- PDF.
+- Impresión térmica.
+- Contingencia.
+
+Nada de esto se implementa antes de V1.16.
+
+## V1.17 — Analítica
+
+- Evolución de precios y costos.
+- Costo real desde partidas.
+- Margen bruto.
+- Ventas por producto/período/temporada.
+- Pérdidas.
+- Deuda.
+- Análisis de proveedores.
+- Reposición sugerida determinística.
+- Dashboard avanzado OWNER.
+
+## V1.18 — Preparación comercial / piloto
+
+- Instalación.
+- Soporte.
+- Ayuda/manual.
+- Firma del ejecutable.
+- Pruebas de recuperación.
+- Hardening comercial.
+- Release candidate para clientes reales.

@@ -18,10 +18,11 @@
 
 ## 2. Pendiente / fuera de alcance actual
 
-- **V1.14**: a definir (ver `docs/ROADMAP.md`). Limitaciones aceptadas de V1.12 en `docs/V1.12_PARTIDAS.md`. De V1.13: revertir un ajuste FALLA_FABRICA que ya originó un reclamo no lo bloquea ni lo marca en el reclamo (se resuelve cambiando el estado del reclamo); la documentación fiscal es solo metadata (sin archivos); no hay contador global de reclamos en el dashboard.
+- **Próximas versiones**: V1.14 clientes y crédito, V1.15 backups y actualizaciones, V1.16 facturación fiscal ARCA, V1.17 analítica, V1.18 preparación comercial / piloto (alcance en `docs/ROADMAP.md`).
+- **Limitaciones aceptadas**: de V1.12, en `docs/V1.12_PARTIDAS.md`. De V1.13: revertir un ajuste FALLA_FABRICA que ya originó un reclamo no lo bloquea ni lo marca en el reclamo (se resuelve cambiando el estado del reclamo); la documentación fiscal es solo metadata (sin archivos); no hay contador global de reclamos en el dashboard.
 - **Pedidos**: solo cascarón visual (`interfaces/web/rutas/pedidos.py`), sin lógica de negocio; oculto del menú.
 - **Órdenes de compra persistentes, imputación de pagos a compras concretas, notificaciones de vencimientos, saldos a favor y devoluciones a proveedor**: NO implementadas (candidatas de una versión futura).
-- **Backup automático/programado**: no existe; solo el manual desde `/backup` y el preventivo previo a migrar una base existente.
+- **Backup automático/programado**: no existe (planificado en V1.15); solo el manual desde `/backup` y el preventivo previo a migrar una base existente.
 - **CLI (`interfaces/cli/main.py`)**: interfaz secundaria no sincronizada con los flujos de la web.
 - Anulación de ventas a cuenta corriente: no permitida (decisión de V1.3).
 - Productos anteriores a V1.11 no tienen movimiento de stock inicial (no se infiere): su stock de alta sigue dentro del saldo inicial reconstruido del kardex.
