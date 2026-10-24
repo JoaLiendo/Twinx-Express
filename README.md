@@ -643,6 +643,42 @@ limitaciones en `docs/V1.12_PARTIDAS.md`.
 **Actualizar desde V1.11.** Se crea un backup automático y se aplica la migración 032; los datos quedan
 intactos y el stock existente pasa a una partida heredada por producto.
 
+## Proveedores (V1.13)
+
+Cuatro migraciones nuevas (033–036; 36 en total), sin dependencias nuevas. Todo el módulo sigue siendo
+solo OWNER.
+
+- **Clasificación** (033): `proveedor_categorias`, muchos-a-muchos con el árbol de categorías existente
+  (no hay taxonomía paralela). Organizativa: nunca restringe compras. Una categoría nueva para el
+  proveedor debe estar activa; una ya vinculada se conserva si después se da de baja. Filtro por
+  categoría con subcategorías; búsqueda por razón social y CUIT.
+- **Datos fiscales** (033): razón social, CUIT (11 dígitos con dígito verificador, único entre activos
+  e inactivos), condición fiscal, Ingresos Brutos y Convenio Multilateral, todos opcionales. Solo se
+  almacenan: ninguna regla deduce qué puede facturar un proveedor (eso es V1.16).
+- **Evaluaciones** (034): estrellas 1–5 (decisión humana, nunca un promedio), comentario obligatorio,
+  criterios opcionales (precio, calidad, entrega, cumplimiento, condiciones de pago, atención). Filas
+  inmutables; la calificación actual se deriva de la más reciente (mayor id), sin caché. 1–2 estrellas:
+  aviso al elegir el proveedor en una compra, sin bloquear ni cambiar nada.
+- **Reclamos** (035): tipo, descripción y relaciones opcionales (producto, compra, línea, ajuste
+  FALLA_FABRICA, cantidad). Datos de origen inmutables; el estado (PENDIENTE, RECONOCIDO, RECHAZADO,
+  RESUELTO, con reapertura) cambia solo con un cambio auditado y transiciones válidas garantizadas por la
+  base; nada se borra. Desde un ajuste FALLA_FABRICA el proveedor solo se propone si todas las unidades
+  salieron de partidas de compra `ELEGIDA`/`UNICA` de un único proveedor; si no, lo elige el OWNER. Un
+  reclamo nunca toca la evaluación ni la deuda.
+- **Documentación fiscal** (036): metadata declarada (constancia fiscal, Ingresos Brutos, CM05, otro) con
+  fecha, referencia y observación; sin archivos, sin servicios externos, sin afirmar vigencia.
+- **Ficha y listado**: ficha por secciones (resumen, compras/cuenta, evaluación, reclamos, fiscal);
+  listado con estrellas, reclamos abiertos y deuda, y atajos por dimensión (nunca combinados en un
+  puntaje).
+
+Un proveedor con evaluaciones, reclamos o documentos tiene historia: su baja es lógica. Una categoría
+que clasifica proveedores está en uso: su baja es lógica. Las FK nuevas (ON DELETE RESTRICT) hacen de
+`reclamos_proveedor` una tabla hija de `compras`, `detalle_compra`, `ajustes_stock` y `productos`: una
+migración futura que reconstruya alguna de ellas debe tratarla como tal (ver migración 035).
+
+**Actualizar desde V1.12.** Se crea un backup automático y se aplican las migraciones 033–036; los datos
+quedan intactos (sin categorías, datos fiscales ni evaluaciones inventados) y los saldos no cambian.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -668,5 +704,6 @@ intactos y el stock existente pasa a una partida heredada por producto.
 - [x] Vencimientos de compras a crédito, deuda a proveedores estimada por antigüedad (FIFO), reporte y CSV (V1.10, ver «Vencimientos y deuda a proveedores (V1.10)»)
 - [x] Trazabilidad de stock (motivos, reversas, stock inicial, pérdidas), categorías jerárquicas, etiquetas y dashboard operativo (V1.11, ver «Trazabilidad de stock y catálogo (V1.11)»)
 - [x] Partidas de stock, vencimientos de productos, ventas FEFO, alertas, baja/venta controlada de vencidos y liquidación sugerida (V1.12, ver «Partidas, vencimientos y liquidación (V1.12)»)
+- [x] Proveedores con categorías, datos fiscales, evaluaciones, reclamos auditables y documentación fiscal declarada (V1.13, ver «Proveedores (V1.13)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.12.0
+Twinx Express 1.13.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -750,3 +750,61 @@ g) AL ACTUALIZAR DESDE LA VERSION 1.11
    "existencia heredada", sin vencimiento ni costo (no se inventa ningun
    dato); se vende despues de lo que tenga fecha. Si algo sale mal, segui
    el punto 7.
+
+
+22) NOVEDADES DE LA VERSION 1.13: PROVEEDORES
+----------------------------------------------------------------------------------
+
+Todo esto es solo para el dueño (el cajero no ve proveedores).
+
+a) CATEGORIAS DEL PROVEEDOR
+   Al cargar o editar un proveedor podes marcar varias categorias del
+   catalogo (las mismas de los productos). Sirven para buscarlo y
+   organizarte: nunca impiden comprarle otra cosa. En Proveedores podes
+   filtrar por categoria (incluye sus subcategorias).
+
+b) DATOS FISCALES
+   Razon social, CUIT, condicion fiscal, Ingresos Brutos y Convenio
+   Multilateral, todos opcionales. El CUIT se revisa que este bien
+   escrito y no se puede repetir entre dos proveedores. Se puede buscar
+   por CUIT con o sin guiones. KioscoApp solo guarda y muestra estos
+   datos: no los consulta en ARCA ni decide que puede facturar cada uno.
+
+c) EVALUACION (1 A 5 ESTRELLAS)
+   En la ficha del proveedor: estrellas, comentario obligatorio y, si
+   queres, puntajes por precio, calidad, entrega, cumplimiento,
+   condiciones de pago y atencion. Las estrellas generales las elegis
+   vos (no son un promedio). Las evaluaciones anteriores no se borran ni
+   se cambian: para corregir, registra una nueva. Vale la mas reciente.
+
+d) AVISO AL COMPRAR
+   Si el proveedor tiene 1 o 2 estrellas, al elegirlo en una compra
+   aparece un aviso. No bloquea nada: podes registrar la compra igual.
+
+e) RECLAMOS
+   Desde la ficha ("Nuevo reclamo") registras faltantes, problemas de
+   calidad, de facturacion, etc., y opcionalmente el producto, la compra
+   y la cantidad. Cada reclamo pasa por Pendiente, Reconocido, Rechazado
+   o Resuelto (y se puede reabrir), siempre con una observacion; queda el
+   historial de quien cambio que y cuando. Un reclamo nunca cambia las
+   estrellas del proveedor ni su deuda.
+   Desde el historial de ajustes de un producto, una baja por "falla de
+   fabrica" tiene el enlace "Reclamar al proveedor". Si se sabe con
+   certeza de que proveedor era esa mercaderia, ya viene elegido; si no
+   se sabe, lo elegis vos.
+
+f) DOCUMENTACION FISCAL
+   En la ficha podes anotar que recibiste una constancia fiscal, de
+   Ingresos Brutos, un CM05 u otro documento, con su fecha. Es solo un
+   registro: no se adjuntan archivos ni se controla su vigencia.
+
+g) RESUMEN EN EL LISTADO
+   El listado muestra estrellas, reclamos abiertos y deuda de cada
+   proveedor, con atajos para ver solo los de baja calificacion, con
+   reclamos abiertos o con deuda.
+
+h) AL ACTUALIZAR DESDE LA VERSION 1.12
+   KioscoApp crea automaticamente un backup y aplica 4 migraciones nuevas
+   (33 a 36): tus proveedores, compras, pagos y deudas quedan tal cual,
+   sin categorias, datos fiscales ni evaluaciones inventadas. Si algo
+   sale mal, segui el punto 7.

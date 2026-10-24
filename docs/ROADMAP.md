@@ -70,7 +70,16 @@ Diseño e invariantes: `docs/V1.12_PARTIDAS.md`.
   heredada sin otro historial) se conserva como baja lógica sin borrar su imagen. Semántica de costos y
   limitaciones aceptadas en `docs/V1.12_PARTIDAS.md`. Sin migración.
 
-## V1.13 — a definir
+## V1.13 — Proveedores
+
+- **V1.13-A (cerrado)**: clasificación proveedor↔categorías (árbol existente, muchos-a-muchos, sin
+  restringir compras) y datos fiscales opcionales con CUIT único (migración 033).
+- **V1.13-B (cerrado)**: evaluaciones 1–5 inmutables con comentario obligatorio y criterios opcionales;
+  calificación actual derivada; aviso no bloqueante al comprar a 1–2 estrellas (migración 034).
+- **V1.13-C (cerrado)**: reclamos con estados auditables (transiciones y estado garantizados por la base),
+  relaciones reales a producto/compra/línea/ajuste FALLA_FABRICA, sin tocar estrellas ni deuda (035).
+- **V1.13-D (cerrado)**: documentación fiscal declarada (036), ficha por secciones y listado con atajos
+  por dimensión (baja calificación, reclamos abiertos, deuda).
 
 ---
 
@@ -79,7 +88,7 @@ Diseño e invariantes: `docs/V1.12_PARTIDAS.md`.
 Sin alcance definido todavía. Candidatas ya mencionadas en `PROGRESS.md` como pendientes/fuera de
 alcance (a priorizar cuando corresponda, no comprometidas a ninguna versión puntual):
 
-- Lotes y vencimientos de productos (no de compras), promociones, proveedores con rating.
+- Promociones.
 - Órdenes de compra persistentes, imputación de pagos a compras concretas, notificaciones de
   vencimientos, saldos a favor y devoluciones a proveedor.
 - Backup automático/programado.
