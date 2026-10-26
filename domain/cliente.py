@@ -246,9 +246,135 @@ def validar_cobro(monto_centavos: int, saldo_centavos: int, medio_pago: str = ME
         raise CobroInvalidoError("El monto del cobro no puede superar el saldo del cliente.")
 
 
-def calcular_hash_cobro(cliente_id: int, monto_centavos: int, descripcion: str | None) -> str:
+@dataclass(frozen=True)
+class Obligacion:
+    """La porción financiada de una venta a cuenta (V1.14-C, migración 039): nace con su CARGO y solo
+    baja por imputaciones de cobros. Su antigüedad se mide desde `fecha_origen`; está saldada cuando
+    `saldo_pendiente_centavos` llega a 0 (estado derivado, no guardado)."""
+
+    id: int
+    cliente_id: int
+    venta_id: int
+    monto_original_centavos: int
+    saldo_pendiente_centavos: int
+    fecha_origen: str
+
+    @property
+    def imputado_centavos(self) -> int:
+        return self.monto_original_centavos - self.saldo_pendiente_centavos
+
+    @property
+    def saldada(self) -> bool:
+        return self.saldo_pendiente_centavos == 0
+
+
+TIPO_IMPUTACION_FIFO = "FIFO"
+TIPO_IMPUTACION_MANUAL = "MANUAL"
+TIPOS_IMPUTACION = {
+    TIPO_IMPUTACION_FIFO: "FIFO",
+    TIPO_IMPUTACION_MANUAL: "Manual (excepción)",
+    "HEREDADA_FIFO": "FIFO reconstruido (histórico)",
+}
+
+
+@dataclass(frozen=True)
+class Imputacion:
+    """Qué parte de un cobro pagó qué obligación, tal como quedó registrado (nunca se recalcula)."""
+
+    id: int
+    movimiento_cobro_id: int
+    obligacion_id: int
+    venta_id: int
+    monto_centavos: int
+    tipo: str
+    observacion: str | None
+    usuario: str | None
+    fecha: str
+
+    @property
+    def tipo_etiqueta(self) -> str:
+        return TIPOS_IMPUTACION[self.tipo]
+
+
+def imputar_fifo(pendientes: list[Obligacion], monto_centavos: int) -> list[tuple[int, int]]:
+    """Reparte un cobro sobre las obligaciones pendientes, la más antigua primero (`pendientes` ya viene
+    en ese orden). Devuelve `(obligacion_id, monto)` y cubre el cobro completo: no hay saldo a favor.
+
+    Raises:
+        CobroInvalidoError: si el monto no es positivo o supera la deuda pendiente total.
+    """
+    if monto_centavos <= 0:
+        raise CobroInvalidoError("El monto del cobro debe ser mayor a cero.")
+    if monto_centavos > sum(o.saldo_pendiente_centavos for o in pendientes):
+        raise CobroInvalidoError("El monto del cobro no puede superar el saldo del cliente.")
+    restante = monto_centavos
+    reparto: list[tuple[int, int]] = []
+    for obligacion in pendientes:
+        if restante == 0:
+            break
+        aplicado = min(restante, obligacion.saldo_pendiente_centavos)
+        if aplicado > 0:
+            reparto.append((obligacion.id, aplicado))
+            restante -= aplicado
+    return reparto
+
+
+LONGITUD_MAXIMA_OBSERVACION_IMPUTACION = 250
+
+
+def validar_observacion_imputacion(observacion: str | None) -> str:
+    """Una imputación manual siempre explica por qué se aparta del FIFO.
+
+    Raises:
+        CobroInvalidoError: si falta o supera el largo máximo.
+    """
+    limpia = (observacion or "").strip()
+    if not limpia:
+        raise CobroInvalidoError("Una imputación manual requiere una observación que explique la excepción.")
+    if len(limpia) > LONGITUD_MAXIMA_OBSERVACION_IMPUTACION:
+        raise CobroInvalidoError(
+            f"La observación no puede superar los {LONGITUD_MAXIMA_OBSERVACION_IMPUTACION} caracteres."
+        )
+    return limpia
+
+
+def validar_imputacion_manual(
+    pendientes: list[Obligacion], asignacion: dict[int, int], monto_centavos: int
+) -> list[tuple[int, int]]:
+    """Valida un reparto manual (excepción del OWNER): solo obligaciones pendientes de ese cliente, cada
+    monto positivo y sin superar su saldo, y la suma exactamente igual al cobro. Devuelve el reparto en el
+    orden de antigüedad de las obligaciones.
+
+    Raises:
+        CobroInvalidoError: si el reparto no cumple alguna de esas reglas.
+    """
+    por_id = {o.id: o for o in pendientes}
+    if not asignacion:
+        raise CobroInvalidoError("Una imputación manual debe indicar al menos una obligación.")
+    for obligacion_id, monto in asignacion.items():
+        obligacion = por_id.get(obligacion_id)
+        if obligacion is None:
+            raise CobroInvalidoError("La imputación manual incluye una obligación que no está pendiente para este cliente.")
+        if monto <= 0:
+            raise CobroInvalidoError("Cada monto de una imputación manual debe ser mayor a cero.")
+        if monto > obligacion.saldo_pendiente_centavos:
+            raise CobroInvalidoError(f"La imputación a la venta #{obligacion.venta_id} supera su saldo pendiente.")
+    if sum(asignacion.values()) != monto_centavos:
+        raise CobroInvalidoError("La imputación manual debe repartir exactamente el monto del cobro.")
+    return [(o.id, asignacion[o.id]) for o in pendientes if o.id in asignacion]
+
+
+def calcular_hash_cobro(
+    cliente_id: int,
+    monto_centavos: int,
+    descripcion: str | None,
+    imputacion_manual: dict[int, int] | None = None,
+) -> str:
     """Hash canónico del contenido de un cobro, para la idempotencia: la misma
-    clave con otro cliente, monto o descripción es un uso indebido de la clave."""
+    clave con otro cliente, monto o descripción es un uso indebido de la clave. Un reparto manual
+    (V1.14-D) entra solo si existe, así el hash de un cobro FIFO es el de siempre."""
     contenido = {"cliente_id": cliente_id, "monto_centavos": monto_centavos, "descripcion": descripcion}
+    if imputacion_manual:
+        contenido["imputacion_manual"] = sorted(imputacion_manual.items())
     texto = json.dumps(contenido, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(texto.encode("utf-8")).hexdigest()

@@ -10,11 +10,13 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class VentasDeSesionPorMedio:
-    """Ventas activas de una sesión de caja con un mismo medio de pago."""
+    """Ventas activas de una sesión de caja con un mismo medio de pago. `efectivo_centavos` es lo que
+    entró en efectivo: el total de EFECTIVO, el contado de las ventas a cuenta mixtas (V1.14-C), 0 si no."""
 
     tipo_pago: str
     cantidad_ventas: int
     total_centavos: int
+    efectivo_centavos: int
 
 
 @dataclass(frozen=True)
@@ -50,7 +52,7 @@ class ResumenSesionCaja:
 
     @property
     def efectivo_ventas_centavos(self) -> int:
-        return sum(venta.total_centavos for venta in self.ventas_por_medio if venta.tipo_pago == "EFECTIVO")
+        return sum(venta.efectivo_centavos for venta in self.ventas_por_medio)
 
     @property
     def efectivo_esperado_centavos(self) -> int:

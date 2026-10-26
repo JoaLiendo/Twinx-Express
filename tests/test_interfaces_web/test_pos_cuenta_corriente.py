@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from domain.venta import TIPOS_PAGO_VALIDOS
 from services import servicio_clientes, servicio_stock
 from tests.utilidades_clientes import consultar, contar, forzar_cliente_inactivo, usuario_logueado
@@ -21,6 +23,7 @@ DIRECTORIO_JS = Path(__file__).resolve().parents[2] / "interfaces" / "web" / "st
 @pytest.fixture
 def e(base_datos_temporal):
     owner, cookies_owner = usuario_logueado("OWNER", "duenio")
+    habilitar_credito_general(owner.id)
     cajera, cookies_cajera = usuario_logueado("CASHIER", "cajera")
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=50)
     cliente = servicio_clientes.crear_cliente("Ana", owner.id)

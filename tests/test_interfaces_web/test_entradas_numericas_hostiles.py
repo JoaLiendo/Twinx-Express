@@ -13,6 +13,8 @@ import re
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from domain.compra import ItemCompra
 from domain.venta import ItemVenta
 from interfaces.web.app import app
@@ -48,6 +50,7 @@ TABLAS = (
 @pytest.fixture
 def e(base_datos_temporal, caja_abierta):
     owner, cookies = usuario_logueado("OWNER", "duenio")
+    habilitar_credito_general(owner.id)
     producto = crear_producto("7790000000001", stock=50)
     cliente = servicio_clientes.crear_cliente("Ana", owner.id)
     servicio_ventas.registrar_venta(
@@ -130,6 +133,20 @@ CASOS = [
         {"cantidad": "entero"},
     ),
     ("conteo_form", "POST", "/inventario/conteo/{pid}", {"cantidad": "3"}, {"cantidad": "entero"}),
+    (
+        "politica_credito_individual",
+        "POST",
+        "/clientes/{cid}/credito/politica",
+        {"modo": "LIMITE", "limite": "100.00", "version": "0"},
+        {"limite": "monto", "version": "entero"},
+    ),
+    (
+        "politica_credito_general",
+        "POST",
+        "/configuracion/credito",
+        {"ambito": "PERSONA", "modo": "LIMITE", "limite": "100.00", "version": "0"},
+        {"limite": "monto", "version": "entero"},
+    ),
     ("conteo_api", "POST", "/api/inventario/conteo/{pid}", {"json": {"cantidad": 3}}, {"json.cantidad": "entero_json"}),
     (
         "venta_api",
@@ -215,6 +232,8 @@ RUTAS_CON_ID = [
     ("GET", "/clientes/{id}/editar"),
     ("POST", "/clientes/{id}/desactivar"),
     ("POST", "/clientes/{id}/reactivar"),
+    ("POST", "/clientes/{id}/autorizados"),
+    ("POST", "/clientes/{id}/autorizados/{id}/baja"),
     ("GET", "/compras/{id}"),
     ("GET", "/compras/{id}/anular"),
     ("POST", "/compras/{id}/anular"),

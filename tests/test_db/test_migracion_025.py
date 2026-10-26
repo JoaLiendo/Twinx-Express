@@ -45,7 +45,8 @@ OBJETOS_CUENTA_ORIGINALES = (
     "idx_movimientos_cuenta_clave_idempotencia",
     "idx_movimientos_cuenta_un_cargo_por_venta",
     "idx_movimientos_cuenta_un_cobro_por_ingreso",
-    "trg_movimientos_cuenta_cargo_valido",
+    # `trg_movimientos_cuenta_cargo_valido` no: la 039 (V1.14-C) lo redefine a propósito (el CARGO pasa a
+    # ser la porción financiada de la venta y una empresa exige comprador).
     "trg_movimientos_cuenta_cobro_valido",
     "trg_movimientos_cuenta_inmutable",
     "trg_movimientos_cuenta_no_borrable",

@@ -6,6 +6,8 @@ import json
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import clientes as repositorio_clientes
 from domain.venta import TIPOS_PAGO_VALIDOS, ItemVenta, calcular_hash_contenido
@@ -35,6 +37,7 @@ CC = "CUENTA_CORRIENTE"
 @pytest.fixture
 def escenario(base_datos_temporal, caja_abierta):
     owner = crear_owner()
+    habilitar_credito_general(owner.id)
     cajera = crear_usuario("cajera", "CASHIER")
     cliente = servicio_clientes.crear_cliente("Ana", owner.id)
     producto = crear_producto(precio_centavos=200, stock=10)
@@ -198,6 +201,7 @@ def test_venta_a_cuenta_sin_stock_no_deja_nada(escenario):
 @pytest.mark.sin_caja_abierta
 def test_venta_a_cuenta_sin_caja_abierta_se_rechaza(base_datos_temporal):
     owner = crear_owner()
+    habilitar_credito_general(owner.id)
     cliente = servicio_clientes.crear_cliente("Ana", owner.id)
     producto = crear_producto(stock=10)
 

@@ -39,8 +39,12 @@ def registrar_venta_con_detalle(
     costos_unitarios_por_producto_id: dict[int, int] | None = None,
     sesion_caja_id: int | None = None,
     cliente_id: int | None = None,
+    pago_contado_centavos: int = 0,
 ) -> Venta:
     """Inserta la venta y su detalle dentro de la conexión recibida.
+
+    `pago_contado_centavos` (V1.14-C) es el efectivo cobrado en el momento por una venta a cuenta mixta;
+    un trigger exige que solo exista en una venta a cuenta y que sea menor que el total.
 
     `items_con_precio` son pares (`ItemVenta`, precio_unitario_centavos)
     ya resueltos por el servicio: el precio se congela al momento de la
@@ -95,11 +99,21 @@ def registrar_venta_con_detalle(
     fila_venta = conexion.execute(
         """
         INSERT INTO ventas
-            (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id, sesion_caja_id, cliente_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        RETURNING id, fecha, total_centavos, tipo_pago, estado
+            (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id, sesion_caja_id, cliente_id,
+             pago_contado_centavos)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING id, fecha, total_centavos, tipo_pago, estado, pago_contado_centavos
         """,
-        (total_centavos, tipo_pago, clave_idempotencia, contenido_hash, usuario_id, sesion_caja_id, cliente_id),
+        (
+            total_centavos,
+            tipo_pago,
+            clave_idempotencia,
+            contenido_hash,
+            usuario_id,
+            sesion_caja_id,
+            cliente_id,
+            pago_contado_centavos,
+        ),
     ).fetchone()
 
     venta_id = fila_venta["id"]
@@ -128,13 +142,7 @@ def registrar_venta_con_detalle(
             ),
         )
 
-    return Venta(
-        id=venta_id,
-        fecha=fila_venta["fecha"],
-        total_centavos=fila_venta["total_centavos"],
-        tipo_pago=fila_venta["tipo_pago"],
-        estado=fila_venta["estado"],
-    )
+    return _fila_a_venta(fila_venta)
 
 
 def _fila_a_venta(fila: sqlite3.Row) -> Venta:
@@ -144,6 +152,7 @@ def _fila_a_venta(fila: sqlite3.Row) -> Venta:
         total_centavos=fila["total_centavos"],
         tipo_pago=fila["tipo_pago"],
         estado=fila["estado"],
+        pago_contado_centavos=fila["pago_contado_centavos"],
     )
 
 
@@ -158,7 +167,7 @@ def obtener_por_id_en_conexion(conexion: sqlite3.Connection, venta_id: int) -> V
     si continúa.
     """
     fila = conexion.execute(
-        "SELECT id, fecha, total_centavos, tipo_pago, estado FROM ventas WHERE id = ?",
+        "SELECT id, fecha, total_centavos, tipo_pago, estado, pago_contado_centavos FROM ventas WHERE id = ?",
         (venta_id,),
     ).fetchone()
     return _fila_a_venta(fila) if fila is not None else None
@@ -183,7 +192,7 @@ def obtener_por_clave_idempotencia_en_conexion(
     diseño de anulación de ventas).
     """
     fila = conexion.execute(
-        "SELECT id, fecha, total_centavos, tipo_pago, estado, contenido_hash "
+        "SELECT id, fecha, total_centavos, tipo_pago, estado, pago_contado_centavos, contenido_hash "
         "FROM ventas WHERE clave_idempotencia = ?",
         (clave_idempotencia,),
     ).fetchone()
@@ -237,6 +246,7 @@ def obtener_venta_con_detalle(venta_id: int) -> VentaConDetalle | None:
                    ventas.total_centavos AS venta_total_centavos,
                    ventas.tipo_pago AS venta_tipo_pago,
                    ventas.estado AS venta_estado,
+                   ventas.pago_contado_centavos AS venta_pago_contado_centavos,
                    productos.nombre AS producto_nombre,
                    detalle_venta.cantidad AS cantidad,
                    detalle_venta.precio_unitario_centavos AS precio_unitario_centavos,
@@ -260,6 +270,7 @@ def obtener_venta_con_detalle(venta_id: int) -> VentaConDetalle | None:
         total_centavos=primera["venta_total_centavos"],
         tipo_pago=primera["venta_tipo_pago"],
         estado=primera["venta_estado"],
+        pago_contado_centavos=primera["venta_pago_contado_centavos"],
     )
     lineas = [
         LineaVenta(
@@ -290,7 +301,7 @@ def listar_ventas_de_sesion_en_conexion(conexion: sqlite3.Connection, sesion_id:
     """
     filas = conexion.execute(
         """
-        SELECT id, fecha, total_centavos, tipo_pago, estado FROM ventas
+        SELECT id, fecha, total_centavos, tipo_pago, estado, pago_contado_centavos FROM ventas
         WHERE sesion_caja_id = ? AND estado = 'ACTIVA'
         ORDER BY id DESC
         """,
@@ -339,7 +350,10 @@ def listar_en_rango(fecha_desde: str | None = None, fecha_hasta: str | None = No
         parametros.append(fecha_hasta)
 
     where = f"WHERE {' AND '.join(condiciones)}"
-    consulta = f"SELECT id, fecha, total_centavos, tipo_pago, estado FROM ventas {where} ORDER BY id DESC"
+    consulta = (
+        "SELECT id, fecha, total_centavos, tipo_pago, estado, pago_contado_centavos"
+        f" FROM ventas {where} ORDER BY id DESC"
+    )
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta, parametros).fetchall()
     return [_fila_a_venta(fila) for fila in filas]
@@ -793,7 +807,7 @@ def anular_venta_en_conexion(
             anulada_por_usuario_id = ?,
             fecha_anulacion = datetime('now', 'localtime')
         WHERE id = ? AND estado = 'ACTIVA'
-        RETURNING id, fecha, total_centavos, tipo_pago, estado
+        RETURNING id, fecha, total_centavos, tipo_pago, estado, pago_contado_centavos
         """,
         (motivo, observaciones, usuario_id, venta_id),
     ).fetchone()

@@ -8,6 +8,8 @@ from datetime import date
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from domain.compra import ItemCompra
 from domain.movimiento_stock import etiqueta_de_tipo
 from domain.venta import ItemVenta
@@ -52,6 +54,7 @@ def _filas(respuesta):
 @pytest.fixture
 def e(base_datos_temporal):
     owner, cookies = usuario_logueado("OWNER", "duenio")
+    habilitar_credito_general(owner.id)
     _, cajera = usuario_logueado("CASHIER", "cajera")
     servicio_caja.abrir_caja(0, None, owner.id)
     prov_a = servicio_proveedores.crear_proveedor("Distribuidora Alfa")

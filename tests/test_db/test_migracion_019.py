@@ -422,9 +422,12 @@ def test_ventas_y_movimientos_se_conservan_salvo_la_columna_nueva(v12):
     # El runner aplica también la 020, que agrega `ventas.cliente_id` y
     # `caja_movimientos.origen` al final de cada fila: la columna de la 019
     # (`sesion_caja_id`) queda anteúltima y el resto es idéntico a la V1.2.
-    assert [fila[:-2] for fila in despues["ventas"]] == antes["ventas"]
+    # La 039 (V1.14-C) agrega además `ventas.pago_contado_centavos` (0 en toda venta histórica).
+    assert [fila[:-3] for fila in despues["ventas"]] == antes["ventas"]
+    assert all(fila[-1] == 0 for fila in despues["ventas"])
     assert [fila[:-2] for fila in despues["movimientos"]] == antes["movimientos"]
-    assert all(fila[-2] is not None for fila in despues["ventas"] + despues["movimientos"])
+    assert all(fila[-3] is not None for fila in despues["ventas"])
+    assert all(fila[-2] is not None for fila in despues["movimientos"])
     assert sum(fila[2] for fila in despues["ventas"]) == 500  # SUM(total) antes = después
 
 

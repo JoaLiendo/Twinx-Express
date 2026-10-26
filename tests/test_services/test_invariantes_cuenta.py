@@ -3,6 +3,8 @@ tras escenarios variados: ventas, cobros, reintentos, rechazos, fallas simuladas
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import clientes as repositorio_clientes
@@ -27,6 +29,7 @@ CC = "CUENTA_CORRIENTE"
 @pytest.fixture
 def e(base_datos_temporal, caja_abierta):
     owner, cajera = crear_owner(), crear_usuario("cajera", "CASHIER")
+    habilitar_credito_general(owner.id)
     return type(
         "Escenario",
         (),

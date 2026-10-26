@@ -19,6 +19,7 @@ from domain.venta import (
     TIPO_PAGO_CUENTA_CORRIENTE,
     TIPOS_PAGO_ACEPTADOS,
     TIPOS_PAGO_VALIDOS,
+    CompradorVenta,
     ItemVenta,
 )
 from excepciones import DatosInvalidosError
@@ -75,6 +76,14 @@ def api_registrar_venta(
         ).id
     elif datos.autorizar_vencidos and usuario_actual.rol == "OWNER":
         autorizado_por_id = usuario_actual.id
+    comprador = None
+    if datos.indica_comprador:
+        comprador = CompradorVenta(
+            comprador_autorizado_id=datos.comprador_autorizado_id,
+            nombre_excepcional=datos.comprador_excepcional_nombre,
+            metodo_autorizacion=datos.comprador_excepcional_metodo,
+            detalle_autorizacion=datos.comprador_excepcional_detalle,
+        )
     venta = servicio_ventas.registrar_venta(
         items,
         datos.tipo_pago,
@@ -82,9 +91,16 @@ def api_registrar_venta(
         usuario_id=usuario_actual.id,
         cliente_id=datos.cliente_id,
         autorizado_por_id=autorizado_por_id,
+        pago_contado_centavos=datos.pago_contado_centavos,
+        comprador=comprador,
     )
     return VentaSalida(
-        id=venta.id, fecha=venta.fecha, total_centavos=venta.total_centavos, tipo_pago=venta.tipo_pago
+        id=venta.id,
+        fecha=venta.fecha,
+        total_centavos=venta.total_centavos,
+        tipo_pago=venta.tipo_pago,
+        pago_contado_centavos=venta.pago_contado_centavos,
+        credito_centavos=venta.credito_centavos,
     )
 
 

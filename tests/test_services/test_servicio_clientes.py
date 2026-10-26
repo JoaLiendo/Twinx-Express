@@ -5,6 +5,8 @@ import contextlib
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from db.repositorios import auditoria as repositorio_auditoria
 from domain.cliente import Cliente
 from excepciones import (
@@ -22,7 +24,9 @@ pytestmark = pytest.mark.usefixtures("caja_abierta")
 
 @pytest.fixture
 def owner(base_datos_temporal):
-    return crear_owner()
+    owner = crear_owner()
+    habilitar_credito_general(owner.id)
+    return owner
 
 
 @pytest.fixture

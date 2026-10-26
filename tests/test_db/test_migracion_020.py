@@ -162,7 +162,9 @@ def test_ventas_se_conservan_fila_por_fila_y_sin_cliente(previa):
     assert [f[0] for f in despues["ventas"]] == [1, 2, 5, 9]  # ids preservados, con huecos
     assert previa.con.execute("SELECT COUNT(*) FROM ventas WHERE cliente_id IS NOT NULL").fetchone()[0] == 0
     columnas = [f[1] for f in previa.con.execute("PRAGMA table_info(ventas)")]
-    assert columnas == COLUMNAS_VENTAS_PREVIAS.split(", ") + ["cliente_id"]
+    # `pago_contado_centavos` la agrega la 039 (V1.14-C), con 0 en toda venta histórica.
+    assert columnas == COLUMNAS_VENTAS_PREVIAS.split(", ") + ["cliente_id", "pago_contado_centavos"]
+    assert previa.con.execute("SELECT COUNT(*) FROM ventas WHERE pago_contado_centavos <> 0").fetchone()[0] == 0
 
 
 def test_detalle_venta_se_restaura_fila_por_fila(previa):
@@ -410,7 +412,8 @@ def test_migracion_desde_base_completamente_vacia_aplica_todo(tmp_path, monkeypa
         # ni trg_caja_movimientos_pago_proveedor_* y trg_movimientos_proveedor_* de la 025, ni los de
         # ajustes_stock de la 027-029, los de categorías de la 030, los de partidas de la 032 ni los de
         # evaluaciones, reclamos y documentos de proveedores de la 034-036, ni los de clientes y
-        # compradores autorizados de la 037 ni los de políticas de crédito de la 038)
+        # compradores autorizados de la 037, los de políticas de crédito de la 038 ni los de venta mixta,
+        # obligaciones e imputaciones de la 039)
         triggers_019_020 = con.execute(
             "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name NOT LIKE 'trg_productos_%'"
             " AND name NOT LIKE 'trg_inventario%' AND name NOT LIKE 'trg_ajustes_stock_inventario%'"
@@ -421,6 +424,9 @@ def test_migracion_desde_base_completamente_vacia_aplica_todo(tmp_path, monkeypa
             " AND name NOT LIKE 'trg_documentos_proveedor_%'"
             " AND name NOT LIKE 'trg_clientes_empresa_%' AND name NOT LIKE 'trg_clientes_clasificacion_%'"
             " AND name NOT LIKE 'trg_compradores_autorizados_%' AND name NOT LIKE 'trg_politicas_credito_%'"
+            " AND name NOT LIKE 'trg_ventas_contado_%' AND name NOT LIKE 'trg_compradores_venta_%'"
+            " AND name NOT LIKE 'trg_obligaciones_cliente_%' AND name NOT LIKE 'trg_imputaciones_cobro_%'"
+            " AND name <> 'trg_movimientos_cuenta_cargo_crea_obligacion'"
         ).fetchall()
         assert len(triggers_019_020) == 20
     finally:
@@ -468,7 +474,10 @@ def test_table_info_de_ventas_conserva_las_columnas_previas_y_solo_agrega_client
     despues = previa.con.execute("PRAGMA table_info(ventas)").fetchall()
     # (nombre, tipo, notnull, default, pk): idénticos, en el mismo orden; `cid` es solo la posición.
     assert [f[1:] for f in despues[: len(antes)]] == [f[1:] for f in antes]
-    assert [f[1:] for f in despues[len(antes):]] == [("cliente_id", "INTEGER", 0, None, 0)]
+    assert [f[1:] for f in despues[len(antes):]] == [
+        ("cliente_id", "INTEGER", 0, None, 0),
+        ("pago_contado_centavos", "INTEGER", 1, "0", 0),  # migración 039 (V1.14-C)
+    ]
 
 
 def test_foreign_key_list_de_ventas_conserva_las_previas_y_agrega_solo_cliente_id(previa):

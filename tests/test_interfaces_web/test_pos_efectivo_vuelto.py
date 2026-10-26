@@ -73,12 +73,18 @@ class TestBloqueEfectivoVuelto:
         solo de UX (ver pos.js::actualizarEstadoCobrar) -- el body de
         POST /api/ventas sigue siendo items/tipo_pago/clave (+ `cliente_id`, opcional, desde
         la 021: la venta a cuenta; + la autorización opcional para vender mercadería vencida,
-        V1.12-D). Ningún campo de monto recibido ni de vuelto."""
+        V1.12-D; + el pago al contado de una venta a cuenta mixta y el comprador de una empresa,
+        V1.14-C). Ningún campo de monto recibido ni de vuelto: `pago_contado_centavos` es la parte
+        de la venta que se cobra, no lo que el cliente entrega."""
         from interfaces.web.esquemas import VentaEntrada
 
         campos = set(VentaEntrada.model_fields.keys())
         autorizacion = {"autorizar_vencidos", "autorizacion_usuario", "autorizacion_password"}
-        assert campos == {"items", "tipo_pago", "clave_idempotencia", "cliente_id"} | autorizacion
+        credito = {
+            "pago_contado_centavos", "comprador_autorizado_id", "comprador_excepcional_nombre",
+            "comprador_excepcional_metodo", "comprador_excepcional_detalle",
+        }
+        assert campos == {"items", "tipo_pago", "clave_idempotencia", "cliente_id"} | autorizacion | credito
         assert not {"monto_recibido", "vuelto", "efectivo_recibido"} & campos
-        for opcional in {"cliente_id"} | autorizacion:
+        for opcional in {"cliente_id"} | autorizacion | credito:
             assert VentaEntrada.model_fields[opcional].is_required() is False

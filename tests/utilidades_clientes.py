@@ -37,6 +37,18 @@ def crear_owner(nombre_usuario: str = "duenio") -> Usuario:
     return crear_usuario(nombre_usuario, "OWNER")
 
 
+CREDITO_AMPLIO_CENTAVOS = 100_000_000_000
+
+
+def habilitar_credito_general(owner_id: int, limite_centavos: int = CREDITO_AMPLIO_CENTAVOS) -> None:
+    """Configura la política GENERAL de crédito (V1.14-B). Desde V1.14 nadie tiene crédito sin una política
+    explícita: los escenarios previos a V1.14 que venden a cuenta la declaran con un límite amplio."""
+    from services import servicio_credito
+
+    actual = next(p for p in servicio_credito.listar_politicas_globales() if p.ambito == "GENERAL")
+    servicio_credito.configurar_politica("GENERAL", "LIMITE", limite_centavos, owner_id, version_esperada=actual.version)
+
+
 def crear_producto(codigo: str = "7790000000001", precio_centavos: int = 100, stock: int = 100):
     return servicio_stock.registrar_producto(codigo, f"Producto {codigo}", 10, precio_centavos, stock_actual=stock)
 
@@ -99,8 +111,8 @@ def forzar_cliente_inactivo(ruta, cliente_id: int) -> None:
 
 
 def violaciones_de_invariantes(ruta) -> list[str]:
-    """Invariantes globales de la cuenta corriente (migración 020). Devuelve una descripción por cada
-    violación encontrada; una base consistente devuelve `[]`.
+    """Invariantes globales de la cuenta corriente (migración 020; obligaciones e imputaciones desde V1.14,
+    migración 039). Devuelve una descripción por cada violación encontrada; una base consistente devuelve `[]`.
 
     Son las que el esquema no puede exigir por sí solo al insertar (cada fila se valida contra lo que ya
     existe, no contra lo que todavía no se insertó) y que hoy garantiza que los servicios escriban ambas
@@ -128,10 +140,68 @@ def violaciones_de_invariantes(ruta) -> list[str]:
         """,
     )
     buscar(
-        "monto del CARGO distinto del total de la venta o cliente distinto",
+        "monto del CARGO distinto de la porción financiada de la venta o cliente distinto",
         """
-        SELECT m.id, m.monto_centavos, v.total_centavos FROM movimientos_cuenta m JOIN ventas v ON v.id = m.venta_id
-        WHERE m.tipo = 'CARGO' AND (m.monto_centavos <> v.total_centavos OR m.cliente_id IS NOT v.cliente_id)
+        SELECT m.id, m.monto_centavos, v.total_centavos, v.pago_contado_centavos
+        FROM movimientos_cuenta m JOIN ventas v ON v.id = m.venta_id
+        WHERE m.tipo = 'CARGO'
+          AND (m.monto_centavos <> v.total_centavos - v.pago_contado_centavos OR m.cliente_id IS NOT v.cliente_id)
+        """,
+    )
+    # --- V1.14: obligaciones e imputaciones (invariantes financieras 1-8) ---
+    buscar(
+        "saldo del cliente distinto de la suma de saldos pendientes de sus obligaciones",
+        """
+        SELECT l.cliente_id, l.saldo, COALESCE(o.pendiente, 0) FROM
+            (SELECT cliente_id, SUM(CASE tipo WHEN 'CARGO' THEN monto_centavos ELSE -monto_centavos END) AS saldo
+             FROM movimientos_cuenta GROUP BY cliente_id) l
+        LEFT JOIN (SELECT cliente_id, SUM(saldo_pendiente_centavos) AS pendiente FROM obligaciones_cliente
+                   GROUP BY cliente_id) o ON o.cliente_id = l.cliente_id
+        WHERE l.saldo <> COALESCE(o.pendiente, 0)
+        """,
+    )
+    buscar(
+        "obligación con monto distinto de imputado + saldo pendiente, o saldo fuera de rango",
+        """
+        SELECT o.id FROM obligaciones_cliente o
+        WHERE o.saldo_pendiente_centavos < 0 OR o.saldo_pendiente_centavos > o.monto_original_centavos
+           OR o.monto_original_centavos <> o.saldo_pendiente_centavos
+              + (SELECT COALESCE(SUM(i.monto_centavos), 0) FROM imputaciones_cobro i WHERE i.obligacion_id = o.id)
+        """,
+    )
+    buscar(
+        "cobro imputado por un monto distinto del cobro (de más o de menos: no hay saldo a favor)",
+        """
+        SELECT m.id, m.monto_centavos FROM movimientos_cuenta m
+        WHERE m.tipo = 'COBRO' AND m.monto_centavos <>
+              (SELECT COALESCE(SUM(i.monto_centavos), 0) FROM imputaciones_cobro i WHERE i.movimiento_cobro_id = m.id)
+        """,
+    )
+    buscar(
+        "venta con financiación sin exactamente su obligación causal (monto, cliente y CARGO)",
+        """
+        SELECT v.id FROM ventas v
+        LEFT JOIN obligaciones_cliente o ON o.venta_id = v.id
+        LEFT JOIN movimientos_cuenta m ON m.id = o.movimiento_cargo_id
+        WHERE v.tipo_pago = 'CUENTA_CORRIENTE'
+          AND (o.id IS NULL OR o.monto_original_centavos <> v.total_centavos - v.pago_contado_centavos
+               OR o.cliente_id IS NOT v.cliente_id OR m.venta_id IS NOT v.id)
+        """,
+    )
+    buscar(
+        "venta sin financiación con obligación o con pago al contado",
+        """
+        SELECT v.id FROM ventas v
+        WHERE v.tipo_pago <> 'CUENTA_CORRIENTE'
+          AND (v.pago_contado_centavos <> 0 OR EXISTS (SELECT 1 FROM obligaciones_cliente o WHERE o.venta_id = v.id))
+        """,
+    )
+    buscar(
+        "venta mixta cuyo contado + crédito no es el total",
+        """
+        SELECT v.id FROM ventas v JOIN obligaciones_cliente o ON o.venta_id = v.id
+        WHERE v.pago_contado_centavos + o.monto_original_centavos <> v.total_centavos
+           OR v.pago_contado_centavos >= v.total_centavos
         """,
     )
     buscar(

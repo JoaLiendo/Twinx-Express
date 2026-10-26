@@ -306,6 +306,16 @@ class LimiteCompradoresAutorizadosError(ErrorAplicacion):
     """La empresa ya tiene el máximo de compradores autorizados activos (V1.14-A)."""
 
 
+class CreditoNoDisponibleError(ErrorAplicacion):
+    """La venta pide financiar un monto que la situación crediticia del cliente no permite: sin política,
+    sin crédito habilitado o por encima del disponible (V1.14-C)."""
+
+
+class CompradorInvalidoError(DatosInvalidosError):
+    """El comprador indicado para una venta a cuenta de una empresa falta, no está autorizado o no
+    corresponde a ese cliente (V1.14-C)."""
+
+
 class PoliticaCreditoDesactualizadaError(ErrorAplicacion):
     """La política de crédito cambió desde que se abrió el formulario: no se pisa un cambio de otro
     OWNER con datos pensados sobre una versión anterior (V1.14-B)."""

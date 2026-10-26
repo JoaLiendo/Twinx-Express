@@ -3,6 +3,8 @@
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from db.repositorios import ventas as repositorio_ventas
 from domain.venta import ItemVenta, ResumenVenta
 from services import servicio_clientes, servicio_ventas
@@ -16,6 +18,7 @@ CC = "CUENTA_CORRIENTE"
 @pytest.fixture
 def e(base_datos_temporal):
     owner = crear_owner()
+    habilitar_credito_general(owner.id)
     return type(
         "Escenario",
         (),

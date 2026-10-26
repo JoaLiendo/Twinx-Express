@@ -21,12 +21,13 @@ from domain.credito import (
     MODOS,
     PoliticaCredito,
     PoliticaEfectiva,
+    SituacionCredito,
     resolver_politica,
     validar_politica,
 )
 from domain.dinero import centavos_a_texto
 from domain.usuario import exigir_rol
-from excepciones import ClienteNoEncontradoError, PoliticaCreditoDesactualizadaError
+from excepciones import ClienteNoEncontradoError, CreditoNoDisponibleError, PoliticaCreditoDesactualizadaError
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,39 @@ def politica_efectiva_en_conexion(conexion: ConexionBD, cliente: Cliente) -> Pol
     )
     individual = repositorio_politicas.obtener_en_conexion(conexion, AMBITO_CLIENTE, cliente.id)
     return resolver_politica(general, por_tipo, individual)
+
+
+def situacion_en_conexion(conexion: ConexionBD, cliente: Cliente) -> SituacionCredito:
+    """Política efectiva + deuda actual del cliente, dentro de una transacción ya abierta."""
+    return SituacionCredito(
+        politica=politica_efectiva_en_conexion(conexion, cliente),
+        saldo_centavos=repositorio_clientes.obtener_saldo_en_conexion(conexion, cliente.id),
+    )
+
+
+def situacion_crediticia(cliente_id: int) -> SituacionCredito:
+    """Saldo, límite efectivo y crédito disponible del cliente (lo que muestran la ficha y el POS).
+
+    Raises:
+        ClienteNoEncontradoError: si el cliente no existe.
+    """
+    with obtener_conexion() as conexion:
+        cliente = repositorio_clientes.obtener_por_id_en_conexion(conexion, cliente_id)
+        if cliente is None:
+            raise ClienteNoEncontradoError(f"No existe un cliente con id {cliente_id}.")
+        return situacion_en_conexion(conexion, cliente)
+
+
+def exigir_credito_para_venta_en_conexion(conexion: ConexionBD, cliente: Cliente, credito_centavos: int) -> None:
+    """Rechaza financiar `credito_centavos` si la situación del cliente no lo permite. La llama la venta
+    dentro de su `BEGIN IMMEDIATE`: dos ventas simultáneas no pueden consumir el mismo disponible.
+
+    Raises:
+        CreditoNoDisponibleError: con el motivo (sin política, sin crédito o límite superado).
+    """
+    motivo = situacion_en_conexion(conexion, cliente).motivo_rechazo(credito_centavos)
+    if motivo is not None:
+        raise CreditoNoDisponibleError(motivo)
 
 
 def politica_credito_efectiva(cliente_id: int) -> PoliticaEfectiva:

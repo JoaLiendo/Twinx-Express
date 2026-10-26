@@ -79,9 +79,10 @@ def _resumir_sesion(
     El efectivo estimado suma el efectivo físico que entró (montos de apertura
     e ingresos manuales, más ventas cobradas en efectivo) y resta los egresos
     manuales; las ventas con otros medios de pago (tarjeta, transferencia) no
-    mueven el efectivo de la caja.
+    mueven el efectivo de la caja. De una venta a cuenta mixta (V1.14-C) solo
+    entra su pago al contado: la porción financiada es deuda, no efectivo.
     """
-    total_efectivo_ventas_centavos = sum(venta.total_centavos for venta in ventas if venta.tipo_pago == "EFECTIVO")
+    total_efectivo_ventas_centavos = sum(venta.efectivo_centavos for venta in ventas)
 
     efectivo_estimado_centavos = total_efectivo_ventas_centavos
     for movimiento in movimientos:

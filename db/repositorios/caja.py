@@ -256,7 +256,9 @@ def resumir_sesiones(desde_inicio: str, hasta_exclusivo: str) -> list[ResumenSes
         ).fetchall()
         ventas = conexion.execute(
             f"""
-            SELECT sesion_caja_id, tipo_pago, COUNT(*) AS cantidad, SUM(total_centavos) AS total
+            SELECT sesion_caja_id, tipo_pago, COUNT(*) AS cantidad, SUM(total_centavos) AS total,
+                   SUM(CASE tipo_pago WHEN 'EFECTIVO' THEN total_centavos
+                                      WHEN 'CUENTA_CORRIENTE' THEN pago_contado_centavos ELSE 0 END) AS efectivo
             FROM ventas
             WHERE estado = 'ACTIVA' AND sesion_caja_id IN {en_rango}
             GROUP BY sesion_caja_id, tipo_pago
@@ -267,7 +269,7 @@ def resumir_sesiones(desde_inicio: str, hasta_exclusivo: str) -> list[ResumenSes
     ventas_por_sesion: dict[int, list[VentasDeSesionPorMedio]] = {}
     for fila in ventas:
         ventas_por_sesion.setdefault(fila["sesion_caja_id"], []).append(
-            VentasDeSesionPorMedio(fila["tipo_pago"], fila["cantidad"], fila["total"])
+            VentasDeSesionPorMedio(fila["tipo_pago"], fila["cantidad"], fila["total"], fila["efectivo"])
         )
     return [
         ResumenSesionCaja(

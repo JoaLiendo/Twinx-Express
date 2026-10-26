@@ -18,20 +18,24 @@ import logging
 import sqlite3
 from datetime import date, timedelta
 
-from db.conexion import obtener_conexion
+from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import clientes as repositorio_clientes
+from db.repositorios import compradores_autorizados as repositorio_autorizados
+from db.repositorios import obligaciones as repositorio_obligaciones
 from db.repositorios import partidas as repositorio_partidas
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
 from db.repositorios import ventas as repositorio_ventas
+from domain.cliente import Cliente
 from domain.dinero import centavos_a_texto
 from domain.producto import Producto
 from domain.usuario import exigir_rol
 from domain.venta import (
     TIPO_PAGO_CUENTA_CORRIENTE,
     TIPOS_PAGO_ACEPTADOS,
+    CompradorVenta,
     ItemVenta,
     LineaVentaExportable,
     ResumenVenta,
@@ -39,11 +43,13 @@ from domain.venta import (
     VentaConDetalle,
     calcular_hash_contenido,
     validar_motivo_anulacion,
+    validar_pago_contado,
 )
 from excepciones import (
     CajaCerradaError,
     ClaveIdempotenciaReutilizadaError,
     ClienteInactivoError,
+    CompradorInvalidoError,
     ClienteNoEncontradoError,
     DatosInvalidosError,
     ErrorBaseDatos,
@@ -56,7 +62,7 @@ from excepciones import (
     VentaRequiereAutorizacionVencidosError,
     VentaYaAnuladaError,
 )
-from services import servicio_partidas
+from services import servicio_credito, servicio_partidas
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +93,23 @@ def _resolver_clave_reutilizada(
     )
 
 
+def _exigir_comprador_en_conexion(conexion: ConexionBD, cliente: Cliente, comprador: CompradorVenta | None) -> None:
+    """Una empresa que compra a cuenta identifica a quién compra: un autorizado vigente suyo o una
+    autorización excepcional (que no lo vuelve autorizado). Una persona no lleva comprador."""
+    if not cliente.es_empresa:
+        if comprador is not None:
+            raise CompradorInvalidoError("Solo una empresa registra comprador autorizado.")
+        return
+    if comprador is None:
+        raise CompradorInvalidoError(
+            f"'{cliente.nombre}' es una empresa: indicá qué comprador autorizado compra o registrá una autorización excepcional."
+        )
+    if comprador.comprador_autorizado_id is not None:
+        autorizado = repositorio_autorizados.obtener_en_conexion(conexion, comprador.comprador_autorizado_id)
+        if autorizado is None or autorizado.cliente_id != cliente.id or not autorizado.activo:
+            raise CompradorInvalidoError("Esa persona no es un comprador autorizado vigente de la empresa.")
+
+
 def registrar_venta(
     items: list[ItemVenta],
     tipo_pago: str,
@@ -94,6 +117,8 @@ def registrar_venta(
     usuario_id: int | None = None,
     cliente_id: int | None = None,
     autorizado_por_id: int | None = None,
+    pago_contado_centavos: int = 0,
+    comprador: CompradorVenta | None = None,
 ) -> Venta:
     """Registra una venta con sus líneas de detalle y descuenta stock.
 
@@ -132,6 +157,15 @@ def registrar_venta(
     normal; en ambos casos el cliente debe existir y estar activo. Una venta
     a cuenta no se puede anular (ver `anular_venta`).
 
+    Venta mixta y crédito (V1.14-C): una venta a cuenta puede cobrar en el momento
+    `pago_contado_centavos` en efectivo (menor que el total) y financiar el resto. La
+    porción financiada debe entrar en el crédito disponible del cliente
+    (`servicio_credito.exigir_credito_para_venta_en_conexion`, el único punto que lo
+    decide) y genera su CARGO, cuyo trigger crea la obligación causal. Si el cliente es
+    una EMPRESA hace falta `comprador`: un autorizado vigente o una autorización
+    excepcional. Venta, stock, partidas, comprador, cargo, obligación y auditoría se
+    confirman o revierten juntos; el contado entra al arqueo como efectivo de la venta.
+
     Args:
         items: líneas de venta (producto_id + cantidad). No puede
             estar vacío.
@@ -166,6 +200,9 @@ def registrar_venta(
             se usó antes con un contenido distinto.
         VentaRequiereAutorizacionVencidosError: (V1.12-D) si la venta tiene que consumir partidas
             vencidas y no viene `autorizado_por_id` (un OWNER activo, que queda en la auditoría).
+        CreditoNoDisponibleError: (V1.14-C) si la porción financiada no entra en el crédito disponible.
+        CompradorInvalidoError: (V1.14-C) si una empresa compra a cuenta sin comprador válido, o se
+            indica comprador donde no corresponde.
     """
     if not items:
         raise DatosInvalidosError("Una venta debe tener al menos un ítem.")
@@ -176,9 +213,14 @@ def registrar_venta(
     es_venta_a_cuenta = tipo_pago == TIPO_PAGO_CUENTA_CORRIENTE
     if es_venta_a_cuenta and cliente_id is None:
         raise DatosInvalidosError("Una venta a cuenta corriente requiere un cliente.")
+    validar_pago_contado(tipo_pago, pago_contado_centavos)
+    if comprador is not None and not es_venta_a_cuenta:
+        raise CompradorInvalidoError("El comprador solo se registra en una venta a cuenta de una empresa.")
 
     contenido_hash = (
-        calcular_hash_contenido(items, tipo_pago, cliente_id) if clave_idempotencia is not None else None
+        calcular_hash_contenido(items, tipo_pago, cliente_id, pago_contado_centavos, comprador)
+        if clave_idempotencia is not None
+        else None
     )
 
     cantidad_pedida_por_producto: dict[int, int] = {}
@@ -265,16 +307,28 @@ def registrar_venta(
                 autorizador = repositorio_usuarios.obtener_por_id_en_conexion(conexion, autorizado_por_id)
                 exigir_rol(autorizador, _SOLO_OWNER)
 
-            for producto_id, cantidad_total in cantidad_pedida_por_producto.items():
-                producto = productos_por_id[producto_id]
-                producto.actualizar_stock(producto.stock_actual - cantidad_total)
-                repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
-
             items_con_precio = [
                 (item, productos_por_id[item.producto_id].precio_venta_centavos) for item in items
             ]
             # Aritmética entera exacta: sin redondeos ni errores de precisión binaria.
             total_centavos = sum(precio_centavos * item.cantidad for item, precio_centavos in items_con_precio)
+
+            # V1.14-C: la porción financiada se decide acá, antes de tocar stock y dentro de este
+            # BEGIN IMMEDIATE (dos ventas simultáneas no consumen el mismo crédito disponible).
+            if es_venta_a_cuenta:
+                if pago_contado_centavos >= total_centavos:
+                    raise DatosInvalidosError(
+                        "El pago al contado cubre el total: registrá la venta con un medio de pago inmediato."
+                    )
+                servicio_credito.exigir_credito_para_venta_en_conexion(
+                    conexion, cliente, total_centavos - pago_contado_centavos
+                )
+                _exigir_comprador_en_conexion(conexion, cliente, comprador)
+
+            for producto_id, cantidad_total in cantidad_pedida_por_producto.items():
+                producto = productos_por_id[producto_id]
+                producto.actualizar_stock(producto.stock_actual - cantidad_total)
+                repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
 
             # Costo histórico (migración 009): mismo `Producto` ya leído
             # arriba dentro de esta misma transacción -- sin ninguna
@@ -296,6 +350,7 @@ def registrar_venta(
                 costos_unitarios_por_producto_id=costos_unitarios_por_producto_id,
                 sesion_caja_id=sesion_abierta.id,
                 cliente_id=cliente_id,
+                pago_contado_centavos=pago_contado_centavos,
             )
             # V1.12: cada línea consume sus partidas por FEFO, en esta misma transacción (un fallo acá
             # revierte la venta entera, y viceversa).
@@ -313,8 +368,19 @@ def registrar_venta(
                     f" (registró el usuario {usuario_id})",
                 )
             if es_venta_a_cuenta:
+                # El comprador va antes del CARGO: el libro rechaza el cargo de una empresa sin comprador.
+                if comprador is not None:
+                    repositorio_obligaciones.registrar_comprador_venta_en_conexion(
+                        conexion, venta.id, cliente_id, comprador, usuario_id
+                    )
                 repositorio_clientes.registrar_cargo_en_conexion(
-                    conexion, cliente_id, venta.total_centavos, venta.id, usuario_id, f"Venta #{venta.id}"
+                    conexion, cliente_id, venta.credito_centavos, venta.id, usuario_id, f"Venta #{venta.id}"
+                )
+                contado = (
+                    f" (contado ${centavos_a_texto(venta.pago_contado_centavos)},"
+                    f" a cuenta ${centavos_a_texto(venta.credito_centavos)})"
+                    if venta.pago_contado_centavos
+                    else ""
                 )
                 repositorio_auditoria.registrar_en_conexion(
                     conexion,
@@ -322,8 +388,18 @@ def registrar_venta(
                     "VENTA_A_CUENTA",
                     "VENTA",
                     venta.id,
-                    f"Venta #{venta.id} a cuenta de {cliente.nombre} por ${centavos_a_texto(venta.total_centavos)}",
+                    f"Venta #{venta.id} a cuenta de {cliente.nombre} por ${centavos_a_texto(venta.total_centavos)}{contado}",
                 )
+                if comprador is not None and comprador.es_excepcional:
+                    repositorio_auditoria.registrar_en_conexion(
+                        conexion,
+                        usuario_id,
+                        "VENTA_COMPRADOR_EXCEPCIONAL",
+                        "VENTA",
+                        venta.id,
+                        f"Venta #{venta.id} de {cliente.nombre}: compró {comprador.nombre_excepcional}, autorizado por"
+                        f" {comprador.metodo_autorizacion} ({comprador.detalle_autorizacion})",
+                    )
     except ErrorBaseDatos as error:
         if clave_idempotencia is None or not isinstance(error.__cause__, sqlite3.IntegrityError):
             raise

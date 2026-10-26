@@ -6,6 +6,8 @@ from datetime import date, timedelta
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import clientes as repositorio_clientes
 from db.repositorios import compras as repositorio_compras
@@ -34,6 +36,7 @@ CC = "CUENTA_CORRIENTE"
 @pytest.fixture
 def e(base_datos_temporal):
     owner, cookies = usuario_logueado("OWNER", "duenio")
+    habilitar_credito_general(owner.id)
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=1000)
     ana = servicio_clientes.crear_cliente("Ana", owner.id)
     beto = servicio_clientes.crear_cliente("Beto", owner.id)

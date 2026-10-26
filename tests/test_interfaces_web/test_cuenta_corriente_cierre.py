@@ -5,6 +5,8 @@ import re
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from db.repositorios import clientes as repositorio_clientes
 from domain.venta import ItemVenta
 from services import servicio_clientes, servicio_cuenta_corriente, servicio_stock, servicio_ventas
@@ -22,6 +24,7 @@ _ID_EN_FILA = re.compile(r"window\.location\.href='/ventas/(\d+)'")
 @pytest.fixture
 def e(base_datos_temporal):
     owner, cookies_owner = usuario_logueado("OWNER", "duenio")
+    habilitar_credito_general(owner.id)
     cajera, cookies_cajera = usuario_logueado("CASHIER", "cajera")
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=1000)
     ana = servicio_clientes.crear_cliente("Ana Gómez", owner.id)

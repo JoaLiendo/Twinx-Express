@@ -3,6 +3,8 @@
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import clientes as repositorio_clientes
@@ -34,6 +36,7 @@ SALDO_INICIAL = 500
 def escenario(base_datos_temporal, caja_abierta):
     """Caja abierta (fondo 0) y un cliente con saldo de 500 por una venta a cuenta."""
     owner = crear_owner()
+    habilitar_credito_general(owner.id)
     cajera = crear_usuario("cajera", "CASHIER")
     cliente = servicio_clientes.crear_cliente("Ana", owner.id)
     producto = crear_producto(precio_centavos=SALDO_INICIAL, stock=10)
@@ -181,6 +184,7 @@ def test_solo_se_cobra_en_efectivo(escenario, medio):
 @pytest.mark.sin_caja_abierta
 def test_cobro_sin_caja_abierta_se_rechaza(base_datos_temporal):
     owner = crear_owner()
+    habilitar_credito_general(owner.id)
     cliente = servicio_clientes.crear_cliente("Ana", owner.id)
 
     with pytest.raises(CajaCerradaError):

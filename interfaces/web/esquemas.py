@@ -30,6 +30,19 @@ class VentaEntrada(BaseModel):
     autorizar_vencidos: bool = False
     autorizacion_usuario: str | None = Field(default=None, max_length=100)
     autorizacion_password: str | None = Field(default=None, max_length=200)
+    # V1.14-C: efectivo cobrado en el momento en una venta a cuenta mixta (el servicio valida el rango) y
+    # quién compra a nombre de una empresa: un autorizado vigente o una autorización excepcional.
+    pago_contado_centavos: StrictInt = 0
+    comprador_autorizado_id: int | None = None
+    comprador_excepcional_nombre: str | None = Field(default=None, max_length=120)
+    comprador_excepcional_metodo: str | None = Field(default=None, max_length=20)
+    comprador_excepcional_detalle: str | None = Field(default=None, max_length=250)
+
+    @property
+    def indica_comprador(self) -> bool:
+        return self.comprador_autorizado_id is not None or any(
+            (self.comprador_excepcional_nombre, self.comprador_excepcional_metodo, self.comprador_excepcional_detalle)
+        )
 
 
 class VentaSalida(BaseModel):
@@ -37,6 +50,8 @@ class VentaSalida(BaseModel):
     fecha: str
     total_centavos: int
     tipo_pago: str
+    pago_contado_centavos: int = 0
+    credito_centavos: int = 0
 
 
 class ConteoEntrada(BaseModel):

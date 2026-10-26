@@ -3,6 +3,8 @@ y estado de cuenta."""
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from db.repositorios import clientes as repositorio_clientes
 from domain.venta import ItemVenta
 from excepciones import ClienteNoEncontradoError, DatosInvalidosError
@@ -15,6 +17,7 @@ pytestmark = pytest.mark.usefixtures("caja_abierta")
 @pytest.fixture
 def e(base_datos_temporal):
     owner = crear_owner()
+    habilitar_credito_general(owner.id)
     cajera = crear_usuario("cajera", "CASHIER")
     return type("Escenario", (), {"owner": owner, "cajera": cajera, "producto": crear_producto(precio_centavos=250)})
 

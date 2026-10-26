@@ -3,6 +3,8 @@ con permisos OWNER/CASHIER. Contra la app real vía el cliente ASGI (sin `httpx`
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from domain.venta import ItemVenta
 from services import servicio_clientes, servicio_cuenta_corriente, servicio_ventas
 from tests.utilidades_clientes import contar, consultar, crear_producto, forzar_cliente_inactivo, usuario_logueado
@@ -17,6 +19,7 @@ CC = "CUENTA_CORRIENTE"
 @pytest.fixture
 def e(base_datos_temporal):
     owner, cookies_owner = usuario_logueado("OWNER", "duenio")
+    habilitar_credito_general(owner.id)
     cajera, cookies_cajera = usuario_logueado("CASHIER", "cajera")
     return type(
         "Escenario",

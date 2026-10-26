@@ -43,7 +43,101 @@ class ItemVenta:
             raise DatosInvalidosError("La cantidad de un ítem de venta debe ser mayor a cero.")
 
 
-def calcular_hash_contenido(items: list[ItemVenta], tipo_pago: str, cliente_id: int | None = None) -> str:
+METODOS_AUTORIZACION_EXCEPCIONAL = {
+    "WHATSAPP": "WhatsApp",
+    "EMAIL": "Email",
+    "ORDEN": "Orden de compra",
+    "LLAMADA": "Llamada",
+    "OTRO": "Otro",
+}
+LONGITUD_MAXIMA_NOMBRE_COMPRADOR = 120
+LONGITUD_MAXIMA_DETALLE_AUTORIZACION = 250
+
+
+@dataclass(frozen=True)
+class CompradorVenta:
+    """Quién compra a nombre de una EMPRESA en una venta a cuenta (V1.14-C): un comprador autorizado
+    vigente (`comprador_autorizado_id`) o, como excepción, otra persona con el método y la referencia
+    de la autorización. Una autorización excepcional vale solo para esa venta: no crea un autorizado."""
+
+    comprador_autorizado_id: int | None = None
+    nombre_excepcional: str | None = None
+    metodo_autorizacion: str | None = None
+    detalle_autorizacion: str | None = None
+
+    def __post_init__(self) -> None:
+        nombre = (self.nombre_excepcional or "").strip() or None
+        detalle = (self.detalle_autorizacion or "").strip() or None
+        metodo = self.metodo_autorizacion or None
+        object.__setattr__(self, "nombre_excepcional", nombre)
+        object.__setattr__(self, "detalle_autorizacion", detalle)
+        object.__setattr__(self, "metodo_autorizacion", metodo)
+        if self.comprador_autorizado_id is not None:
+            if nombre or detalle or metodo:
+                raise DatosInvalidosError("Elegí un comprador autorizado o una autorización excepcional, no ambos.")
+            return
+        if not (nombre and metodo and detalle):
+            raise DatosInvalidosError(
+                "Una compra excepcional requiere el nombre de quien compra, cómo se autorizó y una referencia."
+            )
+        if metodo not in METODOS_AUTORIZACION_EXCEPCIONAL:
+            raise DatosInvalidosError(f"Método de autorización inválido: {metodo!r}.")
+        if len(nombre) > LONGITUD_MAXIMA_NOMBRE_COMPRADOR:
+            raise DatosInvalidosError(f"El nombre no puede superar los {LONGITUD_MAXIMA_NOMBRE_COMPRADOR} caracteres.")
+        if len(detalle) > LONGITUD_MAXIMA_DETALLE_AUTORIZACION:
+            raise DatosInvalidosError(
+                f"La referencia no puede superar los {LONGITUD_MAXIMA_DETALLE_AUTORIZACION} caracteres."
+            )
+
+    @property
+    def es_excepcional(self) -> bool:
+        return self.comprador_autorizado_id is None
+
+    def para_hash(self) -> dict:
+        return {
+            "autorizado": self.comprador_autorizado_id,
+            "nombre": self.nombre_excepcional,
+            "metodo": self.metodo_autorizacion,
+            "detalle": self.detalle_autorizacion,
+        }
+
+
+@dataclass(frozen=True)
+class CompradorRegistrado:
+    """El comprador tal como quedó registrado en una venta (lectura para el detalle y el ticket)."""
+
+    nombre: str
+    excepcional: bool
+    metodo_autorizacion: str | None
+    detalle_autorizacion: str | None
+    usuario: str
+    fecha: str
+
+    @property
+    def metodo_etiqueta(self) -> str | None:
+        return METODOS_AUTORIZACION_EXCEPCIONAL.get(self.metodo_autorizacion) if self.metodo_autorizacion else None
+
+
+def validar_pago_contado(tipo_pago: str, pago_contado_centavos: int) -> None:
+    """Una venta mixta es una venta a cuenta que además cobra una parte en efectivo en el momento
+    (V1.14-C). Que el contado sea menor que el total se valida con el total ya calculado.
+
+    Raises:
+        DatosInvalidosError: si el monto es negativo o la venta no es a cuenta.
+    """
+    if pago_contado_centavos < 0:
+        raise DatosInvalidosError("El pago al contado no puede ser negativo.")
+    if pago_contado_centavos and tipo_pago != TIPO_PAGO_CUENTA_CORRIENTE:
+        raise DatosInvalidosError("Solo una venta a cuenta puede combinar un pago al contado con crédito.")
+
+
+def calcular_hash_contenido(
+    items: list[ItemVenta],
+    tipo_pago: str,
+    cliente_id: int | None = None,
+    pago_contado_centavos: int = 0,
+    comprador: CompradorVenta | None = None,
+) -> str:
     """Hash canónico y determinista del contenido lógico de una venta
     (Fase 5A: idempotencia de `services.servicio_ventas.registrar_venta`).
 
@@ -60,7 +154,9 @@ def calcular_hash_contenido(items: list[ItemVenta], tipo_pago: str, cliente_id: 
     que el cliente haya serializado las líneas.
 
     `cliente_id` (migración 020) solo entra al hash cuando la venta tiene
-    cliente, así el hash de una venta sin cliente es idéntico al de siempre.
+    cliente, así el hash de una venta sin cliente es idéntico al de siempre. Con el mismo criterio
+    (V1.14-C), el pago al contado de una venta mixta y el comprador de una empresa entran solo si existen:
+    un reintento con otro reparto contado/crédito u otro comprador es otra venta.
     """
     cantidad_por_producto: dict[int, int] = {}
     for item in items:
@@ -72,6 +168,10 @@ def calcular_hash_contenido(items: list[ItemVenta], tipo_pago: str, cliente_id: 
     }
     if cliente_id is not None:
         contenido_canonico["cliente_id"] = cliente_id
+    if pago_contado_centavos:
+        contenido_canonico["pago_contado_centavos"] = pago_contado_centavos
+    if comprador is not None:
+        contenido_canonico["comprador"] = comprador.para_hash()
     texto_canonico = json.dumps(contenido_canonico, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(texto_canonico.encode("utf-8")).hexdigest()
 
@@ -110,6 +210,9 @@ class Venta:
     registrada siempre lo es. `'ANULADA'` la deja marcada, pero nunca le
     borra ni le modifica ningún otro campo -- ver
     `services.servicio_ventas.anular_venta`.
+
+    `pago_contado_centavos` (V1.14-C) es lo que una venta a cuenta cobró en efectivo en el momento
+    (0 en una venta 100% a crédito y en toda venta con otro medio); el resto es su porción financiada.
     """
 
     id: int
@@ -117,6 +220,23 @@ class Venta:
     total_centavos: int
     tipo_pago: str
     estado: str = "ACTIVA"
+    pago_contado_centavos: int = 0
+
+    @property
+    def credito_centavos(self) -> int:
+        """Porción financiada: genera la obligación del cliente."""
+        if self.tipo_pago != TIPO_PAGO_CUENTA_CORRIENTE:
+            return 0
+        return self.total_centavos - self.pago_contado_centavos
+
+    @property
+    def efectivo_centavos(self) -> int:
+        """Efectivo que la venta metió en la caja: el total si fue en efectivo, el contado de una mixta."""
+        if self.tipo_pago == "EFECTIVO":
+            return self.total_centavos
+        if self.tipo_pago == TIPO_PAGO_CUENTA_CORRIENTE:
+            return self.pago_contado_centavos
+        return 0
 
 
 @dataclass

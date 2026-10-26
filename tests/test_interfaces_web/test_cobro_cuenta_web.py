@@ -3,6 +3,8 @@
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from db.repositorios import clientes as repositorio_clientes
 from domain.venta import ItemVenta
 from services import servicio_caja, servicio_clientes, servicio_ventas
@@ -26,6 +28,7 @@ PRECIO = 1000  # centavos: cada unidad vendida a cuenta suma $10,00 de deuda
 @pytest.fixture
 def e(base_datos_temporal):
     owner, cookies_owner = usuario_logueado("OWNER", "duenio")
+    habilitar_credito_general(owner.id)
     cajera, cookies_cajera = usuario_logueado("CASHIER", "cajera")
     cliente = servicio_clientes.crear_cliente("Ana", owner.id)
     producto = crear_producto(precio_centavos=PRECIO, stock=50)

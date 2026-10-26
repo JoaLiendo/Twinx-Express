@@ -69,6 +69,31 @@ class PoliticaEfectiva:
         return ETIQUETAS_ORIGEN[self.origen]
 
 
+@dataclass(frozen=True)
+class SituacionCredito:
+    """Foto del crédito de un cliente: su política efectiva y su deuda. El disponible nunca es negativo:
+    si el límite bajó por debajo de la deuda, simplemente no queda nada para financiar."""
+
+    politica: PoliticaEfectiva
+    saldo_centavos: int
+
+    @property
+    def disponible_centavos(self) -> int:
+        if not self.politica.habilitado:
+            return 0
+        return max(0, self.politica.limite_centavos - self.saldo_centavos)
+
+    def motivo_rechazo(self, credito_centavos: int) -> str | None:
+        """Por qué no puede financiarse `credito_centavos` ahora, o `None` si puede."""
+        if not self.politica.habilitado:
+            if self.politica.origen == ORIGEN_SIN_CONFIGURAR:
+                return "El crédito a clientes no está configurado: el dueño debe definir una política de crédito."
+            return "Este cliente no tiene crédito habilitado."
+        if credito_centavos > self.disponible_centavos:
+            return "El monto a cuenta supera el crédito disponible del cliente."
+        return None
+
+
 def validar_politica(ambito: str, modo: str, limite_centavos: int | None, cliente_id: int | None) -> None:
     """Valida una capa antes de guardarla (el esquema repite estas reglas como última defensa).
 

@@ -4,6 +4,8 @@ y no se agregó ningún indicador nuevo de deudores o cobranzas."""
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from domain.venta import ItemVenta
 from services import servicio_caja, servicio_clientes, servicio_cuenta_corriente, servicio_reportes, servicio_stock
 from services import servicio_ventas
@@ -20,6 +22,7 @@ ETIQUETA_COBRO = "Cobro cta. cte."
 @pytest.fixture
 def e(base_datos_temporal):
     owner, cookies_owner = usuario_logueado("OWNER", "duenio")
+    habilitar_credito_general(owner.id)
     cajera, cookies_cajera = usuario_logueado("CASHIER", "cajera")
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=50)
     cliente = servicio_clientes.crear_cliente("Ana", owner.id)

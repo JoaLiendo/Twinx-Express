@@ -6,6 +6,8 @@ import threading
 
 import pytest
 
+from tests.utilidades_clientes import habilitar_credito_general
+
 from db.repositorios import clientes as repositorio_clientes
 from domain.venta import ItemVenta
 from excepciones import (
@@ -31,6 +33,7 @@ CC = "CUENTA_CORRIENTE"
 @pytest.fixture
 def escenario(base_datos_temporal, caja_abierta):
     owner = crear_owner()
+    habilitar_credito_general(owner.id)
     cajera = crear_usuario("cajera", "CASHIER")
     cliente = servicio_clientes.crear_cliente("Ana", owner.id)
     producto = crear_producto(precio_centavos=500, stock=1)
