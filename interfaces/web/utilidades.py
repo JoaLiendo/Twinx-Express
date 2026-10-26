@@ -7,9 +7,29 @@ from uuid import uuid4
 from fastapi import Request
 from starlette.responses import RedirectResponse, Response
 
+from domain.credito import MODO_LIMITE
+from domain.dinero import texto_a_centavos
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual
 from interfaces.web.navegacion import navegacion_visible_para
+
+
+def limite_credito_del_formulario(modo: str, limite: str) -> int | None:
+    """Monto de una política de crédito (V1.14-B): solo cuenta con modo 'con límite', y vacío ahí es un
+    error claro, nunca un 0 implícito."""
+    if modo != MODO_LIMITE:
+        return None
+    if not limite.strip():
+        raise DatosInvalidosError("Indicá el límite de crédito (puede ser 0).")
+    return texto_a_centavos(limite)
+
+
+def version_del_formulario(version: str) -> int:
+    """Versión oculta de un formulario con control de concurrencia; ausente o adulterada es un dato inválido."""
+    try:
+        return int(version)
+    except ValueError:
+        raise DatosInvalidosError("El formulario está incompleto: recargá la página.") from None
 
 
 def pagina_o_primera(texto: str) -> int:

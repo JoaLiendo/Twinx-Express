@@ -306,6 +306,11 @@ class LimiteCompradoresAutorizadosError(ErrorAplicacion):
     """La empresa ya tiene el máximo de compradores autorizados activos (V1.14-A)."""
 
 
+class PoliticaCreditoDesactualizadaError(ErrorAplicacion):
+    """La política de crédito cambió desde que se abrió el formulario: no se pisa un cambio de otro
+    OWNER con datos pensados sobre una versión anterior (V1.14-B)."""
+
+
 class CobroInvalidoError(DatosInvalidosError):
     """El cobro de cuenta corriente no cumple las reglas comerciales: medio
     distinto de efectivo o monto fuera de `0 < monto <= saldo`."""

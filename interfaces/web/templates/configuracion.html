@@ -31,6 +31,24 @@
     </form>
   {% endcall %}
   {% call ui.card() %}
+    <div id="config-credito" class="space-y-5">
+      <div>
+        <p class="font-semibold text-slate-900 dark:text-slate-100 mb-1">Crédito a clientes</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400">
+          La capa más específica gana: general → por tipo de cliente → individual (en la ficha del cliente).
+          Sin una política general configurada, ningún cliente tiene crédito. "Con límite" en 0 habilita la cuenta sin dejar nada disponible.
+        </p>
+      </div>
+      {% for politica in politicas_credito %}
+        {% set accion = "/configuracion/credito" %}
+        {% set modos = modos_credito %}
+        {% set titulo = {"GENERAL": "General", "PERSONA": "Personas", "EMPRESA": "Empresas"}[politica.ambito] %}
+        {% set permite_heredar = politica.ambito != "GENERAL" %}
+        {% include "_politica_credito.html" %}
+      {% endfor %}
+    </div>
+  {% endcall %}
+  {% call ui.card() %}
     <p class="font-semibold text-slate-900 dark:text-slate-100 mb-1">Vencimientos</p>
     <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
       Con cuántos días de anticipación un producto figura como "Próximo a vencer". Vale para todos los productos.

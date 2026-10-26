@@ -1,0 +1,32 @@
+{# Formulario de UNA capa de crédito (V1.14-B). Espera `politica` (domain.credito.PoliticaCredito),
+   `accion` (URL del POST), `titulo`, `modos` y `permite_heredar`. La versión viaja oculta: si otro
+   OWNER cambió la capa entretanto, el servidor rechaza el guardado. El servidor valida todo. #}
+<form method="post" action="{{ accion }}" class="space-y-3" data-politica="{{ politica.ambito }}">
+  <input type="hidden" name="ambito" value="{{ politica.ambito }}" />
+  <input type="hidden" name="version" value="{{ politica.version }}" />
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <p class="text-sm font-semibold text-slate-800 dark:text-slate-200">{{ titulo }}</p>
+    <p class="text-xs text-slate-500 dark:text-slate-400">
+      {% if politica.version %}Última modificación: {{ politica.fecha_actualizacion }} ({{ politica.usuario }}){% else %}Nunca configurada{% endif %}
+    </p>
+  </div>
+  <div class="flex flex-wrap items-end gap-3">
+    <div>
+      <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Modo</label>
+      <select name="modo" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary">
+        {% for valor, etiqueta in modos.items() %}
+          {% if valor != 'HEREDAR' or permite_heredar %}
+            <option value="{{ valor }}" {{ 'selected' if politica.modo == valor else '' }}>{{ etiqueta }}</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Límite ($)</label>
+      <input type="text" name="limite" inputmode="decimal" placeholder="0,00"
+             value="{{ (politica.limite_centavos | dinero) if politica.limite_centavos is not none else '' }}"
+             class="w-36 rounded-lg border border-slate-300 px-3 py-2 text-sm tabular-nums bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary" />
+    </div>
+    <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">Guardar</button>
+  </div>
+</form>

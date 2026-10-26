@@ -31,12 +31,19 @@ from domain.cliente import (
     TIPO_PERSONA,
     TIPOS_CLIENTE,
 )
+from domain.credito import AMBITO_CLIENTE, MODOS
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
-from services import servicio_clientes, servicio_cuenta_corriente
+from interfaces.web.utilidades import (
+    contexto_base,
+    limite_credito_del_formulario,
+    nueva_clave_idempotencia,
+    redireccionar_con_mensaje,
+    version_del_formulario,
+)
+from services import servicio_clientes, servicio_credito, servicio_cuenta_corriente
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
 
@@ -128,6 +135,9 @@ def ficha_cliente(request: Request, cliente_id: int):
         **contexto_base(request),
         "estado_cuenta": servicio_clientes.obtener_estado_de_cuenta(cliente_id),
         "autorizados": servicio_clientes.listar_compradores_autorizados(cliente_id),
+        "politica_efectiva": servicio_credito.politica_credito_efectiva(cliente_id),
+        "politica_individual": servicio_credito.obtener_politica_individual(cliente_id),
+        "modos_credito": MODOS,
         "maximo_autorizados": MAXIMO_AUTORIZADOS_ACTIVOS,
         "limites_autorizado": {
             "nombre": LONGITUD_MAXIMA_NOMBRE,
@@ -189,6 +199,25 @@ def desactivar_cliente(cliente_id: int, usuario_actual: Usuario = Depends(obtene
 def reactivar_cliente(cliente_id: int, usuario_actual: Usuario = Depends(obtener_usuario_actual)):
     cliente = servicio_clientes.reactivar_cliente(cliente_id, usuario_actual.id)
     return redireccionar_con_mensaje(f"/clientes/{cliente_id}", "success", f"Cliente '{cliente.nombre}' reactivado.")
+
+
+@router.post("/clientes/{cliente_id}/credito/politica", dependencies=[_SOLO_OWNER])
+def guardar_politica_individual(
+    cliente_id: int,
+    modo: str = Form(""),
+    limite: str = Form(""),
+    version: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    servicio_credito.configurar_politica(
+        AMBITO_CLIENTE,
+        modo,
+        limite_credito_del_formulario(modo, limite),
+        usuario_actual.id,
+        version_esperada=version_del_formulario(version),
+        cliente_id=cliente_id,
+    )
+    return redireccionar_con_mensaje(f"/clientes/{cliente_id}", "success", "Política de crédito del cliente guardada.")
 
 
 @router.post("/clientes/{cliente_id}/autorizados", dependencies=[_SOLO_OWNER])
