@@ -187,6 +187,37 @@
           </div>
           <p data-cliente-saldo class="mt-2 text-xs text-slate-600 dark:text-slate-300 tabular-nums"></p>
           <p data-cliente-saldo-estimado class="text-xs text-slate-600 dark:text-slate-300 tabular-nums"></p>
+
+          <!-- V1.14-F: crédito del cliente, venta mixta y comprador de empresa. Lo maneja credito_pos.js;
+               el servidor vuelve a decidir todo al confirmar. -->
+          <div id="bloque-credito" class="hidden mt-3 space-y-2 border-t border-primary/20 pt-3">
+            <p data-credito-estado class="text-xs font-medium text-slate-700 dark:text-slate-200"></p>
+            <p data-credito-disponible class="text-xs text-slate-600 dark:text-slate-300 tabular-nums"></p>
+            <div>
+              <label for="pago-contado" class="block text-xs font-medium text-slate-500 dark:text-slate-400">Paga ahora en efectivo (opcional)</label>
+              <input type="text" id="pago-contado" data-credito-contado inputmode="decimal" autocomplete="off" placeholder="0.00"
+                     class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tabular-nums bg-white text-slate-900
+                            dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary" />
+            </div>
+            <p data-credito-a-cuenta class="text-xs font-semibold text-slate-700 dark:text-slate-200 tabular-nums"></p>
+            <div data-credito-comprador class="hidden space-y-2">
+              <label for="comprador-autorizado" class="block text-xs font-medium text-slate-500 dark:text-slate-400">Quién compra (empresa)</label>
+              <select id="comprador-autorizado" data-credito-autorizado
+                      class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"></select>
+              <div data-credito-excepcional class="hidden space-y-2">
+                <input type="text" data-credito-excepcional-nombre maxlength="120" placeholder="Nombre de quien compra"
+                       class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+                <select data-credito-excepcional-metodo
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                  <option value="">¿Cómo se autorizó?</option>
+                  {% for valor, etiqueta in metodos_autorizacion.items() %}<option value="{{ valor }}">{{ etiqueta }}</option>{% endfor %}
+                </select>
+                <input type="text" data-credito-excepcional-detalle maxlength="250" placeholder="Referencia (mensaje, orden, quién llamó…)"
+                       class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+              </div>
+            </div>
+            <p data-credito-mensaje aria-live="polite" class="text-xs font-medium text-error min-h-[1rem]"></p>
+          </div>
         </div>
       </div>
 
@@ -267,5 +298,6 @@
 {% block scripts %}
 <script src="/static/js/dinero_cobro.js"></script>
 <script src="/static/js/cliente_selector.js"></script>
+<script src="/static/js/credito_pos.js"></script>
 <script src="/static/js/pos.js"></script>
 {% endblock %}

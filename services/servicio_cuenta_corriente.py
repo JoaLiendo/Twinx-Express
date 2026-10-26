@@ -30,6 +30,7 @@ from domain.cliente import (
     TIPO_IMPUTACION_FIFO,
     TIPO_IMPUTACION_MANUAL,
     MovimientoCuenta,
+    Imputacion,
     Obligacion,
     SaldoTrasVenta,
     calcular_hash_cobro,
@@ -64,6 +65,17 @@ def listar_obligaciones_pendientes(cliente_id: int) -> list[Obligacion]:
     """Obligaciones con saldo del cliente, la más antigua primero: el orden en que las paga un cobro FIFO."""
     with obtener_conexion() as conexion:
         return repositorio_obligaciones.listar_pendientes_en_conexion(conexion, cliente_id)
+
+
+def listar_obligaciones(cliente_id: int) -> list[Obligacion]:
+    """Todas las obligaciones del cliente (pendientes y saldadas), la más reciente primero."""
+    with obtener_conexion() as conexion:
+        return repositorio_obligaciones.listar_por_cliente_en_conexion(conexion, cliente_id)
+
+
+def listar_imputaciones(cliente_id: int) -> list[Imputacion]:
+    """Qué pagó cada cobro del cliente, tal como quedó registrado, el cobro más reciente primero."""
+    return repositorio_obligaciones.listar_imputaciones_de_cliente(cliente_id)
 
 
 def registrar_cobro(

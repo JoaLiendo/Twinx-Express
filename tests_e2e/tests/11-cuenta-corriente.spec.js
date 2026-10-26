@@ -16,6 +16,7 @@ const {
   seleccionarMedioDePago,
   registrarListenersDeErrores,
   PRODUCTO_1,
+  configurarCreditoGeneral,
 } = require('./helpers');
 
 const ETIQUETA_A_CUENTA = 'A cuenta (CUENTA_CORRIENTE)';
@@ -47,7 +48,8 @@ test('venta a cuenta, ficha, cobro parcial y total, historial y sin anulación',
   await expect(page.getByRole('heading', { name: nombre })).toBeVisible();
   await expect(page.locator('#cliente-saldo')).toHaveText('$0,00');
 
-  // 2) venta a cuenta desde el POS: 2 alfajores de $2.50 = $5.00
+  // 2) venta a cuenta desde el POS: 2 alfajores de $2.50 = $5.00 (V1.14: con una política de crédito explícita)
+  await configurarCreditoGeneral(page);
   await page.goto('/ventas');
   await agregarPorCodigoBarras(page, PRODUCTO_1.codigoBarras);
   await agregarPorCodigoBarras(page, PRODUCTO_1.codigoBarras);

@@ -52,13 +52,28 @@
   // 021: venta a cuenta. El selector (cliente_selector.js) solo recuerda a qué cliente activo se
   // le va a vender; el servidor vuelve a validarlo todo en POST /api/ventas.
   const bloqueClienteEl = document.getElementById('bloque-cliente');
+  // V1.14-F: crédito del cliente elegido (saldo, disponible, estado, bloqueo), pago parcial en efectivo y
+  // comprador de empresa. Solo UX: el servidor vuelve a decidir todo.
+  const bloqueCreditoEl = document.getElementById('bloque-credito');
+  const creditoPos =
+    bloqueCreditoEl && window.CreditoPos
+      ? window.CreditoPos.iniciar({
+          contenedor: bloqueCreditoEl,
+          formatearCentavos: formatearCentavos,
+          textoACentavos: window.DineroCobro.textoACentavos,
+          alCambiar: function () {
+            actualizarEstadoCobrar();
+          },
+        })
+      : null;
   const selectorCliente =
     bloqueClienteEl && window.ClienteSelector
       ? window.ClienteSelector.iniciar({
           contenedor: bloqueClienteEl,
           endpoint: '/api/clientes/buscar',
           formatearCentavos: formatearCentavos,
-          alCambiar: function () {
+          alCambiar: function (cliente) {
+            if (creditoPos) creditoPos.cargar(cliente ? cliente.id : null);
             actualizarEstadoCobrar();
           },
         })
@@ -303,9 +318,14 @@
         // Al dejar CUENTA_CORRIENTE el cliente elegido se descarta: si el cajero vuelve, elige de nuevo
         // (y ve el saldo actual), no un cliente viejo con un saldo que pudo haber cambiado.
         selectorCliente.reiniciar();
+        if (creditoPos) creditoPos.reiniciar();
       }
     }
-    const bloqueadoPorCliente = esCuentaCorriente && (!selectorCliente || !selectorCliente.obtener());
+    if (creditoPos) creditoPos.establecerTotal(totalActualCentavos);
+    const sinCliente = esCuentaCorriente && (!selectorCliente || !selectorCliente.obtener());
+    // V1.14-F: con cliente elegido, tampoco se confirma si su crédito no alcanza o está bloqueado.
+    const bloqueadoPorCredito = esCuentaCorriente && !sinCliente && creditoPos !== null && creditoPos.motivoBloqueo() !== null;
+    const bloqueadoPorCliente = sinCliente || bloqueadoPorCredito;
 
     let bloqueadoPorEfectivo = false;
 
@@ -376,7 +396,7 @@
     if (botonCobrarBar) {
       if (bloqueadoSoloPorEfectivo) {
         botonCobrarBar.disabled = false;
-        botonCobrarBar.textContent = bloqueadoPorEfectivo ? 'Ingresar monto' : 'Elegir cliente';
+        botonCobrarBar.textContent = bloqueadoPorEfectivo ? 'Ingresar monto' : bloqueadoPorCredito ? 'Revisar crédito' : 'Elegir cliente';
         botonCobrarBar.classList.remove('opacity-50', 'cursor-not-allowed');
         botonCobrarBar.dataset.accion = 'abrir-sheet';
       } else {
@@ -574,6 +594,7 @@
           tipo_pago: tipoPagoInput.value,
           clave_idempotencia: claveIdempotenciaActual,
           ...(clienteElegido ? { cliente_id: clienteElegido.id } : {}),
+          ...(clienteElegido && creditoPos ? creditoPos.datosVenta() : {}),
           ...(autorizacionVencidos || {}),
         }),
       });
@@ -616,6 +637,7 @@
       const destino = clienteElegido ? ` a cuenta de ${clienteElegido.nombre}` : '';
       mostrarToast(`Venta #${datos.id} registrada${destino}. Total: ${formatearCentavos(datos.total_centavos)}.`, 'success');
       if (selectorCliente) selectorCliente.reiniciar();
+      if (creditoPos) creditoPos.reiniciar();
       claveIdempotenciaActual = null; // el intento terminó bien: el próximo cobro arranca uno nuevo
       cobroEnCurso = false;
       carrito.clear();

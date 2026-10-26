@@ -17,6 +17,15 @@ def _fecha_valida(texto: str, mensaje: str) -> date:
         raise DatosInvalidosError(mensaje) from None
 
 
+def fecha_de_formulario(texto: str, mensaje: str) -> date:
+    """Una fecha `AAAA-MM-DD` obligatoria (la que manda un `<input type="date">`).
+
+    Raises:
+        DatosInvalidosError: con `mensaje` si falta o no es una fecha válida.
+    """
+    return _fecha_valida((texto or "").strip(), mensaje)
+
+
 def limites_de_fechas(
     fecha_desde: str | None, fecha_hasta: str | None, mensaje: str
 ) -> tuple[str | None, str | None]:

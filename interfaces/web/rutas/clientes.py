@@ -11,6 +11,7 @@ Editar, desactivar y reactivar son solo OWNER (`_SOLO_OWNER`, mismo patrón que 
 servicios además exigen el rol, así que la regla no depende de esta capa.
 """
 
+from datetime import timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -31,8 +32,9 @@ from domain.cliente import (
     TIPO_PERSONA,
     TIPOS_CLIENTE,
 )
-from domain.credito import AMBITO_CLIENTE, MODOS
+from domain.credito import AMBITO_CLIENTE, DIAS_MAXIMOS_AUTORIZACION, MODOS
 from domain.dinero import texto_a_centavos
+from domain.fechas import fecha_de_formulario
 from domain.usuario import Usuario
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
@@ -128,15 +130,23 @@ def crear_cliente(
 
 
 @router.get("/clientes/{cliente_id}")
-def ficha_cliente(request: Request, cliente_id: int):
-    """`/clientes/nuevo` se declara antes a propósito (ver `ventas.py`/`compras.py`)."""
+def ficha_cliente(request: Request, cliente_id: int, usuario_actual: Usuario = Depends(obtener_usuario_actual)):
+    """`/clientes/nuevo` se declara antes a propósito (ver `ventas.py`/`compras.py`). Abrir la ficha evalúa
+    el crédito (registra un cierre o un strike que ya correspondan, V1.14-E)."""
     if servicio_clientes.obtener_cliente(cliente_id) is None:
         return _redirigir_cliente_inexistente()
+    situacion = servicio_credito.situacion_crediticia(cliente_id, usuario_actual.id)
     contexto = {
         **contexto_base(request),
+        "situacion": situacion,
+        "obligaciones": servicio_cuenta_corriente.listar_obligaciones(cliente_id),
+        "imputaciones": servicio_cuenta_corriente.listar_imputaciones(cliente_id),
+        "episodios": servicio_credito.listar_episodios(cliente_id),
+        "autorizaciones": servicio_credito.listar_autorizaciones(cliente_id),
+        "fecha_maxima_autorizacion": (situacion.hoy + timedelta(days=DIAS_MAXIMOS_AUTORIZACION)).isoformat(),
+        "fecha_minima_autorizacion": (situacion.hoy + timedelta(days=1)).isoformat(),
         "estado_cuenta": servicio_clientes.obtener_estado_de_cuenta(cliente_id),
         "autorizados": servicio_clientes.listar_compradores_autorizados(cliente_id),
-        "politica_efectiva": servicio_credito.politica_credito_efectiva(cliente_id),
         "politica_individual": servicio_credito.obtener_politica_individual(cliente_id),
         "modos_credito": MODOS,
         "maximo_autorizados": MAXIMO_AUTORIZADOS_ACTIVOS,
@@ -219,6 +229,66 @@ def guardar_politica_individual(
         cliente_id=cliente_id,
     )
     return redireccionar_con_mensaje(f"/clientes/{cliente_id}", "success", "Política de crédito del cliente guardada.")
+
+
+@router.post("/clientes/{cliente_id}/credito/autorizacion", dependencies=[_SOLO_OWNER])
+def autorizar_demorado(
+    cliente_id: int,
+    compromiso: str = Form(""),
+    fecha_limite: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    autorizacion = servicio_credito.autorizar_demorado(
+        cliente_id,
+        compromiso,
+        fecha_de_formulario(fecha_limite, "Indicá una fecha límite válida para la autorización."),
+        usuario_actual.id,
+    )
+    return redireccionar_con_mensaje(
+        f"/clientes/{cliente_id}", "success", f"Autorización temporal vigente hasta el {autorizacion.fecha_limite}."
+    )
+
+
+@router.post("/clientes/{cliente_id}/credito/reapertura", dependencies=[_SOLO_OWNER])
+def reabrir_credito(
+    cliente_id: int, observacion: str = Form(""), usuario_actual: Usuario = Depends(obtener_usuario_actual)
+):
+    servicio_credito.reabrir_credito(cliente_id, observacion, usuario_actual.id)
+    return redireccionar_con_mensaje(f"/clientes/{cliente_id}", "success", "Crédito reabierto.")
+
+
+@router.get("/api/clientes/{cliente_id}/credito")
+def api_situacion_credito(cliente_id: int, usuario_actual: Usuario = Depends(obtener_usuario_actual)) -> JSONResponse:
+    """Lo que el POS muestra al elegir un cliente para vender a cuenta (V1.14-F): saldo, disponible, estado,
+    bloqueo y, si es empresa, sus compradores autorizados vigentes. Es solo información: la venta vuelve a
+    decidir todo en el servidor. No expone la configuración de capas (eso es del OWNER, en la ficha)."""
+    cliente = servicio_clientes.obtener_cliente(cliente_id)
+    if cliente is None:
+        return JSONResponse(status_code=404, content={"error": "El cliente no existe."})
+    situacion = servicio_credito.situacion_crediticia(cliente_id, usuario_actual.id)
+    autorizacion = situacion.autorizacion_vigente
+    autorizados = (
+        [{"id": a.id, "nombre": a.nombre} for a in servicio_clientes.listar_compradores_autorizados(cliente_id) if a.activo]
+        if cliente.es_empresa
+        else []
+    )
+    return JSONResponse(
+        content={
+            "cliente_id": cliente.id,
+            "es_empresa": cliente.es_empresa,
+            "saldo_centavos": situacion.saldo_centavos,
+            "disponible_centavos": situacion.disponible_centavos,
+            "credito_habilitado": situacion.politica.habilitado,
+            "estado": situacion.estado,
+            "estado_etiqueta": situacion.estado_etiqueta,
+            "dias_antiguedad": situacion.dias_antiguedad,
+            "bloqueo": situacion.bloqueo,
+            "requiere_autorizacion": situacion.requiere_autorizacion,
+            "autorizacion_hasta": autorizacion.fecha_limite if autorizacion is not None else None,
+            "strikes": situacion.strikes,
+            "autorizados": autorizados,
+        }
+    )
 
 
 @router.post("/clientes/{cliente_id}/autorizados", dependencies=[_SOLO_OWNER])

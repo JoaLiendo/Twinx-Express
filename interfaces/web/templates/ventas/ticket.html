@@ -150,6 +150,11 @@
     {% if cuenta %}
       <div id="ticket-cuenta-corriente" class="medio-pago">
         <p>Cliente: {{ cuenta.cliente_nombre }}</p>
+        {% if comprador %}<p>Compró: {{ comprador.nombre }}{% if comprador.excepcional %} (autorización excepcional){% endif %}</p>{% endif %}
+        {% if venta.pago_contado_centavos %}
+          <p id="ticket-pago-contado">Pagó en efectivo: ${{ venta.pago_contado_centavos | dinero_ar }}</p>
+        {% endif %}
+        <p>A cuenta: ${{ venta.credito_centavos | dinero_ar }}</p>
         <p>Saldo cuenta corriente: ${{ cuenta.saldo_centavos | dinero_ar }}</p>
       </div>
     {% endif %}

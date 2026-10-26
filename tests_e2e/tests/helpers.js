@@ -172,7 +172,22 @@ async function realizarVentaSimple(page, { codigoBarras = PRODUCTO_1.codigoBarra
   return { respuesta, datos, ventaId: datos.id };
 }
 
+/**
+ * V1.14-B: desde V1.14 nadie tiene crédito sin una política explícita. Configura la capa GENERAL por la
+ * pantalla real de Configuración (el OWNER ya tiene que estar logueado). El formulario trae la versión
+ * vigente, así que funciona aunque otro test ya la haya configurado.
+ */
+async function configurarCreditoGeneral(page, limite = '100000') {
+  await page.goto('/configuracion');
+  const formulario = page.locator('form[data-politica="GENERAL"]');
+  await formulario.locator('select[name="modo"]').selectOption('LIMITE');
+  await formulario.locator('input[name="limite"]').fill(limite);
+  await formulario.getByRole('button', { name: 'Guardar' }).click();
+  await page.waitForURL(/\/configuracion/);
+}
+
 module.exports = {
+  configurarCreditoGeneral,
   USUARIO,
   USUARIO_CASHIER,
   PASSWORD,

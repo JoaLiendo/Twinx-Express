@@ -210,6 +210,37 @@ def _sembrar_producto_vencido() -> None:
         conexion.execute(trigger)
 
 
+CLIENTES_CON_DEUDA_VIEJA = (("Demorado E2E", 50), ("Critico E2E", 61))
+
+
+def _sembrar_clientes_con_deuda_vieja() -> None:
+    """V1.14-E: clientes con una venta a cuenta de hace 50 días (DEMORADO) y de hace 61 días (CRÍTICA), para
+    recorrer en el navegador la autorización temporal y el cierre/reapertura sin manipular el reloj.
+
+    La deuda se fabrica por el mismo camino que una venta a cuenta real (venta + CARGO, cuyo trigger crea la
+    obligación), solo que con su fecha en el pasado. Requiere la caja ya abierta."""
+    from db.conexion import obtener_conexion
+    from services import servicio_clientes
+
+    with obtener_conexion() as conexion:
+        owner_id = conexion.execute("SELECT id FROM usuarios WHERE rol = 'OWNER' ORDER BY id LIMIT 1").fetchone()[0]
+    for nombre, dias in CLIENTES_CON_DEUDA_VIEJA:
+        cliente = servicio_clientes.crear_cliente(nombre, owner_id)
+        with obtener_conexion() as conexion:
+            sesion = conexion.execute("SELECT id FROM sesiones_caja WHERE estado = 'ABIERTA'").fetchone()[0]
+            fecha = conexion.execute("SELECT datetime('now', 'localtime', ?)", (f"-{dias} days",)).fetchone()[0]
+            venta_id = conexion.execute(
+                "INSERT INTO ventas (fecha, total_centavos, tipo_pago, usuario_id, sesion_caja_id, cliente_id)"
+                " VALUES (?, 10000, 'CUENTA_CORRIENTE', ?, ?, ?) RETURNING id",
+                (fecha, owner_id, sesion, cliente.id),
+            ).fetchone()[0]
+            conexion.execute(
+                "INSERT INTO movimientos_cuenta (fecha, cliente_id, tipo, monto_centavos, venta_id, usuario_id)"
+                " VALUES (?, ?, 'CARGO', 10000, ?, ?)",
+                (fecha, cliente.id, venta_id, owner_id),
+            )
+
+
 # Sufijos que SQLite puede dejar junto a la base principal: "" es el
 # archivo mismo, los otros tres son sus posibles sidecars (journal de
 # rollback -- el modo por defecto, que es el que usa esta app -- y WAL/
@@ -257,6 +288,7 @@ def main() -> None:
     _sembrar_usuario_de_prueba()
     _sembrar_productos_de_prueba()
     _abrir_caja_de_prueba()
+    _sembrar_clientes_con_deuda_vieja()
 
     print(f"[servidor_pruebas] DB temporal: {ruta_db}")
     print(f"[servidor_pruebas] Sirviendo en http://127.0.0.1:{puerto}")

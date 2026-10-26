@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from domain.usuario import Usuario
 from domain.venta import (
     ESTADOS_VENTA_VALIDOS,
+    METODOS_AUTORIZACION_EXCEPCIONAL,
     MOTIVOS_ANULACION_VALIDOS,
     TIPO_PAGO_CUENTA_CORRIENTE,
     TIPOS_PAGO_ACEPTADOS,
@@ -59,6 +60,7 @@ def panel_ventas(request: Request, q: str = ""):
         "tipos_pago": sorted(TIPOS_PAGO_VALIDOS),
         # Venta a cuenta: opción aparte, nunca marcada por defecto (ver `ventas/pos.html`).
         "tipo_pago_cuenta_corriente": TIPO_PAGO_CUENTA_CORRIENTE,
+        "metodos_autorizacion": METODOS_AUTORIZACION_EXCEPCIONAL,
     }
     return templates.TemplateResponse(request, "ventas/pos.html", contexto)
 
@@ -221,6 +223,8 @@ def detalle_venta(
         **contexto_base(request),
         "resumen": resumen,
         "lineas": detalle.lineas,
+        "venta": detalle.venta,
+        "comprador": servicio_ventas.obtener_comprador_de_venta(venta_id),
         "consumos": servicio_partidas.consumos_de_venta(venta_id) if es_owner else [],
     }
     return templates.TemplateResponse(request, "ventas/detalle.html", contexto)
@@ -245,6 +249,7 @@ def ticket_venta(request: Request, venta_id: int):
         "venta": venta_con_detalle.venta,
         "lineas": venta_con_detalle.lineas,
         "cuenta": servicio_cuenta_corriente.obtener_saldo_tras_venta(venta_id),
+        "comprador": servicio_ventas.obtener_comprador_de_venta(venta_id),
         "comercio": servicio_configuracion.obtener_datos_comercio(),
     }
     return templates.TemplateResponse(request, "ventas/ticket.html", contexto)

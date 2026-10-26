@@ -35,6 +35,7 @@ from domain.usuario import exigir_rol
 from domain.venta import (
     TIPO_PAGO_CUENTA_CORRIENTE,
     TIPOS_PAGO_ACEPTADOS,
+    CompradorRegistrado,
     CompradorVenta,
     ItemVenta,
     LineaVentaExportable,
@@ -420,6 +421,11 @@ def registrar_venta(
         "Venta registrada: id=%s total_centavos=%s tipo_pago=%s", venta.id, venta.total_centavos, venta.tipo_pago
     )
     return venta
+
+
+def obtener_comprador_de_venta(venta_id: int) -> CompradorRegistrado | None:
+    """Quién compró a nombre de una empresa en esa venta a cuenta (V1.14-C), o `None`."""
+    return repositorio_obligaciones.obtener_comprador_de_venta(venta_id)
 
 
 def obtener_venta_con_detalle(venta_id: int) -> VentaConDetalle | None:
