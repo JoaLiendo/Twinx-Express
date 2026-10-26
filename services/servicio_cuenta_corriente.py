@@ -30,6 +30,7 @@ from domain.cliente import (
     TIPO_IMPUTACION_FIFO,
     TIPO_IMPUTACION_MANUAL,
     MovimientoCuenta,
+    Obligacion,
     SaldoTrasVenta,
     calcular_hash_cobro,
     imputar_fifo,
@@ -56,6 +57,12 @@ def obtener_saldo_tras_venta(venta_id: int) -> SaldoTrasVenta | None:
     """Cliente y saldo de su cuenta justo después de una venta a cuenta (para el ticket); `None` si
     la venta no fue a cuenta. Sale del libro (`movimientos_cuenta`), no se recalcula aparte."""
     return repositorio_clientes.obtener_saldo_tras_cargo_de_venta(venta_id)
+
+
+def listar_obligaciones_pendientes(cliente_id: int) -> list[Obligacion]:
+    """Obligaciones con saldo del cliente, la más antigua primero: el orden en que las paga un cobro FIFO."""
+    with obtener_conexion() as conexion:
+        return repositorio_obligaciones.listar_pendientes_en_conexion(conexion, cliente_id)
 
 
 def registrar_cobro(

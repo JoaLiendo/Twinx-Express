@@ -34,6 +34,7 @@ from domain.cliente import (
 from domain.credito import AMBITO_CLIENTE, MODOS
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
+from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import (
@@ -261,8 +262,26 @@ def formulario_cobro(request: Request, cliente_id: int):
         "estado_cuenta": estado_cuenta,
         "clave_cobro": nueva_clave_idempotencia(),
         "limites": _LIMITES_CAMPOS,
+        "obligaciones_pendientes": servicio_cuenta_corriente.listar_obligaciones_pendientes(cliente_id),
     }
     return templates.TemplateResponse(request, "clientes/cobro.html", contexto)
+
+
+def _imputacion_manual_del_formulario(obligacion_ids: list[str], montos: list[str]) -> dict[int, int] | None:
+    """Reparto manual (V1.14-D): pares `obligación -> monto`; los montos vacíos no cuentan. `None` si no se
+    indicó ninguno (cobro FIFO). Un id adulterado es un dato inválido, no un error del servidor."""
+    reparto: dict[int, int] = {}
+    for obligacion_id, monto in zip(obligacion_ids, montos, strict=False):
+        if not monto.strip():
+            continue
+        try:
+            clave = int(obligacion_id)
+        except ValueError:
+            raise DatosInvalidosError("La imputación manual indica una obligación inválida.") from None
+        if clave in reparto:
+            raise DatosInvalidosError("La imputación manual repite una obligación.")
+        reparto[clave] = texto_a_centavos(monto)
+    return reparto or None
 
 
 @router.post("/clientes/{cliente_id}/cobro")
@@ -271,18 +290,24 @@ def registrar_cobro(
     monto: str = Form(""),
     descripcion: str = Form(""),
     clave_idempotencia: str = Form(""),
+    imputacion_obligacion_id: list[str] = Form([]),
+    imputacion_monto: list[str] = Form([]),
+    observacion_imputacion: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     """`monto` vacío llega igual al servicio y se rechaza con un mensaje claro (no con un 422 crudo).
-    Toda la operación (ingreso de caja + cobro + auditoría) la hace `registrar_cobro`; quién cobra
-    es siempre el usuario de la sesión. Un rechazo (monto inválido, mayor al saldo, caja cerrada...)
-    vuelve a esta pantalla con un toast, vía el manejador global."""
+    Toda la operación (ingreso de caja + cobro + imputaciones + auditoría) la hace `registrar_cobro`;
+    quién cobra es siempre el usuario de la sesión. Un reparto manual solo lo acepta el servicio si quien
+    cobra es OWNER: un CASHIER que lo arme a mano recibe un permiso denegado sin que se registre nada.
+    Un rechazo vuelve a esta pantalla con un toast, vía el manejador global."""
     servicio_cuenta_corriente.registrar_cobro(
         cliente_id,
         texto_a_centavos(monto),
         usuario_actual.id,
         descripcion=descripcion or None,
         clave_idempotencia=clave_idempotencia or None,
+        imputacion_manual=_imputacion_manual_del_formulario(imputacion_obligacion_id, imputacion_monto),
+        observacion_imputacion=observacion_imputacion or None,
     )
     return redireccionar_con_mensaje(f"/clientes/{cliente_id}", "success", "Cobro registrado correctamente.")
 

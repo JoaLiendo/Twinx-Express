@@ -57,6 +57,49 @@
                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
       </div>
 
+      {% if obligaciones_pendientes %}
+        <div id="cobro-obligaciones" class="space-y-2">
+          <p class="text-sm font-medium text-slate-700 dark:text-slate-300">Se imputa a las deudas más antiguas primero</p>
+          <ol class="divide-y divide-slate-100 dark:divide-slate-800 text-sm rounded-lg border border-slate-200 dark:border-slate-800">
+            {% for obligacion in obligaciones_pendientes %}
+              <li class="flex items-center justify-between gap-3 px-3 py-2" data-obligacion="{{ obligacion.id }}">
+                <span class="text-slate-600 dark:text-slate-400">
+                  <a href="/ventas/{{ obligacion.venta_id }}" class="font-medium text-primary hover:text-primary-hover">Venta #{{ obligacion.venta_id }}</a>
+                  · {{ obligacion.fecha_origen[:10] }}
+                </span>
+                <span class="font-semibold tabular-nums text-slate-900 dark:text-slate-100">${{ obligacion.saldo_pendiente_centavos | dinero_ar }}</span>
+              </li>
+            {% endfor %}
+          </ol>
+        </div>
+
+        {% if usuario_actual and usuario_actual.es_owner %}
+          <details id="cobro-imputacion-manual" class="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-sm">
+            <summary class="cursor-pointer font-medium text-slate-700 dark:text-slate-300">Imputar a mano (excepción del dueño)</summary>
+            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Solo si el cliente paga una venta puntual fuera del orden habitual. Repartí exactamente el monto cobrado;
+              queda registrado como excepción, con tu observación.
+            </p>
+            <div class="mt-3 space-y-2">
+              {% for obligacion in obligaciones_pendientes %}
+                <div class="flex items-center justify-between gap-3">
+                  <label for="imputacion-{{ obligacion.id }}" class="text-slate-600 dark:text-slate-400">Venta #{{ obligacion.venta_id }}
+                    <span class="text-xs">(debe ${{ obligacion.saldo_pendiente_centavos | dinero_ar }})</span></label>
+                  <input type="hidden" name="imputacion_obligacion_id" value="{{ obligacion.id }}" />
+                  <input type="text" inputmode="decimal" id="imputacion-{{ obligacion.id }}" name="imputacion_monto" placeholder="0.00" autocomplete="off"
+                         class="w-32 rounded-lg border border-slate-300 px-3 py-1.5 text-sm tabular-nums bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+              {% endfor %}
+              <div>
+                <label for="observacion-imputacion" class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Motivo de la excepción</label>
+                <input type="text" id="observacion-imputacion" name="observacion_imputacion" maxlength="250"
+                       class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+            </div>
+          </details>
+        {% endif %}
+      {% endif %}
+
       <div class="flex items-center gap-3 pt-2">
         <button type="submit" id="cobro-confirmar" {{ 'disabled' if not caja_abierta else '' }}
                 class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm
