@@ -1,6 +1,6 @@
 # PROGRESS.md — Estado del proyecto
 
-> Contexto resumido para retomar en la próxima sesión. Última actualización: release Twinx Express 1.13.0 (2026-10-24). El detalle por versión está en `README.md` y las novedades para el usuario en `LEEME.txt`.
+> Contexto resumido para retomar en la próxima sesión. Última actualización: release Twinx Express 1.14.0 (2026-10-26). El detalle por versión está en `README.md` y las novedades para el usuario en `LEEME.txt`.
 
 ## 1. Funcionalidad implementada
 
@@ -15,19 +15,21 @@
 - **V1.11**: trazabilidad de stock y catálogo (migraciones 027–031). Motivos de baja vigentes con snapshot de costo, reversas auditables (solo OWNER), `STOCK_INICIAL` trazable (sin inferir históricos), reporte de pérdidas con costo histórico, categorías jerárquicas (hasta 3 niveles en UI, sin ciclos) y etiquetas, productos en tabla con filtros, inventario por categoría, dashboard de cuatro accesos sin costos para CASHIER, índice `ajustes_stock(fecha)`. Detalle en `docs/ROADMAP.md`.
 - **V1.12**: partidas de stock con libro de movimientos (migración 032; stock previo como partida `HEREDADA` sin datos inventados), vencimientos al ingresar mercadería, ventas FEFO trazables con anulación exacta, alertas próximo a vencer/vencido, baja por vencimiento desde la partida (también de productos dados de baja), venta de vencidos solo con autorización OWNER auditada, liquidación sugerida. Pérdidas valorizadas con el costo real de la partida o sin costo. Costo real de lo vendido: desde el libro (`detalle_venta.costo_unitario_centavos` es referencia). Detalle en `docs/V1.12_PARTIDAS.md`.
 - **V1.13**: proveedores (migraciones 033–036). Clasificación muchos-a-muchos con el árbol de categorías existente, datos fiscales opcionales (CUIT único con dígito verificador), evaluaciones 1–5 inmutables con criterios opcionales y calificación actual derivada (aviso no bloqueante al comprar a 1–2 estrellas), reclamos con estados auditables por triggers y proveedor propuesto desde un ajuste FALLA_FABRICA solo si es identificable de verdad (partidas ELEGIDA/UNICA de un único proveedor), documentación fiscal declarada, ficha por secciones y listado con atajos por dimensión. Detalle en `README.md` («Proveedores (V1.13)»).
+- **V1.14**: clientes y crédito (migraciones 037–040). PERSONA/EMPRESA y condición fiscal independientes, compradores autorizados (máx. 2 activos), políticas de crédito GENERAL → TIPO → INDIVIDUAL (sin política no hay crédito), venta mixta efectivo + crédito atómica con obligación causal por trigger, comprador de empresa (autorizado o excepcional), cobros con imputación FIFO persistida y manual solo OWNER, estado objetivo por antigüedad, autorización temporal DEMORADO, cierre en CRÍTICA con reapertura explícita, un strike por episodio y veto permanente con 3 strikes, ficha por secciones y crédito en el POS. Historia: obligaciones causales desde cada CARGO y cobros reconstruidos `HEREDADA_FIFO`. Detalle en `README.md` («Clientes y crédito (V1.14)»).
 
 ## 2. Pendiente / fuera de alcance actual
 
-- **Próximas versiones**: V1.14 clientes y crédito, V1.15 backups y actualizaciones, V1.16 facturación fiscal ARCA, V1.17 analítica, V1.18 preparación comercial / piloto (alcance en `docs/ROADMAP.md`).
-- **Limitaciones aceptadas**: de V1.12, en `docs/V1.12_PARTIDAS.md`. De V1.13: revertir un ajuste FALLA_FABRICA que ya originó un reclamo no lo bloquea ni lo marca en el reclamo (se resuelve cambiando el estado del reclamo); la documentación fiscal es solo metadata (sin archivos); no hay contador global de reclamos en el dashboard.
+- **Próximas versiones**: V1.15 backups y actualizaciones, V1.16 facturación fiscal ARCA, V1.17 analítica, V1.18 preparación comercial / piloto (alcance en `docs/ROADMAP.md`).
+- **Limitaciones aceptadas**: de V1.12, en `docs/V1.12_PARTIDAS.md`. De V1.13: revertir un ajuste FALLA_FABRICA que ya originó un reclamo no lo bloquea ni lo marca en el reclamo (se resuelve cambiando el estado del reclamo); la documentación fiscal es solo metadata (sin archivos); no hay contador global de reclamos en el dashboard. De V1.14: el pago al contado de una venta mixta es solo en efectivo (como los cobros); el estado de crédito se evalúa al abrir la ficha, vender a cuenta o cobrar (sin proceso en segundo plano: el listado de clientes no muestra el estado); no hay calificación subjetiva de clientes; las ventas de cuenta corriente (también mixtas) siguen sin anularse.
 - **Pedidos**: solo cascarón visual (`interfaces/web/rutas/pedidos.py`), sin lógica de negocio; oculto del menú.
 - **Órdenes de compra persistentes, imputación de pagos a compras concretas, notificaciones de vencimientos, saldos a favor y devoluciones a proveedor**: NO implementadas (candidatas de una versión futura).
 - **Backup automático/programado**: no existe (planificado en V1.15); solo el manual desde `/backup` y el preventivo previo a migrar una base existente.
 - **CLI (`interfaces/cli/main.py`)**: interfaz secundaria no sincronizada con los flujos de la web.
-- Anulación de ventas a cuenta corriente: no permitida (decisión de V1.3).
+- Anulación de ventas a cuenta corriente (incluidas las mixtas de V1.14): no permitida (decisión de V1.3).
+- Intereses, recargos, refinanciaciones, cuotas, vencimientos por venta, saldo a favor y cobranza/notificaciones automáticas de clientes: NO implementados (fuera de alcance de V1.14).
 - Productos anteriores a V1.11 no tienen movimiento de stock inicial (no se infiere): su stock de alta sigue dentro del saldo inicial reconstruido del kardex.
 
 ## 3. Estado de tests
 
-- Suite completa (`python -m pytest`): **4918 tests, 0 fallos** al cierre de V1.13 (36 migraciones). JS: 33 (`node --test tests_js/*.test.js`). E2E: 33 desktop + 16 responsive.
+- Suite completa (`python -m pytest`): **5147 tests, 0 fallos** al cierre de V1.14 (40 migraciones). JS: 43 (`node --test tests_js/*.test.js`). E2E: 37 desktop + 20 responsive.
 - Cobertura: `db/`, `domain/`, `services/` y rutas de la interfaz web; E2E con Playwright (`npm run test:e2e`, `npm run test:e2e:responsive`) y pruebas JS (`tests_js/`).

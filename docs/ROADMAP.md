@@ -2,7 +2,7 @@
 
 > Roadmap vivo, no retrospectivo (el detalle de lo ya implementado por versión está en `README.md`,
 > `LEEME.txt` y `PROGRESS.md`). Se actualiza a medida que cada versión se define o se cierra.
-> V1.11–V1.13 están cerradas; V1.14–V1.18 tienen el alcance acordado que se detalla abajo.
+> V1.11–V1.14 están cerradas; V1.15–V1.18 tienen el alcance acordado que se detalla abajo.
 
 ## V1.11 — Trazabilidad de ajustes de stock
 
@@ -85,20 +85,23 @@ Limitaciones aceptadas de V1.12 en `docs/V1.12_PARTIDAS.md`; de V1.13, en `PROGR
 
 ---
 
-## V1.14 — Clientes y crédito
+## V1.14 — Clientes y crédito (cerrado, release 1.14.0)
 
-- Personas y empresas.
-- Condición fiscal separada del tipo de cliente.
-- Autorizados.
-- Cuenta corriente.
-- Límites.
-- Pagos parciales.
-- FIFO causal.
-- Estados NORMAL / REGULAR / DEMORADO / CRÍTICA.
-- Cierres.
-- Strikes.
-- Vetado permanente para cuenta corriente.
-- Historial/auditoría.
+- **V1.14-A**: PERSONA / EMPRESA y condición fiscal independientes (migración 037); empresa con identidad
+  completa y CUIT único; compradores autorizados (máx. 2 activos, historial por períodos). Históricos sin
+  clasificar.
+- **V1.14-B**: políticas de crédito GENERAL → TIPO → INDIVIDUAL (migración 038), sin crédito si no hay
+  política; versión optimista; solo OWNER.
+- **V1.14-C**: venta 100% contado, 100% crédito o mixta (efectivo + crédito) atómica; obligación causal por
+  cada porción financiada (migración 039); comprador de empresa (autorizado o excepcional).
+- **V1.14-D**: cobros con imputación FIFO persistida; imputación manual solo OWNER, observada y auditada.
+- **V1.14-E**: estado objetivo por antigüedad (NORMAL/REGULAR/DEMORADO/CRÍTICA), autorización temporal de
+  DEMORADO, cierre al entrar en CRÍTICA, reapertura explícita, un strike por episodio, veto permanente con
+  3 strikes (migración 040), sin scheduler.
+- **V1.14-F**: ficha por secciones y crédito en el POS.
+
+Fuera de alcance (no implementado): intereses, recargos, refinanciaciones, cuotas, vencimientos por venta,
+saldo a favor, cobranza automática, notificaciones externas, scoring, calificación subjetiva de clientes.
 
 ## V1.15 — Backups y actualizaciones
 

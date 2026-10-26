@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.13.0
+Twinx Express 1.14.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -808,3 +808,64 @@ h) AL ACTUALIZAR DESDE LA VERSION 1.12
    (33 a 36): tus proveedores, compras, pagos y deudas quedan tal cual,
    sin categorias, datos fiscales ni evaluaciones inventadas. Si algo
    sale mal, segui el punto 7.
+
+
+23) NOVEDADES DE LA VERSION 1.14: CLIENTES Y CREDITO
+----------------------------------------------------------------------------------
+
+a) PERSONA O EMPRESA
+   Al cargar un cliente elegis si es una persona o una empresa, y aparte
+   su condicion fiscal (consumidor final, responsable inscripto,
+   monotributo o exento): son dos cosas distintas. Una empresa necesita
+   razon social, CUIT, direccion, telefono, contacto y condicion fiscal.
+   El CUIT se revisa que este bien escrito y no se repite entre clientes.
+
+b) COMPRADORES AUTORIZADOS (EMPRESAS)
+   En la ficha de una empresa el dueño puede autorizar hasta 2 personas
+   para comprar a su nombre. Al darlas de baja queda el historial. Si
+   compra alguien que no esta autorizado, en la venta se anota quien fue,
+   como se autorizo (WhatsApp, email, orden, llamada u otro) y una
+   referencia: eso vale solo para esa compra.
+
+c) LIMITE DE CREDITO
+   En Configuracion > Crédito a clientes el dueño define el credito:
+   general, para personas, para empresas y, en la ficha, una excepcion
+   para un cliente puntual (gana la mas especifica). "Sin credito" no
+   deja vender a cuenta; "Con limite" en 0 habilita la cuenta pero sin
+   nada disponible.
+   IMPORTANTE: despues de actualizar, NADIE tiene credito hasta que el
+   dueño configure la politica general. Las deudas de antes se siguen
+   cobrando igual.
+
+d) VENTA MIXTA (PARTE EN EFECTIVO, PARTE A CUENTA)
+   En la caja, al vender "A cuenta" y elegir el cliente, se ve su saldo,
+   cuanto credito le queda y su estado. Si paga una parte en efectivo, se
+   carga en "Paga ahora en efectivo": esa parte entra a la caja y el resto
+   queda como deuda. Si lo que queda a cuenta supera lo disponible, la
+   caja no deja cobrar.
+
+e) COBROS
+   Cada cobro paga primero las deudas mas viejas, y queda registrado que
+   venta pago cada parte. El dueño puede, como excepcion, elegir a mano
+   que venta paga (con un motivo).
+
+f) ESTADO DEL CLIENTE
+   Segun la deuda mas vieja: Normal (menos de 30 dias), Regular (30 a 44),
+   Demorado (45 a 59) y Critica (60 o mas).
+   - Demorado: no se le vende a cuenta salvo que el dueño de una
+     autorizacion temporal (con el compromiso de pago y hasta que fecha,
+     como maximo 30 dias). Vencida, no sirve.
+   - Critica: el credito se cierra. Se le puede cobrar y vender al
+     contado, pero no a cuenta. Pagar no lo reabre: lo reabre el dueño
+     desde la ficha, cuando ya no esta en critica.
+   - Si sigue en critica 30 dias despues del cierre, suma un "strike"
+     (uno por cada cierre). Con 3 strikes el cliente queda sin credito
+     para siempre: puede comprar al contado, pero nadie puede volver a
+     darle credito.
+
+g) AL ACTUALIZAR DESDE LA VERSION 1.13
+   KioscoApp crea automaticamente un backup y aplica 4 migraciones nuevas
+   (37 a 40). Tus clientes quedan "sin clasificar" hasta que los edites.
+   Cada venta a cuenta anterior queda como deuda de esa venta, con su
+   fecha; los cobros anteriores se reparten pagando primero lo mas viejo.
+   Ningun saldo cambia. Si algo sale mal, segui el punto 7.

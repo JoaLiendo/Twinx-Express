@@ -679,6 +679,47 @@ migración futura que reconstruya alguna de ellas debe tratarla como tal (ver mi
 **Actualizar desde V1.12.** Se crea un backup automático y se aplican las migraciones 033–036; los datos
 quedan intactos (sin categorías, datos fiscales ni evaluaciones inventados) y los saldos no cambian.
 
+## Clientes y crédito (V1.14)
+
+Cuatro migraciones nuevas (037–040; 40 en total), sin dependencias nuevas. La cuenta corriente sigue siendo
+el libro `movimientos_cuenta` de V1.3 (CARGO / COBRO); V1.14 le agrega causalidad y reglas de crédito.
+
+- **Identidad** (037): tipo PERSONA/EMPRESA y condición fiscal (consumidor final, responsable inscripto,
+  monotributo, exento) como conceptos independientes. Una empresa exige razón social, CUIT (dígito
+  verificador, único entre clientes; un proveedor con el mismo CUIT no cuenta), dirección, teléfono,
+  contacto y condición fiscal. Compradores autorizados de empresa: máximo 2 activos (servicio + trigger),
+  cada alta/baja es un período inmutable; solo OWNER.
+- **Políticas de crédito** (038): capas GENERAL → PERSONA/EMPRESA → INDIVIDUAL (gana la más específica).
+  Modos explícitos: heredar, sin crédito, con límite (0 = habilitado sin disponible). **Sin política
+  general nadie tiene crédito**: no existe "ilimitado". Configuración solo OWNER con control de versión.
+- **Venta mixta y obligaciones** (039): una venta a cuenta puede cobrar una parte en efectivo
+  (`ventas.pago_contado_centavos`, entra al arqueo) y financiar el resto. Venta, stock, partidas,
+  comprador, CARGO y obligación son una sola transacción; la porción financiada no puede superar el
+  disponible. Cada CARGO crea por trigger su `obligaciones_cliente`; una empresa registra quién compró
+  (autorizado vigente o autorización excepcional por WhatsApp, email, orden, llamada u otro). Las ventas a
+  cuenta (también las mixtas) siguen sin poder anularse (regla de V1.3).
+- **Cobros** (039): cada cobro se imputa FIFO a las obligaciones más antiguas y la imputación queda
+  persistida (`imputaciones_cobro`, append-only). Imputación manual: solo OWNER, con observación,
+  auditada. Sin sobrepago ni saldo a favor.
+- **Estado y bloqueos** (040): estado objetivo por antigüedad de la obligación pendiente más antigua
+  (NORMAL < 30 días ≤ REGULAR < 45 ≤ DEMORADO < 60 ≤ CRÍTICA; SIN_DEUDA). DEMORADO vende a cuenta solo con
+  autorización temporal del OWNER (compromiso + fecha límite ≤ 30 días). CRÍTICA cierra el crédito (episodio);
+  pagar no lo reabre, la reapertura es explícita del OWNER y no se permite en CRÍTICA. Si el cliente sigue en
+  CRÍTICA 30 días después del cierre, el episodio suma su único strike; con 3 strikes el crédito queda vetado
+  para siempre (el esquema rechaza reabrir y todo CARGO nuevo). Consultar, cobrar y comprar al contado nunca
+  se bloquean. Se evalúa al abrir la ficha, vender a cuenta o cobrar (sin proceso en segundo plano).
+- **UX**: ficha por secciones (resumen, datos, autorizados, cuenta corriente, obligaciones, pagos e
+  imputaciones, historial de crédito, autorizaciones y excepciones; estas tres últimas y la configuración,
+  solo OWNER). El POS muestra al elegir el cliente su saldo, disponible, estado y bloqueo, el pago parcial
+  en efectivo y el comprador de empresa; el backend decide siempre.
+
+**Actualizar desde V1.13.** Se crea un backup automático y se aplican las migraciones 037–040. Los clientes
+históricos quedan "sin clasificar" (sin tipo ni condición fiscal inventados). Cada venta a cuenta histórica
+pasa a ser su obligación (misma venta, fecha y monto); los cobros históricos —que nunca se imputaron— se
+reparten con FIFO y quedan marcados como reconstruidos (`HEREDADA_FIFO`). Los saldos no cambian. **Después
+de actualizar nadie tiene crédito hasta que el OWNER configure la política general** (Configuración →
+Crédito a clientes); las deudas existentes se siguen cobrando normalmente.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -705,5 +746,6 @@ quedan intactos (sin categorías, datos fiscales ni evaluaciones inventados) y l
 - [x] Trazabilidad de stock (motivos, reversas, stock inicial, pérdidas), categorías jerárquicas, etiquetas y dashboard operativo (V1.11, ver «Trazabilidad de stock y catálogo (V1.11)»)
 - [x] Partidas de stock, vencimientos de productos, ventas FEFO, alertas, baja/venta controlada de vencidos y liquidación sugerida (V1.12, ver «Partidas, vencimientos y liquidación (V1.12)»)
 - [x] Proveedores con categorías, datos fiscales, evaluaciones, reclamos auditables y documentación fiscal declarada (V1.13, ver «Proveedores (V1.13)»)
+- [x] Clientes persona/empresa, políticas de crédito, venta mixta, obligaciones con FIFO persistido, estados, cierres, strikes y veto (V1.14, ver «Clientes y crédito (V1.14)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado
