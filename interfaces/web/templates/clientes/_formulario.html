@@ -1,0 +1,84 @@
+{# Campos del alta y la edición de clientes (V1.14-A). `cliente` es None en el alta. El tipo y la
+   condición fiscal son independientes: una persona puede ser responsable inscripta y una empresa
+   puede declarar cualquier condición. El servidor valida todo; `required` es solo ayuda de UX. #}
+{% set clase_label = "block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" %}
+{% set clase_campo = "w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" %}
+{% set tipo_actual = (cliente.tipo_cliente if cliente else 'PERSONA') %}
+
+<fieldset>
+  <legend class="{{ clase_label }}">Tipo de cliente</legend>
+  {% if cliente and not cliente.tipo_cliente %}
+    <p class="text-xs text-warning mb-2">Cliente histórico sin clasificar: elegí su tipo para completarlo.</p>
+  {% endif %}
+  <div class="flex flex-wrap gap-4">
+    {% for valor, etiqueta in tipos_cliente.items() %}
+      <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+        <input type="radio" name="tipo_cliente" value="{{ valor }}" class="accent-primary"
+               {{ 'checked' if tipo_actual == valor else '' }} {{ 'required' if not cliente else '' }} />
+        {{ etiqueta }}
+      </label>
+    {% endfor %}
+  </div>
+</fieldset>
+
+<div>
+  <label for="nombre" class="{{ clase_label }}">Nombre</label>
+  <input type="text" name="nombre" id="nombre" required {{ 'autofocus' if not cliente else '' }} maxlength="{{ limites.nombre }}"
+         value="{{ cliente.nombre if cliente else '' }}" class="{{ clase_campo }}" />
+  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Para una empresa, el nombre con que se la conoce en el negocio.</p>
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <div>
+    <label for="condicion_fiscal" class="{{ clase_label }}">Condición fiscal</label>
+    <select name="condicion_fiscal" id="condicion_fiscal" class="{{ clase_campo }}">
+      <option value="">Sin declarar</option>
+      {% for valor, etiqueta in condiciones_fiscales.items() %}
+        <option value="{{ valor }}" {{ 'selected' if cliente and cliente.condicion_fiscal == valor else '' }}>{{ etiqueta }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="cuit" class="{{ clase_label }}">CUIT <span class="font-normal text-slate-400">(obligatorio para empresa)</span></label>
+    <input type="text" name="cuit" id="cuit" maxlength="13" placeholder="30-71234567-1" inputmode="numeric"
+           value="{{ (cliente.cuit_formateado or '') if cliente else '' }}" class="{{ clase_campo }}" />
+  </div>
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <div>
+    <label for="razon_social" class="{{ clase_label }}">Razón social <span class="font-normal text-slate-400">(empresa)</span></label>
+    <input type="text" name="razon_social" id="razon_social" maxlength="{{ limites.razon_social }}"
+           value="{{ (cliente.razon_social or '') if cliente else '' }}" class="{{ clase_campo }}" />
+  </div>
+  <div>
+    <label for="contacto" class="{{ clase_label }}">Contacto <span class="font-normal text-slate-400">(empresa)</span></label>
+    <input type="text" name="contacto" id="contacto" maxlength="{{ limites.contacto }}"
+           value="{{ (cliente.contacto or '') if cliente else '' }}" class="{{ clase_campo }}" />
+  </div>
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <div>
+    <label for="telefono" class="{{ clase_label }}">Teléfono</label>
+    <input type="text" name="telefono" id="telefono" maxlength="{{ limites.telefono }}"
+           value="{{ (cliente.telefono or '') if cliente else '' }}" class="{{ clase_campo }}" />
+  </div>
+  <div>
+    <label for="email" class="{{ clase_label }}">Email</label>
+    <input type="text" name="email" id="email" maxlength="{{ limites.email }}"
+           value="{{ (cliente.email or '') if cliente else '' }}" class="{{ clase_campo }}" />
+  </div>
+</div>
+
+<div>
+  <label for="direccion" class="{{ clase_label }}">Dirección</label>
+  <input type="text" name="direccion" id="direccion" maxlength="{{ limites.direccion }}"
+         value="{{ (cliente.direccion or '') if cliente else '' }}" class="{{ clase_campo }}" />
+</div>
+
+<div>
+  <label for="observaciones" class="{{ clase_label }}">Observaciones</label>
+  <textarea name="observaciones" id="observaciones" rows="3" maxlength="{{ limites.observaciones }}"
+            class="{{ clase_campo }}">{{ (cliente.observaciones or '') if cliente else '' }}</textarea>
+</div>

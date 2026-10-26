@@ -1,5 +1,6 @@
 """Rutas de clientes y cuenta corriente (021): lista con saldo, alta, edición, baja lógica y
-reactivación, ficha/estado de cuenta, cobro y el buscador JSON del POS.
+reactivación, ficha/estado de cuenta, cobro, compradores autorizados de empresas (V1.14-A) y el
+buscador JSON del POS.
 
 Cliente delgado: solo llama a `services.servicio_clientes` y `services.servicio_cuenta_corriente`
 y renderiza plantillas o redirects. Cero SQL y cero reglas de negocio acá; ninguna ruta atrapa
@@ -16,12 +17,19 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse
 
 from domain.cliente import (
+    CONDICIONES_FISCALES_CLIENTE,
+    LONGITUD_MAXIMA_CONTACTO,
     LONGITUD_MAXIMA_DESCRIPCION_MOVIMIENTO,
     LONGITUD_MAXIMA_DIRECCION,
+    LONGITUD_MAXIMA_DOCUMENTO,
     LONGITUD_MAXIMA_EMAIL,
     LONGITUD_MAXIMA_NOMBRE,
     LONGITUD_MAXIMA_OBSERVACIONES,
+    LONGITUD_MAXIMA_RAZON_SOCIAL,
     LONGITUD_MAXIMA_TELEFONO,
+    MAXIMO_AUTORIZADOS_ACTIVOS,
+    TIPO_PERSONA,
+    TIPOS_CLIENTE,
 )
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
@@ -42,7 +50,18 @@ _LIMITES_CAMPOS = {
     "direccion": LONGITUD_MAXIMA_DIRECCION,
     "observaciones": LONGITUD_MAXIMA_OBSERVACIONES,
     "descripcion_cobro": LONGITUD_MAXIMA_DESCRIPCION_MOVIMIENTO,
+    "razon_social": LONGITUD_MAXIMA_RAZON_SOCIAL,
+    "contacto": LONGITUD_MAXIMA_CONTACTO,
 }
+
+
+def _contexto_formulario(request: Request) -> dict:
+    return {
+        **contexto_base(request),
+        "limites": _LIMITES_CAMPOS,
+        "tipos_cliente": TIPOS_CLIENTE,
+        "condiciones_fiscales": CONDICIONES_FISCALES_CLIENTE,
+    }
 
 
 def _redirigir_cliente_inexistente():
@@ -67,8 +86,7 @@ def listar_clientes(
 
 @router.get("/clientes/nuevo")
 def formulario_nuevo_cliente(request: Request):
-    contexto = {**contexto_base(request), "limites": _LIMITES_CAMPOS}
-    return templates.TemplateResponse(request, "clientes/nuevo.html", contexto)
+    return templates.TemplateResponse(request, "clientes/nuevo.html", _contexto_formulario(request))
 
 
 @router.post("/clientes/nuevo")
@@ -78,6 +96,11 @@ def crear_cliente(
     email: str = Form(""),
     direccion: str = Form(""),
     observaciones: str = Form(""),
+    tipo_cliente: str = Form(TIPO_PERSONA),
+    condicion_fiscal: str = Form(""),
+    razon_social: str = Form(""),
+    cuit: str = Form(""),
+    contacto: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     cliente = servicio_clientes.crear_cliente(
@@ -87,6 +110,11 @@ def crear_cliente(
         email=email,
         direccion=direccion,
         observaciones=observaciones,
+        tipo_cliente=tipo_cliente,
+        condicion_fiscal=condicion_fiscal or None,
+        razon_social=razon_social,
+        cuit=cuit,
+        contacto=contacto,
     )
     return redireccionar_con_mensaje(f"/clientes/{cliente.id}", "success", f"Cliente '{cliente.nombre}' creado correctamente.")
 
@@ -96,7 +124,17 @@ def ficha_cliente(request: Request, cliente_id: int):
     """`/clientes/nuevo` se declara antes a propósito (ver `ventas.py`/`compras.py`)."""
     if servicio_clientes.obtener_cliente(cliente_id) is None:
         return _redirigir_cliente_inexistente()
-    contexto = {**contexto_base(request), "estado_cuenta": servicio_clientes.obtener_estado_de_cuenta(cliente_id)}
+    contexto = {
+        **contexto_base(request),
+        "estado_cuenta": servicio_clientes.obtener_estado_de_cuenta(cliente_id),
+        "autorizados": servicio_clientes.listar_compradores_autorizados(cliente_id),
+        "maximo_autorizados": MAXIMO_AUTORIZADOS_ACTIVOS,
+        "limites_autorizado": {
+            "nombre": LONGITUD_MAXIMA_NOMBRE,
+            "documento": LONGITUD_MAXIMA_DOCUMENTO,
+            "contacto": LONGITUD_MAXIMA_CONTACTO,
+        },
+    }
     return templates.TemplateResponse(request, "clientes/detalle.html", contexto)
 
 
@@ -105,7 +143,7 @@ def formulario_editar_cliente(request: Request, cliente_id: int):
     cliente = servicio_clientes.obtener_cliente(cliente_id)
     if cliente is None:
         return _redirigir_cliente_inexistente()
-    contexto = {**contexto_base(request), "cliente": cliente, "limites": _LIMITES_CAMPOS}
+    contexto = {**_contexto_formulario(request), "cliente": cliente}
     return templates.TemplateResponse(request, "clientes/editar.html", contexto)
 
 
@@ -117,6 +155,11 @@ def editar_cliente(
     email: str = Form(""),
     direccion: str = Form(""),
     observaciones: str = Form(""),
+    tipo_cliente: str = Form(""),
+    condicion_fiscal: str = Form(""),
+    razon_social: str = Form(""),
+    cuit: str = Form(""),
+    contacto: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     cliente = servicio_clientes.editar_cliente(
@@ -127,6 +170,11 @@ def editar_cliente(
         email=email,
         direccion=direccion,
         observaciones=observaciones,
+        tipo_cliente=tipo_cliente or None,
+        condicion_fiscal=condicion_fiscal or None,
+        razon_social=razon_social,
+        cuit=cuit,
+        contacto=contacto,
     )
     return redireccionar_con_mensaje(f"/clientes/{cliente_id}", "success", f"Cliente '{cliente.nombre}' actualizado correctamente.")
 
@@ -141,6 +189,32 @@ def desactivar_cliente(cliente_id: int, usuario_actual: Usuario = Depends(obtene
 def reactivar_cliente(cliente_id: int, usuario_actual: Usuario = Depends(obtener_usuario_actual)):
     cliente = servicio_clientes.reactivar_cliente(cliente_id, usuario_actual.id)
     return redireccionar_con_mensaje(f"/clientes/{cliente_id}", "success", f"Cliente '{cliente.nombre}' reactivado.")
+
+
+@router.post("/clientes/{cliente_id}/autorizados", dependencies=[_SOLO_OWNER])
+def agregar_comprador_autorizado(
+    cliente_id: int,
+    nombre: str = Form(""),
+    documento: str = Form(""),
+    contacto: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    comprador = servicio_clientes.agregar_comprador_autorizado(
+        cliente_id, nombre, usuario_actual.id, documento=documento, contacto=contacto
+    )
+    return redireccionar_con_mensaje(
+        f"/clientes/{cliente_id}", "success", f"'{comprador.nombre}' quedó autorizado para comprar."
+    )
+
+
+@router.post("/clientes/{cliente_id}/autorizados/{comprador_id}/baja", dependencies=[_SOLO_OWNER])
+def dar_de_baja_comprador_autorizado(
+    cliente_id: int, comprador_id: int, usuario_actual: Usuario = Depends(obtener_usuario_actual)
+):
+    comprador = servicio_clientes.dar_de_baja_comprador_autorizado(cliente_id, comprador_id, usuario_actual.id)
+    return redireccionar_con_mensaje(
+        f"/clientes/{cliente_id}", "success", f"'{comprador.nombre}' ya no está autorizado."
+    )
 
 
 @router.get("/clientes/{cliente_id}/cobro")

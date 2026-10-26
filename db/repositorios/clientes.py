@@ -10,10 +10,22 @@ triggers, FK `RESTRICT`) las garantiza como última defensa.
 import sqlite3
 
 from db.conexion import obtener_conexion
-from domain.cliente import Cliente, ClienteConSaldo, DeudaTotal, MovimientoCuenta, ResumenCuenta, SaldoTrasVenta
+from domain.cliente import (
+    Cliente,
+    ClienteConSaldo,
+    CompradorAutorizado,
+    DeudaTotal,
+    MovimientoCuenta,
+    ResumenCuenta,
+    SaldoTrasVenta,
+)
 from domain.reportes_operativos import CobranzaDeCliente, DeudorCuenta
+from excepciones import CuitClienteDuplicadoError, DatosInvalidosError
 
-_COLUMNAS = "id, nombre, telefono, email, direccion, observaciones, activo, fecha_creacion"
+_COLUMNAS = (
+    "id, nombre, telefono, email, direccion, observaciones, activo, fecha_creacion,"
+    " tipo_cliente, condicion_fiscal, razon_social, cuit, contacto"
+)
 _COLUMNAS_MOVIMIENTO = (
     "id, fecha, cliente_id, tipo, monto_centavos, descripcion, venta_id, caja_movimiento_id, usuario_id"
 )
@@ -31,7 +43,36 @@ def _fila_a_cliente(fila: sqlite3.Row) -> Cliente:
         observaciones=fila["observaciones"],
         activo=bool(fila["activo"]),
         fecha_creacion=fila["fecha_creacion"],
+        tipo_cliente=fila["tipo_cliente"],
+        condicion_fiscal=fila["condicion_fiscal"],
+        razon_social=fila["razon_social"],
+        cuit=fila["cuit"],
+        contacto=fila["contacto"],
     )
+
+
+def _parametros_de_datos(cliente: Cliente) -> tuple:
+    return (
+        cliente.nombre,
+        cliente.telefono,
+        cliente.email,
+        cliente.direccion,
+        cliente.observaciones,
+        cliente.tipo_cliente,
+        cliente.condicion_fiscal,
+        cliente.razon_social,
+        cliente.cuit,
+        cliente.contacto,
+    )
+
+
+def _traducir_integridad(error: sqlite3.IntegrityError, cliente: Cliente) -> Exception:
+    """El UNIQUE de `cuit` es un duplicado; un trigger de la migración 037 trae su propio mensaje
+    (empresa incompleta, clasificación irreversible, autorizados activos)."""
+    texto = str(error)
+    if "clientes.cuit" in texto:
+        return CuitClienteDuplicadoError(f"Ya existe un cliente con el CUIT {cliente.cuit_formateado}.")
+    return DatosInvalidosError(texto if "CHECK" not in texto else "Los datos del cliente no son válidos.")
 
 
 def _fila_a_movimiento(fila: sqlite3.Row) -> MovimientoCuenta:
@@ -49,30 +90,47 @@ def _fila_a_movimiento(fila: sqlite3.Row) -> MovimientoCuenta:
 
 
 def crear_cliente_en_conexion(conexion: sqlite3.Connection, cliente: Cliente) -> Cliente:
-    """Inserta el cliente (siempre activo) y lo devuelve con `id` y `fecha_creacion`."""
-    fila = conexion.execute(
-        f"""
-        INSERT INTO clientes (nombre, telefono, email, direccion, observaciones)
-        VALUES (?, ?, ?, ?, ?)
-        RETURNING {_COLUMNAS}
-        """,
-        (cliente.nombre, cliente.telefono, cliente.email, cliente.direccion, cliente.observaciones),
-    ).fetchone()
+    """Inserta el cliente (siempre activo) y lo devuelve con `id` y `fecha_creacion`.
+
+    Raises:
+        CuitClienteDuplicadoError: si otro cliente ya tiene ese CUIT.
+    """
+    try:
+        fila = conexion.execute(
+            f"""
+            INSERT INTO clientes (nombre, telefono, email, direccion, observaciones,
+                                  tipo_cliente, condicion_fiscal, razon_social, cuit, contacto)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING {_COLUMNAS}
+            """,
+            _parametros_de_datos(cliente),
+        ).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise _traducir_integridad(error, cliente) from error
     return _fila_a_cliente(fila)
 
 
 def actualizar_cliente_en_conexion(conexion: sqlite3.Connection, cliente: Cliente) -> Cliente | None:
     """Actualiza los datos editables del cliente (no su estado `activo`).
-    Devuelve `None` si no existe."""
-    fila = conexion.execute(
-        f"""
-        UPDATE clientes
-        SET nombre = ?, telefono = ?, email = ?, direccion = ?, observaciones = ?
-        WHERE id = ?
-        RETURNING {_COLUMNAS}
-        """,
-        (cliente.nombre, cliente.telefono, cliente.email, cliente.direccion, cliente.observaciones, cliente.id),
-    ).fetchone()
+    Devuelve `None` si no existe.
+
+    Raises:
+        CuitClienteDuplicadoError: si otro cliente ya tiene ese CUIT.
+        DatosInvalidosError: si un trigger rechaza el cambio (ej. desclasificar al cliente).
+    """
+    try:
+        fila = conexion.execute(
+            f"""
+            UPDATE clientes
+            SET nombre = ?, telefono = ?, email = ?, direccion = ?, observaciones = ?,
+                tipo_cliente = ?, condicion_fiscal = ?, razon_social = ?, cuit = ?, contacto = ?
+            WHERE id = ?
+            RETURNING {_COLUMNAS}
+            """,
+            (*_parametros_de_datos(cliente), cliente.id),
+        ).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise _traducir_integridad(error, cliente) from error
     return _fila_a_cliente(fila) if fila is not None else None
 
 
@@ -231,14 +289,18 @@ def listar_con_saldo(texto: str | None = None, estado: str = "activos", limite: 
     texto = (texto or "").strip()
     if texto:
         patron = f"%{_escapar_comodines_like(texto)}%"
-        condiciones.append("(c.nombre LIKE ? ESCAPE '\\' OR c.telefono LIKE ? ESCAPE '\\')")
-        parametros.extend([patron, patron])
+        condiciones.append(
+            "(c.nombre LIKE ? ESCAPE '\\' OR c.telefono LIKE ? ESCAPE '\\'"
+            " OR c.razon_social LIKE ? ESCAPE '\\' OR c.cuit LIKE ? ESCAPE '\\')"
+        )
+        parametros.extend([patron, patron, patron, patron])
     where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
     tope = "LIMIT ?" if limite is not None else ""
     if limite is not None:
         parametros.append(limite)
     consulta = f"""
         SELECT c.id, c.nombre, c.telefono, c.email, c.direccion, c.observaciones, c.activo, c.fecha_creacion,
+               c.tipo_cliente, c.condicion_fiscal, c.razon_social, c.cuit, c.contacto,
                COALESCE(m.saldo, 0) AS saldo
         FROM clientes c
         LEFT JOIN (

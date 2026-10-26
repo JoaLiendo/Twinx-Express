@@ -19,6 +19,22 @@
           {% if cliente.activo %}{{ ui.badge('Activo', 'exito') }}{% else %}{{ ui.badge('Inactivo', 'neutral') }}{% endif %}
         </div>
         <dl class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+          <div><dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Tipo</dt>
+               <dd id="cliente-tipo" class="text-slate-700 dark:text-slate-300">{{ cliente.tipo_etiqueta }}</dd></div>
+          <div><dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Condición fiscal</dt>
+               <dd id="cliente-condicion-fiscal" class="text-slate-700 dark:text-slate-300">{{ cliente.condicion_fiscal_etiqueta }}</dd></div>
+          {% if cliente.razon_social %}
+            <div><dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Razón social</dt>
+                 <dd class="text-slate-700 dark:text-slate-300">{{ cliente.razon_social }}</dd></div>
+          {% endif %}
+          {% if cliente.cuit %}
+            <div><dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">CUIT</dt>
+                 <dd id="cliente-cuit" class="text-slate-700 dark:text-slate-300 tabular-nums">{{ cliente.cuit_formateado }}</dd></div>
+          {% endif %}
+          {% if cliente.contacto %}
+            <div><dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Contacto</dt>
+                 <dd class="text-slate-700 dark:text-slate-300">{{ cliente.contacto }}</dd></div>
+          {% endif %}
           <div><dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Teléfono</dt>
                <dd class="text-slate-700 dark:text-slate-300">{{ cliente.telefono or "—" }}</dd></div>
           <div><dt class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Email</dt>
@@ -81,6 +97,10 @@
       <p id="cliente-total-cobros" class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">${{ resumen.total_cobros_centavos | dinero_ar }}</p>
     </div>
   </div>
+
+  {% if cliente.es_empresa %}
+    {% include "clientes/_autorizados.html" %}
+  {% endif %}
 
   <div>
     <h2 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Movimientos de cuenta</h2>

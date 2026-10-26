@@ -293,6 +293,19 @@ class ClienteConSaldoError(ErrorAplicacion):
     """No se puede desactivar un cliente con saldo pendiente en su cuenta corriente."""
 
 
+class CuitClienteDuplicadoError(ErrorAplicacion):
+    """Ya existe un cliente (activo o no) con ese CUIT (V1.14-A). Un proveedor con el mismo CUIT no
+    cuenta: clientes y proveedores son padrones independientes."""
+
+
+class CompradorAutorizadoNoEncontradoError(ErrorAplicacion):
+    """No existe un período de autorización con ese id para la empresa indicada."""
+
+
+class LimiteCompradoresAutorizadosError(ErrorAplicacion):
+    """La empresa ya tiene el máximo de compradores autorizados activos (V1.14-A)."""
+
+
 class CobroInvalidoError(DatosInvalidosError):
     """El cobro de cuenta corriente no cumple las reglas comerciales: medio
     distinto de efectivo o monto fuera de `0 < monto <= saldo`."""

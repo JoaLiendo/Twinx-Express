@@ -1,0 +1,70 @@
+{# Compradores autorizados de una empresa (V1.14-A): activos e historial de períodos. Alta y baja solo OWNER. #}
+{% set activos = autorizados | selectattr("activo") | list %}
+{% set historial = autorizados | rejectattr("activo") | list %}
+<section id="autorizados" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <h2 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Compradores autorizados</h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400">{{ activos | length }} de {{ maximo_autorizados }} activos</p>
+  </div>
+
+  {% if activos %}
+    <ul class="divide-y divide-slate-100 dark:divide-slate-800 text-sm" id="lista-autorizados-activos">
+      {% for comprador in activos %}
+        <li class="py-2 flex flex-wrap items-center justify-between gap-2" data-autorizado="{{ comprador.id }}">
+          <div class="min-w-0">
+            <p class="font-medium text-slate-800 dark:text-slate-200">{{ comprador.nombre }}</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              {% if comprador.documento %}Doc. {{ comprador.documento }} · {% endif %}{% if comprador.contacto %}{{ comprador.contacto }} · {% endif %}desde {{ comprador.fecha_alta }} ({{ comprador.usuario_alta }})
+            </p>
+          </div>
+          {% if es_owner %}
+            <form method="post" action="/clientes/{{ cliente.id }}/autorizados/{{ comprador.id }}/baja"
+                  onsubmit="return confirm('¿Dar de baja a este comprador autorizado?');">
+              <button type="submit" class="rounded-lg bg-error/10 hover:bg-error/20 transition text-error text-xs font-semibold px-3 py-1.5">Dar de baja</button>
+            </form>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-sm text-slate-500 dark:text-slate-400">Sin compradores autorizados activos: una compra a cuenta necesitará una autorización excepcional.</p>
+  {% endif %}
+
+  {% if es_owner and cliente.activo and activos | length < maximo_autorizados %}
+    <form method="post" action="/clientes/{{ cliente.id }}/autorizados" id="form-agregar-autorizado"
+          class="grid grid-cols-1 sm:grid-cols-4 gap-3 sm:items-end">
+      <div class="sm:col-span-2">
+        <label for="autorizado-nombre" class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Nombre</label>
+        <input type="text" name="nombre" id="autorizado-nombre" required maxlength="{{ limites_autorizado.nombre }}"
+               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary" />
+      </div>
+      <div>
+        <label for="autorizado-documento" class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Documento</label>
+        <input type="text" name="documento" id="autorizado-documento" maxlength="{{ limites_autorizado.documento }}"
+               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary" />
+      </div>
+      <div>
+        <label for="autorizado-contacto" class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Contacto</label>
+        <input type="text" name="contacto" id="autorizado-contacto" maxlength="{{ limites_autorizado.contacto }}"
+               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary" />
+      </div>
+      <div class="sm:col-span-4">
+        <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">Autorizar comprador</button>
+      </div>
+    </form>
+  {% endif %}
+
+  {% if historial %}
+    <details class="text-sm">
+      <summary class="cursor-pointer text-slate-600 dark:text-slate-400">Historial de autorizaciones ({{ historial | length }})</summary>
+      <ul class="mt-2 divide-y divide-slate-100 dark:divide-slate-800" id="lista-autorizados-historial">
+        {% for comprador in historial %}
+          <li class="py-2 text-slate-600 dark:text-slate-400">
+            <span class="font-medium text-slate-700 dark:text-slate-300">{{ comprador.nombre }}</span>
+            · {{ comprador.fecha_alta }} ({{ comprador.usuario_alta }}) → baja {{ comprador.fecha_baja }} ({{ comprador.usuario_baja }})
+          </li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% endif %}
+</section>
