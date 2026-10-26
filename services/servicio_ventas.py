@@ -229,6 +229,10 @@ def registrar_venta(
             cantidad_pedida_por_producto.get(item.producto_id, 0) + item.cantidad
         )
 
+    if es_venta_a_cuenta:
+        # V1.14-E: el cierre o el strike que ya correspondan quedan registrados aunque esta venta se rechace.
+        servicio_credito.sincronizar_estado(cliente_id, usuario_id)
+
     try:
         # `inmediata=True`: esta transacción lee stock y, en base a esa
         # lectura, decide si escribe -- sin esto, el `SELECT` de stock
@@ -321,7 +325,7 @@ def registrar_venta(
                         "El pago al contado cubre el total: registrá la venta con un medio de pago inmediato."
                     )
                 servicio_credito.exigir_credito_para_venta_en_conexion(
-                    conexion, cliente, total_centavos - pago_contado_centavos
+                    conexion, cliente, total_centavos - pago_contado_centavos, usuario_id
                 )
                 _exigir_comprador_en_conexion(conexion, cliente, comprador)
 

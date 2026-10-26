@@ -197,6 +197,27 @@ def violaciones_de_invariantes(ruta) -> list[str]:
         """,
     )
     buscar(
+        "cliente con 3 strikes cuyo último cierre fue reabierto (el veto es permanente)",
+        """
+        SELECT e.cliente_id FROM episodios_credito e
+        WHERE e.id = (SELECT MAX(id) FROM episodios_credito x WHERE x.cliente_id = e.cliente_id)
+          AND e.fecha_reapertura IS NOT NULL
+          AND (SELECT COUNT(*) FROM episodios_credito x WHERE x.cliente_id = e.cliente_id AND x.fecha_strike IS NOT NULL) >= 3
+        """,
+    )
+    buscar(
+        "strike que no corresponde a 30 días después del inicio de su episodio",
+        "SELECT id FROM episodios_credito WHERE fecha_strike IS NOT NULL AND fecha_strike <> date(fecha_inicio, '+30 days')",
+    )
+    buscar(
+        "más de un cierre abierto para un cliente",
+        "SELECT cliente_id FROM episodios_credito WHERE fecha_reapertura IS NULL GROUP BY cliente_id HAVING COUNT(*) > 1",
+    )
+    buscar(
+        "autorización de crédito otorgada por alguien que no es OWNER",
+        "SELECT a.id FROM autorizaciones_credito a JOIN usuarios u ON u.id = a.usuario_id WHERE u.rol <> 'OWNER'",
+    )
+    buscar(
         "venta mixta cuyo contado + crédito no es el total",
         """
         SELECT v.id FROM ventas v JOIN obligaciones_cliente o ON o.venta_id = v.id

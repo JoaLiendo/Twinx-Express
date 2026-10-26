@@ -413,7 +413,7 @@ def test_migracion_desde_base_completamente_vacia_aplica_todo(tmp_path, monkeypa
         # ajustes_stock de la 027-029, los de categorías de la 030, los de partidas de la 032 ni los de
         # evaluaciones, reclamos y documentos de proveedores de la 034-036, ni los de clientes y
         # compradores autorizados de la 037, los de políticas de crédito de la 038 ni los de venta mixta,
-        # obligaciones e imputaciones de la 039)
+        # obligaciones e imputaciones de la 039 ni los de estado de crédito de la 040)
         triggers_019_020 = con.execute(
             "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name NOT LIKE 'trg_productos_%'"
             " AND name NOT LIKE 'trg_inventario%' AND name NOT LIKE 'trg_ajustes_stock_inventario%'"
@@ -426,7 +426,8 @@ def test_migracion_desde_base_completamente_vacia_aplica_todo(tmp_path, monkeypa
             " AND name NOT LIKE 'trg_compradores_autorizados_%' AND name NOT LIKE 'trg_politicas_credito_%'"
             " AND name NOT LIKE 'trg_ventas_contado_%' AND name NOT LIKE 'trg_compradores_venta_%'"
             " AND name NOT LIKE 'trg_obligaciones_cliente_%' AND name NOT LIKE 'trg_imputaciones_cobro_%'"
-            " AND name <> 'trg_movimientos_cuenta_cargo_crea_obligacion'"
+            " AND name <> 'trg_movimientos_cuenta_cargo_crea_obligacion' AND name <> 'trg_movimientos_cuenta_cargo_credito_cerrado'"
+            " AND name NOT LIKE 'trg_episodios_credito_%' AND name NOT LIKE 'trg_autorizaciones_credito_%'"
         ).fetchall()
         assert len(triggers_019_020) == 20
     finally:

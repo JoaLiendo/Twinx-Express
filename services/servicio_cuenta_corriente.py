@@ -41,6 +41,7 @@ from domain.cliente import (
 )
 from domain.dinero import centavos_a_texto
 from domain.usuario import exigir_rol
+from services import servicio_credito
 from excepciones import (
     CajaCerradaError,
     ClaveIdempotenciaReutilizadaError,
@@ -103,6 +104,9 @@ def registrar_cobro(
     if imputacion_manual is not None:
         observacion_imputacion = validar_observacion_imputacion(observacion_imputacion)
     contenido_hash = calcular_hash_cobro(cliente_id, monto_centavos, descripcion, imputacion_manual)
+
+    # V1.14-E: un strike ya vencido se registra ANTES de aplicar el pago (después podría dejar de estar en crítica).
+    servicio_credito.sincronizar_estado(cliente_id, usuario_id)
 
     with obtener_conexion(inmediata=True) as conexion:
         usuario = repositorio_usuarios.obtener_por_id_en_conexion(conexion, usuario_id)

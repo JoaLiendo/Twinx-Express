@@ -311,6 +311,11 @@ class CreditoNoDisponibleError(ErrorAplicacion):
     sin crédito habilitado o por encima del disponible (V1.14-C)."""
 
 
+class ReaperturaCreditoInvalidaError(ErrorAplicacion):
+    """No corresponde reabrir el crédito: el cliente está vetado (3 strikes), no tiene un cierre abierto o
+    sigue en deuda crítica (V1.14-E)."""
+
+
 class CompradorInvalidoError(DatosInvalidosError):
     """El comprador indicado para una venta a cuenta de una empresa falta, no está autorizado o no
     corresponde a ese cliente (V1.14-C)."""
