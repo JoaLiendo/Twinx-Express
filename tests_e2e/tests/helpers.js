@@ -182,7 +182,7 @@ async function configurarCreditoGeneral(page, limite = '100000') {
   const formulario = page.locator('form[data-politica="GENERAL"]');
   await formulario.locator('select[name="modo"]').selectOption('LIMITE');
   await formulario.locator('input[name="limite"]').fill(limite);
-  await formulario.getByRole('button', { name: 'Guardar' }).click();
+  await formulario.getByRole('button', { name: 'Aplicar política' }).click();
   await page.waitForURL(/\/configuracion/);
 }
 
