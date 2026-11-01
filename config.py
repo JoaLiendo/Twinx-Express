@@ -76,13 +76,12 @@ DIRECTORIO_BACKUPS = DIRECTORIO_DATA.parent / "backups"
 # configuración externa todavía para un kiosco de un solo equipo.
 ANTIGUEDAD_MINIMA_BACKUP_AUTOMATICO_HORAS = 24
 
-# Retención local de backups (ver `services.servicio_backup.aplicar_retencion`):
-# tras crear un backup se conservan los N más recientes de cada familia y se
-# borran los anteriores. Los manuales/automáticos (~1 por día de uso) alcanzan
-# para un mes; los preventivos de migración (1 por actualización) se guardan
-# aparte porque son el punto de retorno ante una actualización fallida.
-BACKUPS_A_CONSERVAR = 30
-BACKUPS_PREMIGRACION_A_CONSERVAR = 5
+# Retención local de backups (V1.15, semántica en `domain.retencion_backups`):
+# 14 diarios, 8 semanales y 12 mensuales de los regulares (manual, automático y
+# cierre de caja), más siempre los 10 manuales más recientes; 3 pre-update en
+# su propia familia (más los que respaldan una versión instalada) y 3 copias
+# de seguridad previas a un restore/rollback.
+RETENCION_BACKUPS = {"diarios": 14, "semanales": 8, "mensuales": 12, "pre_update": 3, "manuales": 10, "seguridad": 3}
 
 # Log persistente (ver `logging_config.py`), hermano de `data/` y `backups/`.
 DIRECTORIO_LOGS = DIRECTORIO_DATA.parent / "logs"

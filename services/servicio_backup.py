@@ -17,6 +17,7 @@ import re
 import shutil
 import tempfile
 import uuid
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -25,8 +26,7 @@ import db.conexion as modulo_conexion
 import services.servicio_imagenes as modulo_imagenes
 from config import (
     ANTIGUEDAD_MINIMA_BACKUP_AUTOMATICO_HORAS,
-    BACKUPS_A_CONSERVAR,
-    BACKUPS_PREMIGRACION_A_CONSERVAR,
+    RETENCION_BACKUPS,
     DIRECTORIO_BACKUPS,
 )
 from db.archivo_sqlite import copiar_base_consistente, verificar_archivo
@@ -48,6 +48,7 @@ from domain.backup import (
     TIPO_SEGURIDAD,
     Manifiesto,
 )
+from domain.retencion_backups import TIPOS_REGULARES, BackupClasificado, PoliticaRetencion, backups_a_conservar
 from excepciones import BackupEnCursoError, BackupInvalidoError, ErrorBackup, ErrorBaseDatos
 from services.formato_backup import (
     CARPETA_IMAGENES,
@@ -60,6 +61,8 @@ from services.formato_backup import (
 from version import VERSION
 
 logger = logging.getLogger(__name__)
+
+POLITICA_RETENCION = PoliticaRetencion(**RETENCION_BACKUPS)
 
 _PREFIJO_POR_TIPO = {
     TIPO_MANUAL: "KioscoApp_backup_",
@@ -251,66 +254,82 @@ def _clave_de_backup_regular(nombre: str) -> tuple[datetime, int] | None:
     return datetime.strptime(coincidencia.group(1), formato), int(coincidencia.group(2) or 1)
 
 
+def clasificar_backup(ruta: Path) -> BackupClasificado | None:
+    """Tipo y fecha de un archivo de la carpeta de backups, o `None` si no se
+    reconoce como un backup propio.
+
+    Se le cree al manifiesto (V1.15), no al nombre. Un archivo sin manifiesto
+    solo se reconoce si tiene exactamente el nombre de un backup anterior a
+    V1.15 (regular o `pre_migracion`), con la fecha que lleva en el nombre.
+    """
+    manifiesto = leer_manifiesto(ruta)
+    if manifiesto is not None:
+        return BackupClasificado(ruta.name, manifiesto.fecha, manifiesto.tipo)
+    clave = _clave_de_backup_regular(ruta.name)
+    if clave is not None:
+        return BackupClasificado(ruta.name, clave[0], TIPO_AUTOMATICO)
+    clave = _clave_de_orden(_PATRON_NOMBRE_PREVENTIVO, ruta.name, _FORMATO_FECHA_EN_NOMBRE)
+    if clave is not None:
+        return BackupClasificado(ruta.name, clave[0], TIPO_PRE_UPDATE)
+    return None
+
+
+def _backups_propios(directorio_backups: Path) -> list[tuple[Path, BackupClasificado]]:
+    """Archivos de primer nivel con prefijo de backup que se reconocen como
+    propios. Nunca enlaces simbólicos ni subcarpetas."""
+    if not directorio_backups.is_dir():
+        return []
+    propios = []
+    for ruta in sorted(directorio_backups.glob("KioscoApp_backup_*.zip")):
+        if ruta.is_symlink() or not ruta.is_file():
+            continue
+        clasificado = clasificar_backup(ruta)
+        if clasificado is not None:
+            propios.append((ruta, clasificado))
+    return propios
+
+
 def aplicar_retencion(
     directorio_backups: Path,
     recien_creado: Path,
-    conservar: int = BACKUPS_A_CONSERVAR,
-    conservar_preventivos: int = BACKUPS_PREMIGRACION_A_CONSERVAR,
+    politica: PoliticaRetencion | None = None,
+    protegidos: frozenset[str] = frozenset(),
 ) -> list[Path]:
-    """Borra los backups más antiguos que superan el límite de retención y
-    devuelve los que borró.
+    """Borra los backups que la política de retención ya no conserva (ver
+    `domain.retencion_backups`) y devuelve los que borró.
 
-    Política: se conservan los `conservar` backups manuales/automáticos más
-    recientes y, aparte, los `conservar_preventivos` más recientes de
-    migración. Solo se consideran archivos que siguen exactamente los
-    nombres que produce `crear_backup` (cualquier otro archivo de la carpeta
-    no se toca) y `recien_creado` nunca se borra, ni siquiera con un límite
-    inválido. El orden sale del nombre, no de `mtime`: no depende de que el
-    archivo haya sido copiado o restaurado. Un fallo al borrar se registra y
-    no interrumpe el backup ya creado.
+    Solo se llama después de publicar un backup validado. Nunca toca un
+    archivo que no reconoce como propio, ni `recien_creado`, ni los
+    `protegidos`; un backup sin manifiesto (anterior a V1.15) solo se borra si
+    además abre como ZIP -- un archivo dañado con nombre de backup no se
+    clasifica ni se borra. Un fallo al borrar se registra y no interrumpe nada.
     """
+    candidatos = [
+        (ruta, clasificado)
+        for ruta, clasificado in _backups_propios(directorio_backups)
+        if leer_manifiesto(ruta) is not None or zipfile.is_zipfile(ruta)
+    ]
+    politica = politica or POLITICA_RETENCION
+    conservar = backups_a_conservar([c for _, c in candidatos], politica, protegidos) | {recien_creado.name}
     borrados: list[Path] = []
-    familias = (
-        (_clave_de_backup_regular, max(conservar, 1)),
-        (
-            lambda nombre: _clave_de_orden(_PATRON_NOMBRE_PREVENTIVO, nombre, _FORMATO_FECHA_EN_NOMBRE),
-            max(conservar_preventivos, 1),
-        ),
-    )
-    for clave_de_orden, limite in familias:
-        candidatos = []
-        for ruta in directorio_backups.glob("KioscoApp_backup_*.zip"):
-            clave = clave_de_orden(ruta.name)
-            if clave is not None:
-                candidatos.append((clave, ruta))
-        candidatos.sort(key=lambda par: par[0], reverse=True)
-        for _, ruta in candidatos[limite:]:
-            if ruta == recien_creado:
-                continue
-            try:
-                ruta.unlink()
-            except OSError as error:
-                logger.warning("No se pudo borrar el backup antiguo %s: %s", ruta.name, error)
-                continue
-            borrados.append(ruta)
-            logger.info("Backup antiguo eliminado por retención: %s", ruta.name)
+    for ruta, clasificado in candidatos:
+        if clasificado.nombre in conservar:
+            continue
+        try:
+            ruta.unlink()
+        except OSError as error:
+            logger.warning("No se pudo borrar el backup antiguo %s: %s", ruta.name, error)
+            continue
+        borrados.append(ruta)
+        logger.info("Backup eliminado por retención (%s, %s): %s", clasificado.tipo, clasificado.fecha, ruta.name)
     return borrados
 
 
 def _fecha_ultimo_backup(directorio_backups: Path) -> datetime | None:
-    """Última fecha entre los backups reconocibles de `directorio_backups`,
-    o `None` si no hay ninguno (carpeta inexistente, vacía, o con archivos
-    que no siguen el nombre exacto que produce `crear_backup`).
-
-    La fecha se toma del propio nombre del archivo (ya la lleva embebida),
-    no de su `mtime`: así no depende de que el archivo no haya sido tocado
-    (copiado, restaurado) después de creado.
-    """
-    fechas = []
-    for ruta in directorio_backups.glob("KioscoApp_backup_*.zip"):
-        clave = _clave_de_backup_regular(ruta.name)
-        if clave is not None:
-            fechas.append(clave[0])
+    """Fecha del backup regular (manual, automático o de cierre) más reciente,
+    o `None` si no hay ninguno. Los pre-update y de seguridad no cuentan: no
+    reemplazan al backup diario."""
+    fechas = [c.fecha for _, c in _backups_propios(directorio_backups) if c.tipo in TIPOS_REGULARES]
     return max(fechas) if fechas else None
 
 
