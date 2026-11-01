@@ -31,8 +31,9 @@ from config import (
     DIRECTORIO_BACKUPS,
 )
 from db.archivo_sqlite import copiar_base_consistente, verificar_archivo
-from db.conexion import hay_migraciones_pendientes_en_base_existente, inicializar_base_datos
+from db.conexion import hay_migraciones_pendientes_en_base_existente, inicializar_base_datos, migraciones_desconocidas
 from db.repositorios import auditoria as repositorio_auditoria
+from db.repositorios import configuracion as repositorio_configuracion
 from domain.auditoria import (
     ACCION_BACKUP_AUTOMATICO_OK,
     ACCION_BACKUP_CIERRE_CAJA_OK,
@@ -52,7 +53,7 @@ from domain.backup import (
     Manifiesto,
 )
 from domain.retencion_backups import TIPOS_REGULARES, BackupClasificado, PoliticaRetencion, backups_a_conservar
-from excepciones import BackupEnCursoError, BackupInvalidoError, ErrorBackup, ErrorBaseDatos
+from excepciones import BackupEnCursoError, BackupInvalidoError, DatosDeVersionMasNuevaError, ErrorBackup, ErrorBaseDatos
 from services import servicio_destino_secundario
 from services.formato_backup import (
     CARPETA_IMAGENES,
@@ -131,6 +132,7 @@ def crear_backup(
     nombre_archivo: str | None = None,
     sesion_caja_id: int | None = None,
     version_destino: str | None = None,
+    version_origen: str | None = None,
     ahora: datetime | None = None,
     esperar_turno: bool = False,
 ) -> Path:
@@ -162,6 +164,7 @@ def crear_backup(
             fecha=fecha,
             sesion_caja_id=sesion_caja_id,
             version_destino=version_destino,
+            version_origen=version_origen,
             esperar_turno=esperar_turno,
         )
     except OSError as error:
@@ -186,6 +189,7 @@ def _crear_backup_validado(
     fecha: datetime,
     sesion_caja_id: int | None,
     version_destino: str | None,
+    version_origen: str | None,
     esperar_turno: bool,
 ) -> Path:
     directorio_destino.mkdir(parents=True, exist_ok=True)
@@ -227,6 +231,7 @@ def _crear_backup_validado(
             archivos=describir_archivos(datos_tmp),
             sesion_caja_id=sesion_caja_id,
             version_destino=version_destino,
+            version_origen=version_origen,
         )
         zip_temporal = tmp_path / "backup.zip.tmp"
         construir_paquete(datos_tmp, manifiesto, zip_temporal)
@@ -600,23 +605,90 @@ def estado_backups() -> EstadoBackups:
     )
 
 
-def migrar_base_datos_con_backup_preventivo(directorio_backups: Path, control_escrituras) -> Path | None:
-    """Aplica las migraciones pendientes, con un backup preventivo antes
-    si la base de datos ya existe.
+CLAVE_VERSION_APLICACION = "aplicacion.version"
+"""Versión de Twinx Express que dejó la base al día por última vez (V1.15): es
+la versión de origen de la próxima actualización. Las bases anteriores a V1.15
+no la tienen."""
 
-    Solo se crea el backup (`PRE_UPDATE`, mismo `crear_backup` y misma
-    validación que cualquier otro) cuando `kiosco.db` ya existe y tiene
-    migraciones pendientes: una instalación nueva, o una base al día, no
-    generan ninguno. Si el backup falla, la excepción se propaga y las
-    migraciones NO se aplican; si la migración falla después, el backup ya
-    creado queda disponible para restaurar.
+
+def version_registrada_en_la_base() -> str | None:
+    try:
+        return repositorio_configuracion.obtener_todas().get(CLAVE_VERSION_APLICACION)
+    except ErrorBaseDatos:
+        return None  # base anterior a la tabla de configuración
+
+
+def _registrar_version_en_la_base() -> None:
+    """Solo escribe si cambió: un arranque normal no modifica la base."""
+    try:
+        with modulo_conexion.obtener_conexion(inmediata=True) as conexion:
+            if repositorio_configuracion.obtener_todas_en_conexion(conexion).get(CLAVE_VERSION_APLICACION) != VERSION:
+                repositorio_configuracion.guardar_en_conexion(conexion, CLAVE_VERSION_APLICACION, VERSION)
+    except ErrorBaseDatos as error:
+        # Solo un esquema sin tabla `configuracion` (no ocurre con las migraciones reales).
+        logger.warning("No se pudo registrar la versión de la aplicación en la base: %s", error)
+
+
+def crear_backup_pre_update(directorio_backups: Path, control_escrituras, version_destino: str = VERSION) -> Path:
+    """Backup `PRE_UPDATE` validado que vincula versión de origen, versión de
+    destino y esquema actual (ver manifiesto). Es el punto de retorno de una
+    actualización: sin él, la actualización no sigue.
+
+    Raises:
+        ErrorBackup: si no se pudo crear o validar (queda auditado).
+    """
+    version_origen = version_registrada_en_la_base()
+    try:
+        ruta = crear_backup(
+            directorio_backups,
+            control_escrituras,
+            tipo=TIPO_PRE_UPDATE,
+            version_destino=version_destino,
+            version_origen=version_origen,
+            esperar_turno=True,
+        )
+    except ErrorBackup as error:
+        logger.critical("No se pudo crear el backup previo a la actualización: %s", error)
+        _auditar(None, ACCION_BACKUP_ERROR, f"{TIPO_PRE_UPDATE}: {error}")
+        raise
+    _auditar(
+        None, ACCION_PRE_UPDATE_BACKUP_OK, f"{ruta.name} ({version_origen or 'versión anterior'} -> {version_destino})"
+    )
+    copiar_a_destino_secundario(ruta)
+    return ruta
+
+
+def migrar_base_datos_con_backup_preventivo(directorio_backups: Path, control_escrituras) -> Path | None:
+    """Prepara la base para esta versión al arrancar: rechaza una base de una
+    versión más nueva, crea el backup `PRE_UPDATE` si hay migraciones
+    pendientes sobre una base existente, migra y registra la versión.
+
+    Una instalación nueva, o una base ya al día, no generan backup (así un
+    arranque normal no crea un pre-update nuevo). Si el backup falla, la
+    excepción se propaga y las migraciones NO empiezan; si la migración falla
+    después, el backup queda disponible y el próximo arranque genera otro
+    antes de reintentar (cada migración es atómica: la base queda en un
+    estado consistente, el anterior o uno con menos migraciones aplicadas).
+
+    Raises:
+        DatosDeVersionMasNuevaError: la base tiene migraciones que esta
+            versión no conoce; no se toca nada.
+        ErrorBackup: el backup previo no se pudo crear o validar.
 
     Devuelve la ruta del backup preventivo, o `None` si no hizo falta.
     """
+    desconocidas = migraciones_desconocidas()
+    if desconocidas:
+        raise DatosDeVersionMasNuevaError(
+            f"Los datos fueron actualizados por una versión más nueva de Twinx Express (esta es la {VERSION}; "
+            f"cambio de estructura desconocido: {desconocidas[-1]}). No se abrieron para no dañarlos: usá la "
+            "versión más nueva o pedí a soporte volver a una versión anterior con su backup (rollback)."
+        )
     ruta_backup = None
     if hay_migraciones_pendientes_en_base_existente():
-        ruta_backup = crear_backup(directorio_backups, control_escrituras, tipo=TIPO_PRE_UPDATE, version_destino=VERSION)
+        ruta_backup = crear_backup_pre_update(directorio_backups, control_escrituras)
         logger.info("Backup preventivo previo a la migración creado: %s", ruta_backup.name)
 
     inicializar_base_datos()
+    _registrar_version_en_la_base()
     return ruta_backup

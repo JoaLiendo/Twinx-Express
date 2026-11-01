@@ -221,6 +221,11 @@ class ErrorBackup(ErrorAplicacion):
     """No se pudo generar el backup (ver `services.servicio_backup`)."""
 
 
+class DatosDeVersionMasNuevaError(ErrorAplicacion):
+    """La base de datos la actualizó una versión más nueva de Twinx Express:
+    esta versión no la abre para no operar sobre un esquema que no conoce."""
+
+
 class BackupEnCursoError(ErrorBackup):
     """Ya hay otro backup en curso (o escrituras que no terminaron a tiempo):
     no es un fallo del backup, así que no se registra como error."""

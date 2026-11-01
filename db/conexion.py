@@ -206,6 +206,26 @@ def hay_migraciones_pendientes_en_base_existente() -> bool:
     return any(ruta.name not in aplicadas for ruta in DIRECTORIO_MIGRACIONES.glob("*.sql"))
 
 
+def migraciones_desconocidas() -> list[str]:
+    """Migraciones registradas en `kiosco.db` que esta versión no trae (V1.15).
+
+    No vacía significa que la base la actualizó una versión más nueva de
+    Twinx Express: abrirla con esta versión daría un esquema que el código no
+    conoce. Solo lee; `[]` si la base no existe o no tiene registro.
+    """
+    if not RUTA_BASE_DATOS.is_file():
+        return []
+    with obtener_conexion() as conexion:
+        tiene_registro = conexion.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migraciones'"
+        ).fetchone()
+        if not tiene_registro:
+            return []
+        aplicadas = {fila["nombre_archivo"] for fila in conexion.execute("SELECT nombre_archivo FROM schema_migraciones")}
+    conocidas = {ruta.name for ruta in DIRECTORIO_MIGRACIONES.glob("*.sql")}
+    return sorted(aplicadas - conocidas)
+
+
 if __name__ == "__main__":
     # Permite inicializar la base de datos manualmente:
     #   python -m db.conexion

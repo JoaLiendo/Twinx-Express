@@ -46,6 +46,7 @@ class Manifiesto:
     archivos: dict[str, ArchivoIncluido] = field(default_factory=dict)
     sesion_caja_id: int | None = None
     version_destino: str | None = None
+    version_origen: str | None = None
 
     def a_dict(self) -> dict:
         datos = {
@@ -66,6 +67,8 @@ class Manifiesto:
             datos["sesion_caja_id"] = self.sesion_caja_id
         if self.version_destino is not None:
             datos["version_destino"] = self.version_destino
+        if self.version_origen is not None:
+            datos["version_origen"] = self.version_origen
         return datos
 
 
@@ -126,6 +129,9 @@ def manifiesto_desde_dict(datos: object) -> Manifiesto:
     if not isinstance(migraciones, list) or not all(isinstance(m, str) for m in migraciones):
         raise BackupInvalidoError("El manifiesto del backup no tiene una lista de migraciones válida.")
     version_destino = datos.get("version_destino")
+    version_origen = datos.get("version_origen")
+    if version_origen is not None and not isinstance(version_origen, str):
+        raise BackupInvalidoError("El manifiesto del backup tiene una versión de origen inválida.")
     if version_destino is not None and not isinstance(version_destino, str):
         raise BackupInvalidoError("El manifiesto del backup tiene una versión de destino inválida.")
     return Manifiesto(
@@ -138,4 +144,5 @@ def manifiesto_desde_dict(datos: object) -> Manifiesto:
         archivos=_archivos(datos),
         sesion_caja_id=_entero_opcional(datos, "sesion_caja_id"),
         version_destino=version_destino,
+        version_origen=version_origen,
     )
