@@ -421,7 +421,7 @@ class FiscalizacionBloqueadaError(ErrorFiscal):
     codigo = "FISCALIZACION_BLOQUEADA"
 
     def __init__(self, mensaje: str, motivos: list[str] | None = None) -> None:
-        super().__init__(mensaje)
+        super().__init__(f"{mensaje} {' '.join(motivos)}" if motivos else mensaje)
         self.motivos = motivos or [mensaje]
 
 

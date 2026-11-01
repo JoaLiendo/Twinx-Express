@@ -30,6 +30,8 @@ NAV_ITEMS: list[dict[str, object]] = [
     {"href": "/compras", "etiqueta": "Compras", "icono": "compras", "roles": _SOLO_OWNER},
     {"href": "/reposicion", "etiqueta": "Reposición", "icono": "pedidos", "roles": _SOLO_OWNER},
     {"href": "/reportes", "etiqueta": "Reportes", "icono": "reportes", "roles": _SOLO_OWNER},
+    # V1.16: panel de facturación ARCA. El CASHIER fiscaliza desde el POS sin entrar acá.
+    {"href": "/fiscal", "etiqueta": "Fiscal", "icono": "auditoria", "roles": _SOLO_OWNER},
     {"href": "/empleados", "etiqueta": "Empleados", "icono": "empleados", "roles": _SOLO_OWNER},
     {"href": "/auditoria", "etiqueta": "Auditoría", "icono": "auditoria", "roles": _SOLO_OWNER},
     {"href": "/configuracion", "etiqueta": "Configuración", "icono": "configuracion", "roles": _SOLO_OWNER},

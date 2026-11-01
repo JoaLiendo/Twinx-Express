@@ -12,3 +12,5 @@ openpyxl>=3.1
 # V1.16 facturación ARCA: firma CMS del TRA de WSAA y lectura de certificados X.509 sin depender de un
 # OpenSSL instalado en la PC (la rueda trae su propio OpenSSL; PyInstaller la empaqueta con su hook).
 cryptography==50.0.2
+# Código QR del comprobante fiscal autorizado (Python puro, sin dependencias).
+segno==1.6.6

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Emisor fiscal{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Perfil fiscal del emisor</h1>{% endblock %}
+
+{% set tarjeta = "rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900" %}
+{% set campo = "w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary" %}
+{% set rotulo = "block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-4">
+  <form method="post" action="/fiscal/configuracion" id="form-perfil-fiscal" class="{{ tarjeta }} space-y-4">
+    <p class="text-sm text-slate-600 dark:text-slate-300">
+      Ambiente actual: <strong id="perfil-ambiente">{{ ambientes[perfil.ambiente] if perfil else ambientes['HOMOLOGACION'] }}</strong>.
+      El ambiente no se elige acá: producción la habilita solo el técnico, por consola.
+    </p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div><label class="{{ rotulo }}" for="cuit">CUIT</label><input id="cuit" name="cuit" required value="{{ perfil.cuit if perfil else '' }}" class="{{ campo }}" /></div>
+      <div>
+        <label class="{{ rotulo }}" for="condicion_iva">Condición frente al IVA</label>
+        <select id="condicion_iva" name="condicion_iva" required class="{{ campo }}">
+          <option value="">Elegí…</option>
+          {% for clave, nombre in condiciones.items() %}<option value="{{ clave }}" {{ 'selected' if perfil and perfil.condicion_iva == clave }}>{{ nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="sm:col-span-2"><label class="{{ rotulo }}" for="razon_social">Razón social</label><input id="razon_social" name="razon_social" required value="{{ perfil.razon_social if perfil else '' }}" class="{{ campo }}" /></div>
+      <div class="sm:col-span-2"><label class="{{ rotulo }}" for="domicilio">Domicilio fiscal / comercial</label><input id="domicilio" name="domicilio" required value="{{ perfil.domicilio if perfil else '' }}" class="{{ campo }}" /></div>
+      <div><label class="{{ rotulo }}" for="ingresos_brutos">Ingresos Brutos</label><input id="ingresos_brutos" name="ingresos_brutos" value="{{ perfil.ingresos_brutos or '' if perfil else '' }}" class="{{ campo }}" /></div>
+      <div><label class="{{ rotulo }}" for="inicio_actividades">Inicio de actividades</label><input id="inicio_actividades" type="date" name="inicio_actividades" value="{{ perfil.inicio_actividades or '' if perfil else '' }}" class="{{ campo }}" /></div>
+      <div>
+        <label class="{{ rotulo }}" for="punto_venta_cae">Punto de venta (web service CAE)</label>
+        <input id="punto_venta_cae" name="punto_venta_cae" inputmode="numeric" value="{{ perfil.punto_venta_cae or '' if perfil else '' }}" class="{{ campo }}" />
+        {% if perfil and perfil.punto_venta_cae %}<p class="mt-1 text-xs {{ 'text-success' if perfil.punto_venta_cae_listo else 'text-warning' }}" id="estado-pv-cae">{{ 'Validado con ARCA.' if perfil.punto_venta_cae_listo else 'Sin validar con ARCA.' }}</p>{% endif %}
+      </div>
+      <div>
+        <label class="{{ rotulo }}" for="punto_venta_caea">Punto de venta CAEA (contingencia)</label>
+        <input id="punto_venta_caea" name="punto_venta_caea" inputmode="numeric" value="{{ perfil.punto_venta_caea or '' if perfil else '' }}" class="{{ campo }}" />
+        {% if perfil and perfil.punto_venta_caea %}<p class="mt-1 text-xs {{ 'text-success' if perfil.punto_venta_caea_listo else 'text-warning' }}">{{ 'Validado con ARCA.' if perfil.punto_venta_caea_listo else 'Sin validar con ARCA.' }}</p>{% endif %}
+      </div>
+      <div class="sm:col-span-2">
+        <label class="{{ rotulo }}" for="habilitacion_clase_a">Clase A habilitada por ARCA</label>
+        <select id="habilitacion_clase_a" name="habilitacion_clase_a" class="{{ campo }}">
+          {% for clave, nombre in habilitaciones.items() %}<option value="{{ clave }}" {{ 'selected' if (perfil and perfil.habilitacion_clase_a == clave) or (not perfil and clave == 'NORMAL') }}>{{ nombre }}</option>{% endfor %}
+        </select>
+        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Desde el 01/12/2025 la ex clase M es clase A con leyenda (RG 5762/2025): Twinx no la emite y bloquea esas facturas.</p>
+      </div>
+      <label class="sm:col-span-2 flex items-center gap-2 text-sm">
+        <input type="checkbox" name="contingencia_caea" value="1" {{ 'checked' if perfil and perfil.contingencia_caea }} class="accent-primary" />
+        Usar CAEA como contingencia cuando ARCA no responde (requiere punto de venta CAEA validado y CAEA vigente).
+      </label>
+    </div>
+    <div class="flex justify-end">{{ ui.boton('Guardar perfil fiscal', tipo='submit') }}</div>
+  </form>
+
+  {% if perfil %}
+  <div class="{{ tarjeta }} flex flex-wrap gap-2 items-center justify-between">
+    <p class="text-sm text-slate-600 dark:text-slate-300">El punto de venta no se inventa: ARCA lo confirma.</p>
+    <div class="flex flex-wrap gap-2">
+      <form method="post" action="/fiscal/configuracion/validar-punto-venta"><input type="hidden" name="modalidad" value="CAE" />{{ ui.boton('Validar punto de venta', tipo='submit', variante='secondary', tamano='compact') }}</form>
+      {% if perfil.punto_venta_caea %}
+      <form method="post" action="/fiscal/configuracion/validar-punto-venta"><input type="hidden" name="modalidad" value="CAEA" />{{ ui.boton('Validar punto de venta CAEA', tipo='submit', variante='secondary', tamano='compact') }}</form>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+  <a href="/fiscal" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400">← Volver al panel fiscal</a>
+</div>
+{% endblock %}

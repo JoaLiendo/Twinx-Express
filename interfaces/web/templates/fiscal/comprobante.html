@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ documento.nombre_tipo }} {{ documento.numero }}</title>
+  <style>
+    /* V1.16: comprobante fiscal autorizado, vista imprimible A4. Standalone (sin base.html ni CDN). */
+    @page { size: A4; margin: 14mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; background: #e2e8f0; font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 12px; }
+    .hoja { max-width: 190mm; margin: 0 auto; background: #fff; padding: 14px 18px; overflow-wrap: anywhere; }
+    .prueba { margin: 0 0 10px; padding: 6px; text-align: center; font-weight: bold; color: #b45309; border: 2px dashed #b45309; }
+    .cabecera { display: grid; grid-template-columns: 1fr 60px 1fr; gap: 12px; align-items: start; border-bottom: 1px solid #333; padding-bottom: 10px; }
+    .letra { border: 2px solid #111; text-align: center; padding: 4px 0; }
+    .letra strong { font-size: 30px; display: block; line-height: 1; }
+    .letra span { font-size: 9px; }
+    .emisor p, .datos p { margin: 2px 0; }
+    .emisor .razon { font-size: 15px; font-weight: bold; }
+    .datos .tipo { font-size: 15px; font-weight: bold; }
+    .receptor { border-bottom: 1px solid #333; padding: 8px 0; }
+    .receptor p { margin: 2px 0; }
+    .leyenda { font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 3px 2px; text-align: left; vertical-align: top; }
+    thead th { border-bottom: 1px solid #333; font-size: 11px; }
+    .num { text-align: right; white-space: nowrap; }
+    .totales { margin-top: 8px; border-top: 1px solid #333; padding-top: 6px; }
+    .totales div { display: flex; justify-content: flex-end; gap: 16px; margin: 2px 0; }
+    .totales .final { font-size: 15px; font-weight: bold; }
+    .transparencia { margin-top: 10px; font-size: 11px; }
+    .transparencia p { margin: 1px 0; }
+    .autorizacion { display: flex; gap: 18px; align-items: center; margin-top: 14px; border-top: 1px solid #333; padding-top: 10px; }
+    .autorizacion p { margin: 3px 0; font-weight: bold; font-size: 13px; }
+    .acciones { max-width: 190mm; margin: 12px auto 0; text-align: center; }
+    .acciones button, .acciones a { display: inline-block; padding: 8px 16px; margin: 0 4px; font-size: 13px; color: #1e293b; background: #cbd5e1; border: none; border-radius: 6px; text-decoration: none; cursor: pointer; }
+    @media print { body { background: #fff; padding: 0; } .hoja { max-width: none; padding: 0; } .acciones { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="hoja" id="comprobante-fiscal" data-estado="{{ comprobante.estado }}">
+    {% if documento.ambiente_prueba %}<p class="prueba" id="comprobante-homologacion">HOMOLOGACIÓN (PRUEBAS) · SIN VALIDEZ FISCAL</p>{% endif %}
+    <div class="cabecera">
+      <div class="emisor">
+        {% for renglon in documento.emisor %}<p class="{{ 'razon' if loop.first else '' }}">{{ renglon }}</p>{% endfor %}
+      </div>
+      <div class="letra"><strong>{{ documento.letra }}</strong><span>{{ documento.codigo_tipo }}</span></div>
+      <div class="datos">
+        <p class="tipo">{{ documento.nombre_tipo | upper }}</p>
+        <p>Punto de venta y número: <strong id="comprobante-numero">{{ documento.numero }}</strong></p>
+        <p>Fecha de emisión: {{ documento.fecha }}</p>
+      </div>
+    </div>
+    <div class="receptor">
+      {% for renglon in documento.receptor %}<p>{{ renglon }}</p>{% endfor %}
+      {% for leyenda in documento.leyendas %}<p class="leyenda">{{ leyenda }}</p>{% endfor %}
+      {% if documento.asociado %}<p id="comprobante-asociado">{{ documento.asociado }}</p>{% endif %}
+    </div>
+    <table>
+      <thead><tr><th>Descripción</th>{% if documento.letra == 'A' %}<th>IVA</th>{% endif %}<th class="num">Cant.</th><th class="num">P. unitario</th><th class="num">Subtotal</th></tr></thead>
+      <tbody>
+        {% for r in documento.renglones %}
+        <tr><td>{{ r.descripcion }}</td>{% if documento.letra == 'A' %}<td>{{ r.alicuota or '' }}</td>{% endif %}<td class="num">{{ r.cantidad }}</td><td class="num">{{ r.precio_unitario }}</td><td class="num">{{ r.subtotal }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="totales">
+      {% for etiqueta, valor in documento.totales %}
+        <div class="{{ 'final' if loop.last else '' }}"><span>{{ etiqueta }}:</span><span class="num">{{ valor }}</span></div>
+      {% endfor %}
+    </div>
+    {% if documento.transparencia %}
+    <div class="transparencia" id="comprobante-transparencia">
+      <p><strong>Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)</strong></p>
+      {% for etiqueta, valor in documento.transparencia %}<p>{{ etiqueta }}: {{ valor }}</p>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="autorizacion">
+      <div id="comprobante-qr" data-qr-url="{{ documento.qr_url }}">{{ qr_svg | safe }}</div>
+      <div>
+        {% for etiqueta, valor in documento.autorizacion %}<p>{{ etiqueta }}: {{ valor }}</p>{% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="acciones">
+    <button type="button" onclick="window.print()">Imprimir</button>
+    <a href="/fiscal/comprobantes/{{ comprobante.id }}/pdf">Descargar PDF</a>
+    <a href="/fiscal/comprobantes/{{ comprobante.id }}/ticket">Formato 80 mm</a>
+    <a href="/ventas/{{ comprobante.venta_id }}">Volver a la venta</a>
+  </div>
+</body>
+</html>

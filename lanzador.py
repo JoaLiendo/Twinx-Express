@@ -268,7 +268,7 @@ def _modo_restore(ruta_zip, obtener_ejecutar_restore, aplicacion_en_uso=_puerto_
 def _comando_de_mantenimiento(argv):
     """`(comando, argumento)` para `--actualizar <carpeta>`, `--rollback
     <version>` y `--versiones`; `None` en una ejecución normal."""
-    if len(argv) >= 3 and argv[1] in ("--actualizar", "--rollback"):
+    if len(argv) >= 3 and argv[1] in ("--actualizar", "--rollback", "--habilitar-produccion-fiscal"):
         return argv[1], argv[2]
     if len(argv) >= 2 and argv[1] == "--versiones":
         return argv[1], None
@@ -296,6 +296,12 @@ def _ejecutar_mantenimiento(comando, argumento, aplicacion_en_uso=_puerto_ocupad
             mensaje = f"Se volvió a la versión {r.version} con los datos de {r.backup_restaurado.name}."
             if r.backup_seguridad:
                 mensaje += f"\nLos datos que había antes quedaron guardados en: {r.backup_seguridad}"
+        elif comando == "--habilitar-produccion-fiscal":
+            # V1.16: única puerta a ARCA producción. Exige escribir el CUIT del emisor y un certificado de
+            # producción vigente de ese CUIT; queda registrado en la base y en la auditoría.
+            from services.fiscal import servicio_tecnico
+
+            mensaje = servicio_tecnico.habilitar_produccion(argumento)
         else:
             registro = servicio_actualizacion.versiones_conservadas()
             lineas = [f"Instalación: {registro.instalacion or 'sin registrar'} (activa: {registro.activa or '-'})"]

@@ -102,6 +102,9 @@
                     {{ ui.badge('ANULADA', 'alerta') }}
                     <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">{{ venta.motivo_anulacion }}</p>
                   {% endif %}
+                  {% if estados_fiscales.get(venta.id) %}
+                    <p class="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400" data-estado-fiscal>{{ estados_fiscales[venta.id] }}</p>
+                  {% endif %}
                 </td>
                 <td class="px-5 py-3.5 text-right">
                   <a href="/ventas/{{ venta.id }}" class="text-sm font-medium text-primary hover:text-primary-hover" onclick="event.stopPropagation()">Ver</a>

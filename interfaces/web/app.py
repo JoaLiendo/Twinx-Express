@@ -40,6 +40,7 @@ from interfaces.web.rutas import (
     configuracion_inicial,
     dashboard,
     empleados,
+    fiscal,
     inventario,
     pedidos,
     precios,
@@ -156,6 +157,7 @@ app.include_router(configuracion_inicial.router)
 app.include_router(dashboard.router)
 app.include_router(productos.router)
 app.include_router(ventas.router)
+app.include_router(fiscal.router)
 app.include_router(caja.router)
 app.include_router(clientes.router)
 app.include_router(pedidos.router)
@@ -210,6 +212,9 @@ async def manejar_error_de_aplicacion(request: Request, exc: ErrorAplicacion) ->
         contenido = {"error": str(exc)}
         if getattr(exc, "codigo", None):
             contenido["codigo"] = exc.codigo
+        if getattr(exc, "motivos", None):
+            # V1.16: qué dato fiscal falta completar (producto sin IVA, cliente sin condición...).
+            contenido["motivos"] = exc.motivos
         return JSONResponse(status_code=422, content=contenido)
     referer = request.headers.get("referer", "/")
     return redireccionar_con_mensaje(referer, "error", str(exc))

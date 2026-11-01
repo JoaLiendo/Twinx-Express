@@ -83,6 +83,12 @@
       color: #b91c1c;
       border: 2px dashed #b91c1c;
     }
+    .no-fiscal {
+      margin-top: 4px !important;
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.03em;
+    }
     .acciones {
       max-width: 80mm;
       margin: 12px auto 0;
@@ -119,6 +125,8 @@
       {% if comercio.telefono %}<p>Tel. {{ comercio.telefono }}</p>{% endif %}
       <p>Ticket #{{ venta.id }}</p>
       <p>{{ venta.fecha }}</p>
+      {# V1.16: este ticket nunca es una factura (no tiene número fiscal, CAE ni QR de ARCA). #}
+      <p id="ticket-no-fiscal" class="no-fiscal">COMPROBANTE INTERNO · NO VÁLIDO COMO FACTURA</p>
     </div>
     <hr class="separador" />
     <table>

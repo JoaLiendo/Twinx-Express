@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ documento.nombre_tipo }} {{ documento.numero }}</title>
+  <style>
+    /* V1.16: comprobante fiscal autorizado en papel térmico de 80 mm (mismo criterio que el ticket interno:
+       max-width en vez de depender de que la impresora respete @page). */
+    @page { size: 80mm auto; margin: 0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px 0; background: #e2e8f0; display: flex; flex-direction: column; align-items: center;
+           font-family: 'Courier New', Courier, monospace; color: #111; }
+    .ticket { width: 100%; max-width: 80mm; background: #fff; padding: 10px 12px; font-size: 11px; overflow-wrap: anywhere; word-break: break-word; }
+    .centro { text-align: center; }
+    p { margin: 2px 0; }
+    .prueba { margin: 0 0 6px; padding: 4px; font-weight: bold; text-align: center; border: 2px dashed #111; }
+    .letra { font-size: 22px; font-weight: bold; border: 2px solid #111; display: inline-block; padding: 0 10px; }
+    .separador { border: none; border-top: 1px dashed #333; margin: 6px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: 1px 0; vertical-align: top; }
+    .num { text-align: right; white-space: nowrap; }
+    .fila { display: flex; justify-content: space-between; gap: 8px; }
+    .total { font-size: 14px; font-weight: bold; }
+    .qr { display: flex; justify-content: center; margin-top: 6px; }
+    .acciones { max-width: 80mm; margin: 12px auto 0; text-align: center; font-family: system-ui, sans-serif; }
+    .acciones button, .acciones a { display: inline-block; padding: 8px 14px; margin: 0 3px; font-size: 13px; color: #1e293b; background: #cbd5e1; border: none; border-radius: 6px; text-decoration: none; cursor: pointer; }
+    @media print { body { background: #fff; padding: 0; } .ticket { max-width: none; padding: 0; } .acciones { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="ticket" id="comprobante-fiscal-80mm" data-estado="{{ comprobante.estado }}">
+    {% if documento.ambiente_prueba %}<p class="prueba">HOMOLOGACIÓN · SIN VALIDEZ FISCAL</p>{% endif %}
+    <div class="centro">
+      {% for renglon in documento.emisor %}<p>{% if loop.first %}<strong>{{ renglon }}</strong>{% else %}{{ renglon }}{% endif %}</p>{% endfor %}
+      <hr class="separador" />
+      <p><span class="letra">{{ documento.letra }}</span></p>
+      <p>{{ documento.codigo_tipo }}</p>
+      <p><strong>{{ documento.nombre_tipo | upper }}</strong></p>
+      <p>N° {{ documento.numero }}</p>
+      <p>Fecha: {{ documento.fecha }}</p>
+    </div>
+    <hr class="separador" />
+    {% for renglon in documento.receptor %}<p>{{ renglon }}</p>{% endfor %}
+    {% for leyenda in documento.leyendas %}<p><strong>{{ leyenda }}</strong></p>{% endfor %}
+    {% if documento.asociado %}<p>{{ documento.asociado }}</p>{% endif %}
+    <hr class="separador" />
+    <table>
+      {% for r in documento.renglones %}
+      <tr><td colspan="2">{{ r.descripcion }}{% if r.alicuota %} ({{ r.alicuota }}){% endif %}</td></tr>
+      <tr><td>{{ r.cantidad }} x {{ r.precio_unitario }}</td><td class="num">{{ r.subtotal }}</td></tr>
+      {% endfor %}
+    </table>
+    <hr class="separador" />
+    {% for etiqueta, valor in documento.totales %}
+      <div class="fila {{ 'total' if loop.last else '' }}"><span>{{ etiqueta }}</span><span>{{ valor }}</span></div>
+    {% endfor %}
+    {% if documento.transparencia %}
+      <hr class="separador" />
+      <p><strong>Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)</strong></p>
+      {% for etiqueta, valor in documento.transparencia %}<p>{{ etiqueta }}: {{ valor }}</p>{% endfor %}
+    {% endif %}
+    <hr class="separador" />
+    {% for etiqueta, valor in documento.autorizacion %}<p><strong>{{ etiqueta }}: {{ valor }}</strong></p>{% endfor %}
+    <div class="qr" id="comprobante-qr" data-qr-url="{{ documento.qr_url }}">{{ qr_svg | safe }}</div>
+  </div>
+  <div class="acciones">
+    <button type="button" onclick="window.print()">Imprimir</button>
+    <a href="/fiscal/comprobantes/{{ comprobante.id }}">Formato A4</a>
+    <a href="/ventas">Volver al POS</a>
+  </div>
+</body>
+</html>

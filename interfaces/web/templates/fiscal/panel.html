@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Facturación fiscal{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Facturación fiscal ARCA</h1>{% endblock %}
+
+{% set tarjeta = "rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900" %}
+{% set etiqueta = "text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" %}
+{% set variantes_certificado = {'VIGENTE': 'exito', 'POR_VENCER': 'advertencia', 'VENCIDO': 'alerta', 'AUSENTE': 'neutral', 'ILEGIBLE': 'alerta'} %}
+
+{% block content %}
+{% set perfil = panel.perfil %}
+<div class="max-w-4xl mx-auto space-y-4">
+
+  {% if panel.avisos %}
+  <div id="fiscal-avisos" class="rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm text-slate-800 dark:text-slate-100 space-y-1">
+    {% for aviso in panel.avisos %}<p>{{ aviso }}</p>{% endfor %}
+  </div>
+  {% endif %}
+
+  <section id="fiscal-emisor" class="{{ tarjeta }}">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <p class="{{ etiqueta }}">Ambiente</p>
+        <p class="mt-1" id="fiscal-ambiente">
+          {% if perfil and perfil.ambiente == 'PRODUCCION' %}{{ ui.badge('Producción', 'alerta') }}{% else %}{{ ui.badge('Homologación (pruebas, sin validez fiscal)', 'info') }}{% endif %}
+        </p>
+        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Producción solo la habilita el técnico desde la consola del programa.</p>
+      </div>
+      {{ ui.boton('Configurar emisor', href='/fiscal/configuracion', variante='secondary', tamano='compact') }}
+    </div>
+    {% if perfil %}
+    <dl class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+      <div><dt class="{{ etiqueta }}">Emisor</dt><dd class="mt-1 font-medium">{{ perfil.razon_social }} · CUIT {{ perfil.cuit }}</dd></div>
+      <div><dt class="{{ etiqueta }}">Condición IVA</dt><dd class="mt-1 font-medium">{{ perfil.condicion_etiqueta }}</dd></div>
+      <div>
+        <dt class="{{ etiqueta }}">Punto de venta CAE</dt>
+        <dd class="mt-1 font-medium" id="fiscal-punto-venta">
+          {{ perfil.punto_venta_cae or '—' }}
+          {% if perfil.punto_venta_cae_listo %}{{ ui.badge('validado con ARCA', 'exito') }}{% elif perfil.punto_venta_cae %}{{ ui.badge('sin validar', 'advertencia') }}{% endif %}
+        </dd>
+      </div>
+      <div>
+        <dt class="{{ etiqueta }}">Productos activos sin IVA clasificado</dt>
+        <dd class="mt-1 font-medium"><a class="text-primary hover:text-primary-hover" href="/fiscal/productos">{{ panel.productos_sin_clasificar }}</a></dd>
+      </div>
+    </dl>
+    <p class="mt-3 text-sm {{ 'text-success' if panel.listo else 'text-warning' }}" id="fiscal-listo">
+      {{ 'La fiscalización está activa: el POS fiscaliza cada venta al confirmarla.' if panel.listo else 'La fiscalización no está activa (falta perfil validado o certificado vigente).' }}
+    </p>
+    {% else %}
+    <p class="mt-4 text-sm text-slate-600 dark:text-slate-300">Todavía no hay perfil fiscal. Mientras tanto, Twinx emite solo comprobantes internos.</p>
+    {% endif %}
+  </section>
+
+  <section id="fiscal-certificados" class="{{ tarjeta }}">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="{{ etiqueta }}">Certificados</p>
+      {{ ui.boton('Cargar certificado', href='/fiscal/certificados', variante='secondary', tamano='compact') }}
+    </div>
+    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+      {% for ambiente, info in panel.certificados.items() %}
+      <div class="rounded-lg border border-slate-200 dark:border-slate-800 p-3" data-certificado="{{ ambiente }}">
+        <p class="font-semibold">{{ ambientes[ambiente] }}</p>
+        <p class="mt-1">{{ ui.badge(info.estado | replace('_', ' ') | lower, variantes_certificado.get(info.estado, 'neutral')) }}</p>
+        {% if info.sujeto %}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ info.sujeto }} · CUIT {{ info.cuit or '—' }} · vence {{ info.vence }}</p>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if perfil %}
+  <section id="fiscal-conectividad" class="{{ tarjeta }}">
+    <p class="{{ etiqueta }}">Conectividad con ARCA</p>
+    <div class="mt-3 flex flex-wrap gap-2">
+      <form method="post" action="/fiscal/probar-conexion">{{ ui.boton('Probar conexión', tipo='submit', variante='secondary', tamano='compact') }}</form>
+      <form method="post" action="/fiscal/ultimos-autorizados">{{ ui.boton('Consultar último comprobante', tipo='submit', variante='secondary', tamano='compact') }}</form>
+      <form method="post" action="/fiscal/conciliar-inciertos">{{ ui.boton('Reintentar conciliación', tipo='submit', variante='primary', tamano='compact') }}</form>
+    </div>
+    {% if panel.tablas %}
+    <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">Tablas de ARCA en caché: {% for t in panel.tablas %}{{ t.tabla }} ({{ t.fecha_actualizacion[:10] }}){{ ', ' if not loop.last }}{% endfor %}</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section id="fiscal-comprobantes" class="{{ tarjeta }}">
+    <p class="{{ etiqueta }}">Comprobantes</p>
+    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300" id="fiscal-conteos">
+      {% for estado, cantidad in panel.conteos.items() %}{{ estado | replace('_', ' ') | lower }}: <strong>{{ cantidad }}</strong>{{ ' · ' if not loop.last }}{% else %}Todavía no hay comprobantes fiscales.{% endfor %}
+    </p>
+    {% for titulo, lista, ident in (('Resultado incierto', panel.inciertos, 'fiscal-inciertos'), ('Pendientes', panel.pendientes, 'fiscal-pendientes'), ('Rechazados recientes', panel.rechazados, 'fiscal-rechazados'), ('Autorizados recientes', panel.autorizados_recientes, 'fiscal-autorizados')) %}
+      {% if lista %}
+      <div class="mt-4" id="{{ ident }}">
+        <p class="text-sm font-semibold">{{ titulo }}</p>
+        <ul class="mt-1 text-sm divide-y divide-slate-100 dark:divide-slate-800">
+          {% for c in lista %}
+          <li class="py-1.5 flex flex-wrap items-center justify-between gap-2">
+            <a href="/ventas/{{ c.venta_id }}" class="text-primary hover:text-primary-hover">{{ c.nombre_tipo }} {{ c.numero_formateado }} · venta #{{ c.venta_id }}</a>
+            <span class="text-xs text-slate-500 dark:text-slate-400">{{ c.etiqueta_estado }} · {{ c.fecha_actualizacion }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    {% endfor %}
+  </section>
+
+  {% if panel.errores_recientes %}
+  <section id="fiscal-errores" class="{{ tarjeta }}">
+    <p class="{{ etiqueta }}">Errores e incidencias recientes</p>
+    <ul class="mt-2 text-sm divide-y divide-slate-100 dark:divide-slate-800">
+      {% for intento in panel.errores_recientes %}
+      <li class="py-1.5">
+        <span class="font-medium">{{ intento.operacion }}</span> · {{ intento.resultado }} · {{ intento.fecha_inicio[:19] }}
+        {% if intento.detalle.mensaje %}<span class="block text-xs text-slate-500 dark:text-slate-400 break-words">{{ intento.detalle.mensaje }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <p class="text-xs text-slate-500 dark:text-slate-400">
+    Sin CAE ni CAEA vigente, Twinx no emite factura: registra la venta y deja la fiscalización pendiente. Ante una
+    contingencia prolongada, ARCA prevé además Controlador Fiscal, «Comprobantes en línea» o CAI, fuera de Twinx.
+  </p>
+</div>
+{% endblock %}

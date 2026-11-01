@@ -651,6 +651,8 @@
       mostrandoAccionesPostVenta = true;
       if (postVentaImprimirEl) postVentaImprimirEl.href = `/ventas/${datos.id}/ticket`;
       renderizarCarrito();
+      // V1.16: la fiscalización es un pedido aparte; la venta ya quedó registrada pase lo que pase con ARCA.
+      if (window.TwinxFiscalPOS) window.TwinxFiscalPOS.fiscalizar(datos.id);
     } catch (error) {
       mostrarToast('No se pudo conectar con el servidor: la venta puede no haberse registrado, revisá el historial antes de reintentar.', 'error');
       cobroEnCurso = false;

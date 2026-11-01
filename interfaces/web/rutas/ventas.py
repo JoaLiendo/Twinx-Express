@@ -27,6 +27,7 @@ from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.esquemas import VentaEntrada, VentaSalida
 from interfaces.web.plantillas import templates
+from interfaces.web.rutas.fiscal import contexto_fiscal_de_venta
 from interfaces.web.utilidades import contexto_base, pagina_o_primera, redireccionar_con_mensaje, respuesta_csv
 from services import (
     servicio_auth,
@@ -38,6 +39,7 @@ from services import (
     servicio_stock,
     servicio_ventas,
 )
+from services.fiscal import servicio_panel
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
 
@@ -61,6 +63,7 @@ def panel_ventas(request: Request, q: str = ""):
         # Venta a cuenta: opción aparte, nunca marcada por defecto (ver `ventas/pos.html`).
         "tipo_pago_cuenta_corriente": TIPO_PAGO_CUENTA_CORRIENTE,
         "metodos_autorizacion": METODOS_AUTORIZACION_EXCEPCIONAL,
+        "fiscal_activo": servicio_panel.fiscalizacion_activa(),
     }
     return templates.TemplateResponse(request, "ventas/pos.html", contexto)
 
@@ -185,6 +188,7 @@ def historial_ventas(
     contexto = {
         **contexto_base(request),
         "ventas": ventas,
+        "estados_fiscales": servicio_panel.estado_fiscal_de_ventas([venta.id for venta in ventas]),
         "fecha_desde": fecha_desde_efectiva,
         "fecha_hasta": fecha_hasta_efectiva,
         "tipo_pago": tipo_pago or "",
@@ -226,6 +230,7 @@ def detalle_venta(
         "venta": detalle.venta,
         "comprador": servicio_ventas.obtener_comprador_de_venta(venta_id),
         "consumos": servicio_partidas.consumos_de_venta(venta_id) if es_owner else [],
+        **contexto_fiscal_de_venta(venta_id, usuario_actual),
     }
     return templates.TemplateResponse(request, "ventas/detalle.html", contexto)
 

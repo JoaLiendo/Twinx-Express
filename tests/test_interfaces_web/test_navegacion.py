@@ -8,7 +8,7 @@ pura sobre la lista `NAV_ITEMS`.
 
 from interfaces.web.navegacion import NAV_ITEMS, navegacion_visible_para
 
-_SECCIONES_OWNER_EXCLUSIVAS = {"/pedidos", "/precios", "/proveedores", "/compras", "/reportes", "/empleados"}
+_SECCIONES_OWNER_EXCLUSIVAS = {"/pedidos", "/precios", "/proveedores", "/compras", "/reportes", "/empleados", "/fiscal"}
 # 021: Clientes es visible para ambos roles (los dos pueden verlos, crearlos y cobrar; editar/desactivar
 # lo restringe cada ruta, no el menú).
 # V1.4: Inventario es visible para ambos roles (el CASHIER solo cuenta; el resto lo restringen la ruta y el servicio).

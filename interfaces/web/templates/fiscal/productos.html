@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}IVA de productos{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Tratamiento de IVA de los productos</h1>{% endblock %}
+
+{% set campo = "rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-4">
+  <p class="text-sm text-slate-600 dark:text-slate-300">
+    Twinx no supone ninguna alícuota: un producto sin clasificar bloquea las facturas A y B que lo incluyan
+    (la venta igual se registra). Activos sin clasificar: <strong id="iva-sin-clasificar">{{ sin_clasificar }}</strong>.
+  </p>
+  <form method="get" action="/fiscal/productos" class="flex flex-wrap gap-2 items-center">
+    <input type="search" name="q" value="{{ q }}" placeholder="Nombre o código" class="{{ campo }}" />
+    <label class="flex items-center gap-1.5 text-sm"><input type="checkbox" name="todos" value="1" {{ 'checked' if todos }} class="accent-primary" /> Mostrar también los clasificados</label>
+    {{ ui.boton('Buscar', tipo='submit', variante='secondary', tamano='compact') }}
+  </form>
+
+  {% if productos %}
+  <form method="post" action="/fiscal/productos" id="form-iva-productos" class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    {% if todos %}<input type="hidden" name="todos" value="1" />{% endif %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-left text-xs uppercase text-slate-500 dark:text-slate-400">
+          <tr><th class="px-4 py-3">Producto</th><th class="px-4 py-3">Actual</th><th class="px-4 py-3">Nuevo tratamiento</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+          {% for p in productos %}
+          <tr data-producto-iva="{{ p.producto_id }}">
+            <td class="px-4 py-2"><p class="font-medium {{ 'text-slate-400' if not p.activo }}">{{ p.nombre }}</p><p class="text-xs text-slate-500">{{ p.codigo_barras }}{{ ' · inactivo' if not p.activo }}</p></td>
+            <td class="px-4 py-2">{{ ui.badge(p.tratamiento.etiqueta, 'exito') if p.tratamiento else ui.badge('Sin clasificar', 'advertencia') }}</td>
+            <td class="px-4 py-2">
+              <label class="sr-only" for="iva_{{ p.producto_id }}">Tratamiento de {{ p.nombre }}</label>
+              <select id="iva_{{ p.producto_id }}" name="iva_{{ p.producto_id }}" class="{{ campo }}">
+                <option value="">— sin cambios —</option>
+                {% for opcion in opciones %}<option value="{{ opcion.como_texto }}">{{ opcion.etiqueta }}</option>{% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="flex justify-end p-4">{{ ui.boton('Guardar clasificación', tipo='submit') }}</div>
+  </form>
+  {% else %}
+    {{ ui.estado_vacio('No hay productos para clasificar.', 'Todos los productos que coinciden ya tienen su tratamiento de IVA.') }}
+  {% endif %}
+</div>
+{% endblock %}
