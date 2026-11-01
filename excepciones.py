@@ -221,6 +221,12 @@ class ErrorBackup(ErrorAplicacion):
     """No se pudo generar el backup (ver `services.servicio_backup`)."""
 
 
+class BackupInvalidoError(ErrorBackup):
+    """Un archivo de backup no pasó la validación (ZIP dañado, contenido
+    inesperado o inseguro, base de datos corrupta o metadata inconsistente):
+    nunca se lo da por bueno ni se lo ofrece para recuperar."""
+
+
 class ErrorRestore(ErrorAplicacion):
     """El backup no es válido o no se pudo restaurar (ver
     `services.servicio_restore`). El mensaje está pensado para

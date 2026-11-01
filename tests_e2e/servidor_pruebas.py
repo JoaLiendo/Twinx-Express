@@ -264,6 +264,19 @@ def _limpiar_db_temporal(ruta_db: Path) -> None:
             ruta_sidecar.unlink()
 
 
+def _aislar_backups(ruta_db: Path) -> None:
+    """Backups (manual, de arranque y de cierre de caja) dentro del directorio
+    temporal de esta corrida, nunca en la carpeta `backups/` del repositorio.
+    El contenido ya sale de la base temporal: `servicio_backup` copia siempre
+    `db.conexion.RUTA_BASE_DATOS`."""
+    import interfaces.web.app as modulo_app
+    import interfaces.web.rutas.backup as modulo_ruta_backup
+
+    directorio_backups = ruta_db.parent / "backups"
+    modulo_app.DIRECTORIO_BACKUPS = directorio_backups
+    modulo_ruta_backup.DIRECTORIO_BACKUPS = directorio_backups
+
+
 def main() -> None:
     if len(sys.argv) != 3:
         print(
@@ -281,6 +294,7 @@ def main() -> None:
     import db.conexion as modulo_conexion
 
     modulo_conexion.RUTA_BASE_DATOS = ruta_db
+    _aislar_backups(ruta_db)
 
     from db.conexion import inicializar_base_datos
 

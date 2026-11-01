@@ -1,20 +1,22 @@
 """Backup consistente de `kiosco.db` + `imagenes_productos/` en un
-único ZIP.
+único ZIP con manifiesto (ver `services.formato_backup`).
 
 El bloqueo (`ControlEscrituras`) se mantiene únicamente mientras se
 toma el snapshot de la DB y se copian las imágenes a un directorio
 temporal: una vez que esas dos copias están aisladas, ya no dependen
 de lo que siga escribiendo la aplicación, así que el resto del proceso
-(construir el ZIP, validarlo, publicarlo) corre sin el lock. Solo
-librería estándar.
+(verificar la base, construir el ZIP, validarlo, publicarlo) corre sin
+el lock. Un backup solo se publica después de pasar la validación
+completa. Solo librería estándar.
 """
 
+import errno
 import logging
+import os
 import re
 import shutil
-import sqlite3
 import tempfile
-import zipfile
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -22,16 +24,32 @@ from config import (
     ANTIGUEDAD_MINIMA_BACKUP_AUTOMATICO_HORAS,
     BACKUPS_A_CONSERVAR,
     BACKUPS_PREMIGRACION_A_CONSERVAR,
-    DIRECTORIO_IMAGENES_PRODUCTOS,
-    RUTA_BASE_DATOS,
 )
+from db.archivo_sqlite import copiar_base_consistente, verificar_archivo
+import db.conexion as modulo_conexion
+import services.servicio_imagenes as modulo_imagenes
 from db.conexion import hay_migraciones_pendientes_en_base_existente, inicializar_base_datos
-from excepciones import ErrorBackup
+from domain.backup import (
+    TIPO_AUTOMATICO,
+    TIPO_CIERRE_CAJA,
+    TIPO_MANUAL,
+    TIPO_PRE_UPDATE,
+    TIPO_SEGURIDAD,
+    Manifiesto,
+)
+from excepciones import BackupInvalidoError, ErrorBackup, ErrorBaseDatos
+from services.formato_backup import CARPETA_IMAGENES, NOMBRE_DB, construir_paquete, describir_archivos, validar_backup
+from version import VERSION
 
 logger = logging.getLogger(__name__)
 
-_NOMBRE_DB_EN_ZIP = "kiosco.db"
-_NOMBRE_CARPETA_IMAGENES_EN_ZIP = "imagenes_productos"
+_PREFIJO_POR_TIPO = {
+    TIPO_MANUAL: "KioscoApp_backup_",
+    TIPO_AUTOMATICO: "KioscoApp_backup_",
+    TIPO_CIERRE_CAJA: "KioscoApp_backup_cierre_caja_",
+    TIPO_PRE_UPDATE: "KioscoApp_backup_pre_update_",
+    TIPO_SEGURIDAD: "KioscoApp_backup_seguridad_",
+}
 # El nombre lleva segundos (V1.1): con minutos, un backup manual y uno automático
 # del mismo minuto se pisaban. Los backups anteriores, con nombre de minutos, siguen
 # siendo válidos y se reconocen igual. Ante una colisión de nombre se agrega `_2`, `_3`...
@@ -41,19 +59,12 @@ _FORMATO_FECHA_EN_NOMBRE = "%Y-%m-%d_%H%M%S"
 _FORMATO_FECHA_EN_NOMBRE_ANTIGUO = "%Y-%m-%d_%H%M"
 
 
-def _snapshot_base_datos(ruta_origen: Path, ruta_destino: Path) -> None:
-    """Copia consistente de la DB usando la Online Backup API de
-    SQLite (`sqlite3.Connection.backup`), no una copia de archivo a
-    nivel de sistema operativo."""
-    conexion_origen = sqlite3.connect(ruta_origen)
-    try:
-        conexion_destino = sqlite3.connect(ruta_destino)
-        try:
-            conexion_origen.backup(conexion_destino)
-        finally:
-            conexion_destino.close()
-    finally:
-        conexion_origen.close()
+def _mensaje_error_de_disco(error: OSError) -> str:
+    if error.errno == errno.ENOSPC:
+        return "No hay espacio suficiente en el disco para guardar el backup."
+    if isinstance(error, PermissionError):
+        return "No hay permiso para escribir en la carpeta de backups."
+    return f"No se pudo escribir el backup en disco: {error.strerror or error}"
 
 
 def _ruta_sin_colision(directorio: Path, nombre: str) -> Path:
@@ -68,25 +79,39 @@ def _ruta_sin_colision(directorio: Path, nombre: str) -> Path:
     return ruta
 
 
-def _construir_zip(directorio_datos: Path, ruta_zip: Path) -> None:
-    ruta_db = directorio_datos / _NOMBRE_DB_EN_ZIP
-    dir_imagenes = directorio_datos / _NOMBRE_CARPETA_IMAGENES_EN_ZIP
-
-    with zipfile.ZipFile(ruta_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(ruta_db, _NOMBRE_DB_EN_ZIP)
-        archivos = sorted(p for p in dir_imagenes.rglob("*") if p.is_file())
-        for archivo in archivos:
-            nombre_en_zip = f"{_NOMBRE_CARPETA_IMAGENES_EN_ZIP}/{archivo.relative_to(dir_imagenes).as_posix()}"
-            zf.write(archivo, nombre_en_zip)
-        if not archivos:
-            # conservar la carpeta aunque no tenga imágenes todavía.
-            zf.writestr(f"{_NOMBRE_CARPETA_IMAGENES_EN_ZIP}/", "")
+def _publicar(zip_temporal: Path, directorio: Path, nombre: str) -> Path:
+    """Mueve el ZIP ya validado a su nombre final sin pisar ningún backup: en
+    Windows `os.rename` falla si el destino existe, así que dos backups que
+    eligieron el mismo nombre en el mismo segundo terminan con `_2`, `_3`..."""
+    while True:
+        ruta_final = _ruta_sin_colision(directorio, nombre)
+        try:
+            os.rename(zip_temporal, ruta_final)
+        except FileExistsError:
+            continue
+        return ruta_final
 
 
-def crear_backup(directorio_destino: Path, control_escrituras, *, nombre_archivo: str | None = None) -> Path:
-    """Genera `KioscoApp_backup_<fecha>_<hora>.zip` dentro de
-    `directorio_destino` (o `nombre_archivo`, si se indica) y devuelve
-    su ruta.
+def nombre_de_backup(tipo: str, fecha: datetime) -> str:
+    """Nombre de archivo para un backup nuevo. Es solo descriptivo: el tipo y
+    la fecha que cuentan son los del manifiesto."""
+    return f"{_PREFIJO_POR_TIPO[tipo]}{fecha.strftime(_FORMATO_FECHA_EN_NOMBRE)}.zip"
+
+
+def crear_backup(
+    directorio_destino: Path,
+    control_escrituras,
+    *,
+    tipo: str = TIPO_MANUAL,
+    nombre_archivo: str | None = None,
+    sesion_caja_id: int | None = None,
+    version_destino: str | None = None,
+    ahora: datetime | None = None,
+) -> Path:
+    """Genera un backup validado dentro de `directorio_destino` y devuelve su
+    ruta. Un backup que no pasa `formato_backup.validar_backup` nunca se
+    publica: el ZIP se arma y se valida en un temporal y recién entonces se
+    mueve a su nombre final.
 
     `control_escrituras.iniciar_backup()` es la única sección crítica
     que decide, de forma atómica, si este backup puede arrancar (nunca
@@ -96,11 +121,46 @@ def crear_backup(directorio_destino: Path, control_escrituras, *, nombre_archivo
     se libera pase lo que pase (`try/finally`), incluso si el snapshot
     o la copia fallan, y solo se mantiene mientras se copian la DB y
     las imágenes a un directorio temporal (ver docstring del módulo).
-    """
-    directorio_destino.mkdir(parents=True, exist_ok=True)
-    nombre_final = nombre_archivo or f"KioscoApp_backup_{datetime.now().strftime(_FORMATO_FECHA_EN_NOMBRE)}.zip"
-    ruta_final = _ruta_sin_colision(directorio_destino, nombre_final)
 
+    Raises:
+        ErrorBackup: si no se pudo generar o validar (incluye disco lleno y
+            falta de permisos, con un mensaje claro).
+    """
+    fecha = (ahora or datetime.now()).replace(microsecond=0)
+    try:
+        ruta_final = _crear_backup_validado(
+            directorio_destino,
+            control_escrituras,
+            tipo=tipo,
+            nombre=nombre_archivo or nombre_de_backup(tipo, fecha),
+            fecha=fecha,
+            sesion_caja_id=sesion_caja_id,
+            version_destino=version_destino,
+        )
+    except OSError as error:
+        logger.error("No se pudo escribir el backup: %s", error)
+        raise ErrorBackup(_mensaje_error_de_disco(error)) from error
+    logger.info("Backup %s creado y validado: %s", tipo, ruta_final.name)
+
+    try:
+        aplicar_retencion(directorio_destino, ruta_final)
+    except OSError as error:
+        # El backup ya está publicado y validado: un fallo de la limpieza no lo invalida.
+        logger.error("No se pudo aplicar la retención de backups: %s", error)
+    return ruta_final
+
+
+def _crear_backup_validado(
+    directorio_destino: Path,
+    control_escrituras,
+    *,
+    tipo: str,
+    nombre: str,
+    fecha: datetime,
+    sesion_caja_id: int | None,
+    version_destino: str | None,
+) -> Path:
+    directorio_destino.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=directorio_destino, prefix=".kioscoapp_backup_tmp_") as tmp:
         tmp_path = Path(tmp)
         datos_tmp = tmp_path / "data"
@@ -109,22 +169,48 @@ def crear_backup(directorio_destino: Path, control_escrituras, *, nombre_archivo
         if not control_escrituras.iniciar_backup(timeout=30):
             raise ErrorBackup("Ya hay un backup en curso. Esperá a que termine e intentá de nuevo.")
         try:
-            _snapshot_base_datos(RUTA_BASE_DATOS, datos_tmp / _NOMBRE_DB_EN_ZIP)
-            shutil.copytree(DIRECTORIO_IMAGENES_PRODUCTOS, datos_tmp / _NOMBRE_CARPETA_IMAGENES_EN_ZIP)
+            # Siempre la base y las imágenes que la aplicación está usando de verdad:
+            # nunca un binding propio de `config` que pueda quedar desincronizado.
+            copiar_base_consistente(modulo_conexion.RUTA_BASE_DATOS, datos_tmp / NOMBRE_DB)
+            shutil.copytree(modulo_imagenes.DIRECTORIO_IMAGENES_PRODUCTOS, datos_tmp / CARPETA_IMAGENES)
+        except ErrorBaseDatos as error:
+            raise ErrorBackup(f"No se pudo copiar la base de datos: {error}") from error
         finally:
             control_escrituras.finalizar_backup()
 
+        try:
+            verificacion = verificar_archivo(datos_tmp / NOMBRE_DB)
+        except ErrorBaseDatos as error:
+            raise ErrorBackup(f"La base de datos actual no se pudo verificar: {error}") from error
+        if not verificacion.es_valida:
+            raise ErrorBackup(
+                "La base de datos actual no pasó la verificación de integridad "
+                f"({verificacion.integridad[:200]}; {verificacion.errores_claves_foraneas} referencia(s) rota(s)). "
+                "No se generó el backup: contactá a soporte."
+            )
+
+        manifiesto = Manifiesto(
+            version=VERSION,
+            tipo=tipo,
+            id=uuid.uuid4().hex,
+            fecha=fecha,
+            migraciones=verificacion.migraciones,
+            integridad=verificacion.integridad,
+            archivos=describir_archivos(datos_tmp),
+            sesion_caja_id=sesion_caja_id,
+            version_destino=version_destino,
+        )
         zip_temporal = tmp_path / "backup.zip.tmp"
-        _construir_zip(datos_tmp, zip_temporal)
+        construir_paquete(datos_tmp, manifiesto, zip_temporal)
 
-        with zipfile.ZipFile(zip_temporal) as zf:
-            if zf.testzip() is not None:
-                raise ErrorBackup("El backup generado quedó corrupto (falló la verificación interna).")
+        try:
+            info = validar_backup(zip_temporal)
+        except BackupInvalidoError as error:
+            raise ErrorBackup(f"El backup generado no pasó la validación: {error}") from error
+        if info.manifiesto is None or info.manifiesto.id != manifiesto.id:
+            raise ErrorBackup("El backup generado no pasó la validación: manifiesto inesperado.")
 
-        zip_temporal.replace(ruta_final)
-
-    aplicar_retencion(directorio_destino, ruta_final)
-    return ruta_final
+        return _publicar(zip_temporal, directorio_destino, nombre)
 
 
 def _clave_de_orden(patron: re.Pattern[str], nombre: str, formato: str) -> tuple[datetime, int] | None:
@@ -243,7 +329,7 @@ def ejecutar_backup_automatico_si_corresponde(
             return None
 
     try:
-        ruta_zip = crear_backup(directorio_destino, control_escrituras)
+        ruta_zip = crear_backup(directorio_destino, control_escrituras, tipo=TIPO_AUTOMATICO)
     except ErrorBackup as error:
         logger.warning("Backup automático omitido: %s", error)
         return None
@@ -259,19 +345,18 @@ def migrar_base_datos_con_backup_preventivo(directorio_backups: Path, control_es
     """Aplica las migraciones pendientes, con un backup preventivo antes
     si la base de datos ya existe.
 
-    Solo se crea el backup (`KioscoApp_backup_pre_migracion_<fecha>.zip`,
-    mismo formato y mismo `crear_backup` que cualquier otro) cuando
-    `kiosco.db` ya existe y tiene migraciones pendientes: una instalación
-    nueva, o una base al día, no generan ninguno. Si el backup falla, la
-    excepción se propaga y las migraciones NO se aplican; si la migración
-    falla después, el backup ya creado queda disponible para restaurar.
+    Solo se crea el backup (`PRE_UPDATE`, mismo `crear_backup` y misma
+    validación que cualquier otro) cuando `kiosco.db` ya existe y tiene
+    migraciones pendientes: una instalación nueva, o una base al día, no
+    generan ninguno. Si el backup falla, la excepción se propaga y las
+    migraciones NO se aplican; si la migración falla después, el backup ya
+    creado queda disponible para restaurar.
 
     Devuelve la ruta del backup preventivo, o `None` si no hizo falta.
     """
     ruta_backup = None
     if hay_migraciones_pendientes_en_base_existente():
-        nombre = f"KioscoApp_backup_pre_migracion_{datetime.now().strftime(_FORMATO_FECHA_EN_NOMBRE)}.zip"
-        ruta_backup = crear_backup(directorio_backups, control_escrituras, nombre_archivo=nombre)
+        ruta_backup = crear_backup(directorio_backups, control_escrituras, tipo=TIPO_PRE_UPDATE, version_destino=VERSION)
         logger.info("Backup preventivo previo a la migración creado: %s", ruta_backup.name)
 
     inicializar_base_datos()

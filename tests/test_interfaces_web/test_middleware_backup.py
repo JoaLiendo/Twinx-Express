@@ -12,6 +12,10 @@ import threading
 
 import pytest
 
+import services.servicio_imagenes as modulo_imagenes
+
+import db.conexion as modulo_conexion
+
 from domain.usuario import Usuario
 from interfaces.web.auth import NOMBRE_COOKIE_SESION
 from services import servicio_auth
@@ -41,8 +45,8 @@ def entorno_backup_real(tmp_path, monkeypatch, base_datos_temporal, directorio_i
     binding de `RUTA_BASE_DATOS`/`DIRECTORIO_IMAGENES_PRODUCTOS`,
     independiente del de `db.conexion`/`servicio_imagenes`), y la
     carpeta de backups a un directorio temporal."""
-    monkeypatch.setattr(modulo_servicio_backup, "RUTA_BASE_DATOS", base_datos_temporal)
-    monkeypatch.setattr(modulo_servicio_backup, "DIRECTORIO_IMAGENES_PRODUCTOS", directorio_imagenes_temporal)
+    monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", base_datos_temporal)
+    monkeypatch.setattr(modulo_imagenes, "DIRECTORIO_IMAGENES_PRODUCTOS", directorio_imagenes_temporal)
     monkeypatch.setattr(modulo_ruta_backup, "DIRECTORIO_BACKUPS", tmp_path / "backups")
     return tmp_path / "backups"
 

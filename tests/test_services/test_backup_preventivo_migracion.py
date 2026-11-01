@@ -13,13 +13,15 @@ from pathlib import Path
 
 import pytest
 
+import services.servicio_imagenes as modulo_imagenes
+
 import db.conexion as modulo_conexion
 import services.servicio_backup as modulo_backup
 import services.servicio_restore as modulo_restore
 from excepciones import ErrorBackup, ErrorBaseDatos
 from services.control_escrituras import ControlEscrituras
 
-_PATRON_NOMBRE_PREVENTIVO = re.compile(r"^KioscoApp_backup_pre_migracion_\d{4}-\d{2}-\d{2}_\d{6}\.zip$")
+_PATRON_NOMBRE_PREVENTIVO = re.compile(r"^KioscoApp_backup_pre_update_\d{4}-\d{2}-\d{2}_\d{6}\.zip$")
 
 _MIGRACION_1 = "CREATE TABLE datos (id INTEGER PRIMARY KEY, valor TEXT);"
 _MIGRACION_2 = "CREATE TABLE extra (id INTEGER PRIMARY KEY);"
@@ -38,8 +40,8 @@ def entorno(tmp_path, monkeypatch):
 
     monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", ruta_db)
     monkeypatch.setattr(modulo_conexion, "DIRECTORIO_MIGRACIONES", dir_migraciones)
-    monkeypatch.setattr(modulo_backup, "RUTA_BASE_DATOS", ruta_db)
-    monkeypatch.setattr(modulo_backup, "DIRECTORIO_IMAGENES_PRODUCTOS", dir_imagenes)
+    monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", ruta_db)
+    monkeypatch.setattr(modulo_imagenes, "DIRECTORIO_IMAGENES_PRODUCTOS", dir_imagenes)
 
     return {"db": ruta_db, "migraciones": dir_migraciones, "backups": tmp_path / "backups"}
 

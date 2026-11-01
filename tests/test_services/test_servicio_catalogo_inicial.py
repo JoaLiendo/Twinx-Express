@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+import services.servicio_imagenes as modulo_imagenes
+
 import db.conexion as modulo_conexion
 import db.repositorios.catalogo_inicial as modulo_repositorio
 import services.servicio_backup as modulo_backup
@@ -258,8 +260,8 @@ def test_backup_y_restore_conservan_el_marcador_y_no_se_vuelve_a_sembrar(
     servicio.sembrar_si_corresponde()
     dir_imagenes = tmp_path / "imagenes"
     dir_imagenes.mkdir()
-    monkeypatch.setattr(modulo_backup, "RUTA_BASE_DATOS", base_datos_temporal)
-    monkeypatch.setattr(modulo_backup, "DIRECTORIO_IMAGENES_PRODUCTOS", dir_imagenes)
+    monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", base_datos_temporal)
+    monkeypatch.setattr(modulo_imagenes, "DIRECTORIO_IMAGENES_PRODUCTOS", dir_imagenes)
 
     ruta_zip = modulo_backup.crear_backup(tmp_path / "backups", ControlEscrituras())
     extraido = modulo_restore.validar_y_extraer_backup(ruta_zip, tmp_path / "restore")

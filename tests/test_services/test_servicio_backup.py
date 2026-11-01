@@ -11,7 +11,12 @@ from pathlib import Path
 
 import pytest
 
+import services.servicio_imagenes as modulo_imagenes
+
+import db.conexion as modulo_conexion
+
 import services.servicio_backup as modulo_backup
+from excepciones import ErrorBackup
 from services.control_escrituras import ControlEscrituras
 
 _PATRON_NOMBRE = re.compile(r"^KioscoApp_backup_\d{4}-\d{2}-\d{2}_\d{6}\.zip$")
@@ -33,8 +38,8 @@ def datos_de_prueba(tmp_path, monkeypatch):
     dir_imagenes.mkdir()
     (dir_imagenes / "1_abc.jpg").write_bytes(b"CONTENIDO-IMAGEN-SENTINEL")
 
-    monkeypatch.setattr(modulo_backup, "RUTA_BASE_DATOS", ruta_db)
-    monkeypatch.setattr(modulo_backup, "DIRECTORIO_IMAGENES_PRODUCTOS", dir_imagenes)
+    monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", ruta_db)
+    monkeypatch.setattr(modulo_imagenes, "DIRECTORIO_IMAGENES_PRODUCTOS", dir_imagenes)
 
     return ruta_db, dir_imagenes
 
@@ -84,7 +89,7 @@ def test_error_durante_la_copia_no_publica_zip_incompleto(datos_de_prueba, tmp_p
 
     monkeypatch.setattr(modulo_backup.shutil, "copytree", copytree_falso)
 
-    with pytest.raises(OSError):
+    with pytest.raises(ErrorBackup):
         modulo_backup.crear_backup(destino, ControlEscrituras())
 
     archivos_publicados = list(destino.glob("*.zip")) if destino.exists() else []
@@ -99,7 +104,7 @@ def test_temporales_limpiados_incluso_ante_error(datos_de_prueba, tmp_path, monk
 
     monkeypatch.setattr(modulo_backup.shutil, "copytree", copytree_falso)
 
-    with pytest.raises(OSError):
+    with pytest.raises(ErrorBackup):
         modulo_backup.crear_backup(destino, ControlEscrituras())
 
     restos = list(destino.iterdir()) if destino.exists() else []
@@ -115,7 +120,7 @@ def test_libera_el_turno_incluso_si_falla_la_copia(datos_de_prueba, tmp_path, mo
 
     monkeypatch.setattr(modulo_backup.shutil, "copytree", copytree_falso)
 
-    with pytest.raises(OSError):
+    with pytest.raises(ErrorBackup):
         modulo_backup.crear_backup(destino, control)
 
     assert control.backup_activo is False
@@ -132,7 +137,7 @@ def test_una_escritura_de_negocio_normal_funciona_despues_de_un_backup_fallido(
         raise OSError("fallo simulado")
 
     monkeypatch.setattr(modulo_backup.shutil, "copytree", copytree_falso)
-    with pytest.raises(OSError):
+    with pytest.raises(ErrorBackup):
         modulo_backup.crear_backup(destino, control)
 
     # una escritura de negocio normal debe volver a funcionar
@@ -148,7 +153,7 @@ def test_un_backup_posterior_puede_ejecutarse_tras_uno_fallido(datos_de_prueba, 
         raise OSError("fallo simulado")
 
     monkeypatch.setattr(modulo_backup.shutil, "copytree", copytree_falso)
-    with pytest.raises(OSError):
+    with pytest.raises(ErrorBackup):
         modulo_backup.crear_backup(destino, control)
 
     monkeypatch.undo()  # restaura shutil.copytree real

@@ -1,0 +1,80 @@
+"""Operaciones sobre archivos SQLite completos (no sobre la base activa vía
+`obtener_conexion`): copia consistente y verificación de un archivo de base
+de datos aislado, como el snapshot de un backup o la base extraída de uno.
+
+Único lugar, junto con `db.conexion`, que abre archivos SQLite directamente.
+"""
+
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+
+from excepciones import ErrorBaseDatos
+
+
+@dataclass(frozen=True)
+class VerificacionSQLite:
+    """Resultado de verificar un archivo SQLite aislado."""
+
+    integridad: str
+    errores_claves_foraneas: int
+    migraciones: tuple[str, ...]
+
+    @property
+    def es_valida(self) -> bool:
+        return self.integridad == "ok" and self.errores_claves_foraneas == 0
+
+
+def copiar_base_consistente(origen: Path, destino: Path) -> None:
+    """Copia consistente de `origen` en `destino` con la Online Backup API de
+    SQLite: nunca una copia del archivo a nivel de sistema operativo, que
+    podría capturar una escritura a mitad de camino. Exige que `origen`
+    exista: `sqlite3.connect` crearía una base vacía en su lugar."""
+    if not origen.is_file():
+        raise ErrorBaseDatos(f"No existe la base de datos a copiar: {origen.name}")
+    try:
+        conexion_origen = sqlite3.connect(origen)
+        try:
+            conexion_destino = sqlite3.connect(destino)
+            try:
+                conexion_origen.backup(conexion_destino)
+            finally:
+                conexion_destino.close()
+        finally:
+            conexion_origen.close()
+    except sqlite3.Error as error:
+        raise ErrorBaseDatos(f"No se pudo copiar la base de datos: {error}") from error
+
+
+def verificar_archivo(ruta: Path) -> VerificacionSQLite:
+    """Abre `ruta` en solo lectura y corre `integrity_check` y
+    `foreign_key_check`, más la lista de migraciones aplicadas (vacía si la
+    base no tiene `schema_migraciones`).
+
+    Raises:
+        ErrorBaseDatos: si el archivo no existe o no es una base SQLite legible.
+    """
+    if not ruta.is_file():
+        raise ErrorBaseDatos(f"No existe el archivo de base de datos: {ruta.name}")
+    try:
+        conexion = sqlite3.connect(f"{ruta.resolve().as_uri()}?mode=ro", uri=True)
+    except sqlite3.Error as error:
+        raise ErrorBaseDatos(f"No se pudo abrir la base de datos: {error}") from error
+    try:
+        filas_integridad = conexion.execute("PRAGMA integrity_check").fetchall()
+        integridad = "; ".join(str(fila[0]) for fila in filas_integridad) or "sin resultado"
+        errores_fk = len(conexion.execute("PRAGMA foreign_key_check").fetchall())
+        tiene_registro = conexion.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migraciones'"
+        ).fetchone()
+        migraciones: tuple[str, ...] = ()
+        if tiene_registro:
+            migraciones = tuple(
+                fila[0]
+                for fila in conexion.execute("SELECT nombre_archivo FROM schema_migraciones ORDER BY nombre_archivo")
+            )
+    except sqlite3.DatabaseError as error:
+        raise ErrorBaseDatos(f"El archivo de base de datos está dañado: {error}") from error
+    finally:
+        conexion.close()
+    return VerificacionSQLite(integridad, errores_fk, migraciones)
