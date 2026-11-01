@@ -45,6 +45,8 @@ def backups_aislados(tmp_path, monkeypatch):
     imagenes.mkdir()
     monkeypatch.setattr(modulo_backup, "DIRECTORIO_BACKUPS", tmp_path / "backups_aislados")
     monkeypatch.setattr(modulo_imagenes, "DIRECTORIO_IMAGENES_PRODUCTOS", imagenes)
+    # Síncrona en tests: un hilo que sobreviviera al test leería la base real tras el teardown.
+    monkeypatch.setattr(modulo_backup, "_lanzar_copia_secundaria", modulo_backup.copiar_a_destino_secundario)
     return tmp_path / "backups_aislados"
 
 

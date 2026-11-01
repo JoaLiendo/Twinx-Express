@@ -6,14 +6,14 @@ cerrada, vía `KioscoApp.exe --restore <zip>` (ver `lanzador.py`) --
 nunca como una ruta de este mismo servidor en ejecución.
 """
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 
 from domain.backup import TIPO_MANUAL
 from domain.usuario import Usuario
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
-from services import servicio_backup
+from services import servicio_backup, servicio_destino_secundario
 from services.control_escrituras import control_escrituras
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
@@ -28,8 +28,20 @@ RUTA_CREAR_BACKUP = "/backup/crear"
 
 @router.get("/backup")
 def panel_backup(request: Request):
-    contexto = {**contexto_base(request), "alerta_backup": servicio_backup.alerta_de_backup()}
+    estado = servicio_backup.estado_backups()
+    contexto = {**contexto_base(request), "estado": estado, "alerta_backup": estado.alerta}
     return templates.TemplateResponse(request, "backup.html", contexto)
+
+
+@router.post("/backup/destino-secundario")
+def guardar_destino_secundario(
+    destino: str = Form(""), usuario_actual: Usuario | None = Depends(obtener_usuario_actual)
+):
+    """Un `DatosInvalidosError` (carpeta inexistente, sin permisos, dentro de
+    los datos activos) lo traduce a toast el manejador global."""
+    ruta = servicio_destino_secundario.guardar_destino_secundario(destino, usuario_actual.id)
+    mensaje = f"Segundo destino configurado: {ruta}" if ruta else "Segundo destino desactivado."
+    return redireccionar_con_mensaje("/backup", "success", mensaje)
 
 
 @router.post(RUTA_CREAR_BACKUP)

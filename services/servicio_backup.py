@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import uuid
 import zipfile
 from dataclasses import dataclass
@@ -37,6 +38,8 @@ from domain.auditoria import (
     ACCION_BACKUP_CIERRE_CAJA_OK,
     ACCION_BACKUP_ERROR,
     ACCION_BACKUP_MANUAL_OK,
+    ACCION_BACKUP_SECUNDARIO_ERROR,
+    ACCION_BACKUP_SECUNDARIO_OK,
     ACCION_PRE_UPDATE_BACKUP_OK,
     EntradaAuditoria,
 )
@@ -50,6 +53,7 @@ from domain.backup import (
 )
 from domain.retencion_backups import TIPOS_REGULARES, BackupClasificado, PoliticaRetencion, backups_a_conservar
 from excepciones import BackupEnCursoError, BackupInvalidoError, ErrorBackup, ErrorBaseDatos
+from services import servicio_destino_secundario
 from services.formato_backup import (
     CARPETA_IMAGENES,
     NOMBRE_DB,
@@ -384,6 +388,7 @@ def ejecutar_backup_automatico_si_corresponde(
 
     logger.info("Backup automático creado: %s", ruta_zip.name)
     _auditar(None, ACCION_BACKUP_AUTOMATICO_OK, ruta_zip.name)
+    copiar_a_destino_secundario(ruta_zip)
     return ruta_zip
 
 
@@ -458,6 +463,7 @@ def ejecutar_backup(
     accion = _ACCION_OK_POR_TIPO.get(tipo)
     if accion is not None:
         _auditar(usuario_id, accion, ruta.name)
+    _lanzar_copia_secundaria(ruta, usuario_id)
     return ResultadoBackup(ruta)
 
 
@@ -524,6 +530,74 @@ def alerta_de_backup() -> AlertaBackup | None:
     if ultima is not None and ultima.accion == ACCION_BACKUP_ERROR:
         return AlertaBackup(ultima.fecha, ultima.resumen)
     return None
+
+
+def copiar_a_destino_secundario(
+    ruta_backup: Path, usuario_id: int | None = None
+) -> servicio_destino_secundario.ResultadoCopia | None:
+    """Copia un backup primario ya validado al segundo destino, si hay uno
+    configurado (`None` si no). El resultado queda auditado; un fallo nunca
+    afecta al primario ni se propaga. Tras una copia correcta se aplica la
+    misma retención en el destino (solo sobre los backups que reconoce)."""
+    destino = servicio_destino_secundario.obtener_destino_secundario()
+    if destino is None:
+        return None
+    resultado = servicio_destino_secundario.copiar_backup(ruta_backup, destino)
+    if not resultado.ok:
+        logger.error("Falló la copia al segundo destino de %s: %s", ruta_backup.name, resultado.error)
+        _auditar(usuario_id, ACCION_BACKUP_SECUNDARIO_ERROR, f"{ruta_backup.name}: {resultado.error}")
+        return resultado
+    _auditar(usuario_id, ACCION_BACKUP_SECUNDARIO_OK, f"{ruta_backup.name} copiado a {destino}")
+    try:
+        aplicar_retencion(destino, resultado.ruta)
+    except OSError as error:
+        logger.error("No se pudo aplicar la retención en el segundo destino: %s", error)
+    return resultado
+
+
+def _lanzar_copia_secundaria(ruta_backup: Path, usuario_id: int | None) -> None:
+    """La copia secundaria corre en su propio hilo: un disco externo lento o
+    una unidad de red colgada nunca demora la respuesta de la caja."""
+    threading.Thread(
+        target=copiar_a_destino_secundario, args=(ruta_backup, usuario_id), daemon=True, name="copia-secundaria"
+    ).start()
+
+
+@dataclass(frozen=True)
+class EstadoBackups:
+    """Lo que el OWNER ve en la página de Backup."""
+
+    directorio: Path
+    ultimo_backup: BackupClasificado | None
+    alerta: AlertaBackup | None
+    destino_secundario: Path | None
+    ultima_copia_secundaria: EntradaAuditoria | None
+    error_secundario: EntradaAuditoria | None
+    politica: PoliticaRetencion
+
+
+def estado_backups() -> EstadoBackups:
+    propios = [c for _, c in _backups_propios(DIRECTORIO_BACKUPS)]
+    ultimo = max(propios, key=lambda c: (c.fecha, c.nombre)) if propios else None
+    ultima_ok = ultimo_error = None
+    try:
+        ultima_ok = repositorio_auditoria.ultima_de([ACCION_BACKUP_SECUNDARIO_OK])
+        ultimo_secundario = repositorio_auditoria.ultima_de(
+            [ACCION_BACKUP_SECUNDARIO_OK, ACCION_BACKUP_SECUNDARIO_ERROR]
+        )
+        if ultimo_secundario is not None and ultimo_secundario.accion == ACCION_BACKUP_SECUNDARIO_ERROR:
+            ultimo_error = ultimo_secundario
+    except ErrorBaseDatos as error:
+        logger.error("No se pudo consultar el estado de las copias secundarias: %s", error)
+    return EstadoBackups(
+        directorio=DIRECTORIO_BACKUPS,
+        ultimo_backup=ultimo,
+        alerta=alerta_de_backup(),
+        destino_secundario=servicio_destino_secundario.obtener_destino_secundario(),
+        ultima_copia_secundaria=ultima_ok,
+        error_secundario=ultimo_error,
+        politica=POLITICA_RETENCION,
+    )
 
 
 def migrar_base_datos_con_backup_preventivo(directorio_backups: Path, control_escrituras) -> Path | None:
