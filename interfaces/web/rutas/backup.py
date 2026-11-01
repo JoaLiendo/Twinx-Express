@@ -8,8 +8,9 @@ nunca como una ruta de este mismo servidor en ejecución.
 
 from fastapi import APIRouter, Depends, Request
 
-from config import DIRECTORIO_BACKUPS
-from interfaces.web.auth import requiere_rol
+from domain.backup import TIPO_MANUAL
+from domain.usuario import Usuario
+from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
 from services import servicio_backup
@@ -27,13 +28,16 @@ RUTA_CREAR_BACKUP = "/backup/crear"
 
 @router.get("/backup")
 def panel_backup(request: Request):
-    return templates.TemplateResponse(request, "backup.html", contexto_base(request))
+    contexto = {**contexto_base(request), "alerta_backup": servicio_backup.alerta_de_backup()}
+    return templates.TemplateResponse(request, "backup.html", contexto)
 
 
 @router.post(RUTA_CREAR_BACKUP)
-def accion_crear_backup(request: Request):
-    """Un `ErrorBackup` (ver `excepciones.py`) no se atrapa acá: el
-    manejador global de `ErrorAplicacion` en `interfaces/web/app.py`
-    ya lo traduce a un toast de error sobre la página de origen."""
-    ruta_zip = servicio_backup.crear_backup(DIRECTORIO_BACKUPS, control_escrituras)
-    return redireccionar_con_mensaje("/backup", "success", f"Backup creado: {ruta_zip.name}")
+def accion_crear_backup(usuario_actual: Usuario | None = Depends(obtener_usuario_actual)):
+    """Un `BackupEnCursoError` (ver `excepciones.py`) no se atrapa acá: el
+    manejador global de `ErrorAplicacion` en `interfaces/web/app.py` ya lo
+    traduce a un toast de error sobre la página de origen."""
+    resultado = servicio_backup.ejecutar_backup(TIPO_MANUAL, control_escrituras, usuario_id=usuario_actual.id)
+    if not resultado.ok:
+        return redireccionar_con_mensaje("/backup", "error", f"No se pudo crear el backup: {resultado.error}")
+    return redireccionar_con_mensaje("/backup", "success", f"Backup creado: {resultado.ruta.name}")

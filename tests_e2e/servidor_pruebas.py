@@ -270,11 +270,11 @@ def _aislar_backups(ruta_db: Path) -> None:
     El contenido ya sale de la base temporal: `servicio_backup` copia siempre
     `db.conexion.RUTA_BASE_DATOS`."""
     import interfaces.web.app as modulo_app
-    import interfaces.web.rutas.backup as modulo_ruta_backup
+    import services.servicio_backup as modulo_backup
 
     directorio_backups = ruta_db.parent / "backups"
     modulo_app.DIRECTORIO_BACKUPS = directorio_backups
-    modulo_ruta_backup.DIRECTORIO_BACKUPS = directorio_backups
+    modulo_backup.DIRECTORIO_BACKUPS = directorio_backups
 
 
 def main() -> None:

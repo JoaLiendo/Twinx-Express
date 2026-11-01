@@ -1,0 +1,12 @@
+{# Alerta persistente de backup fallido (V1.15). Requiere `alerta_backup` y `usuario_actual` en el contexto. #}
+{% if alerta_backup %}
+<div id="alerta-backup" role="alert" class="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-slate-800 dark:text-slate-100">
+  <p class="font-semibold text-warning">El último backup no se pudo completar{% if alerta_backup.fecha %} ({{ alerta_backup.fecha }}){% endif %}.</p>
+  <p class="mt-1 break-words">{{ alerta_backup.detalle }}</p>
+  {% if usuario_actual and usuario_actual.rol == 'OWNER' %}
+  <a href="/backup" class="mt-2 inline-block font-semibold text-primary hover:underline">Ir a Backup y crear uno ahora</a>
+  {% else %}
+  <p class="mt-1">Avisá al dueño para que haga un backup manual.</p>
+  {% endif %}
+</div>
+{% endif %}

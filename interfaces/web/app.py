@@ -56,6 +56,7 @@ from services.control_escrituras import control_escrituras
 logger = logging.getLogger(__name__)
 
 _METODOS_DE_LECTURA = {"GET", "HEAD", "OPTIONS"}
+_RUTAS_CON_BLOQUEO_PROPIO = {backup.RUTA_CREAR_BACKUP, caja.RUTA_CERRAR_CAJA}
 
 DIRECTORIO_WEB = Path(__file__).resolve().parent
 
@@ -126,9 +127,11 @@ async def bloquear_escrituras_durante_backup(request: Request, call_next):
     como una escritura de negocio más generaría una espera circular
     sobre sí mismo (deadlock ya corregido -- ver auditoría). El
     rechazo de un segundo backup concurrente lo resuelve
-    `iniciar_backup` de forma atómica, no este middleware.
+    `iniciar_backup` de forma atómica, no este middleware. El cierre de
+    caja (`caja.RUTA_CERRAR_CAJA`, V1.15) también se excluye: registra su
+    escritura por su cuenta y después dispara el backup de cierre.
     """
-    if request.method in _METODOS_DE_LECTURA or request.url.path == backup.RUTA_CREAR_BACKUP:
+    if request.method in _METODOS_DE_LECTURA or request.url.path in _RUTAS_CON_BLOQUEO_PROPIO:
         return await call_next(request)
 
     if not control_escrituras.permitir_escritura_de_negocio():

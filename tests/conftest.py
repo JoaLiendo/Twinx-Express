@@ -33,6 +33,22 @@ def reloj_falso():
 
 
 @pytest.fixture(autouse=True)
+def backups_aislados(tmp_path, monkeypatch):
+    """Ningún test escribe en la carpeta real de backups ni lee las imágenes
+    reales: desde V1.15 cerrar la caja dispara un backup, así que cualquier
+    test de caja lo genera. Se parchea `servicio_backup.DIRECTORIO_BACKUPS` y
+    el directorio de imágenes activo (los tests que necesitan imágenes propias
+    usan `directorio_imagenes_temporal`, que pisa este valor)."""
+    import services.servicio_backup as modulo_backup
+
+    imagenes = tmp_path / "imagenes_aisladas"
+    imagenes.mkdir()
+    monkeypatch.setattr(modulo_backup, "DIRECTORIO_BACKUPS", tmp_path / "backups_aislados")
+    monkeypatch.setattr(modulo_imagenes, "DIRECTORIO_IMAGENES_PRODUCTOS", imagenes)
+    return tmp_path / "backups_aislados"
+
+
+@pytest.fixture(autouse=True)
 def limitador_login_aislado(monkeypatch, reloj_falso):
     """Reemplaza el limitador de login por uno nuevo (con reloj falso)
     en cada test. Cada test usa una base temporal nueva donde los ids de

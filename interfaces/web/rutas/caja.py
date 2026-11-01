@@ -10,9 +10,15 @@ from domain.usuario import Usuario
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, nueva_clave_idempotencia, redireccionar_con_mensaje
-from services import servicio_caja
+from services import servicio_backup, servicio_caja
+from services.control_escrituras import control_escrituras
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
+
+# El middleware de `interfaces/web/app.py` no cuenta este request como escritura
+# de negocio: la registra la propia ruta solo durante el cierre, para que el
+# backup posterior no se espere a sí mismo (ver `ControlEscrituras.escritura_de_negocio`).
+RUTA_CERRAR_CAJA = "/caja/cerrar"
 
 
 def _mensaje_resultado_cierre(diferencia_centavos: int) -> str:
@@ -33,6 +39,7 @@ def panel_caja(request: Request):
     contexto = {
         **contexto_base(request),
         "movimientos": list(reversed(servicio_caja.listar_movimientos_de_sesion_actual())),
+        "alerta_backup": servicio_backup.alerta_de_backup(),
         "clave_ingreso": nueva_clave_idempotencia(),
         "clave_egreso": nueva_clave_idempotencia(),
     }
@@ -55,14 +62,30 @@ def abrir_caja(
     return redireccionar_con_mensaje("/caja", "success", "Caja abierta correctamente.")
 
 
-@router.post("/caja/cerrar")
+@router.post(RUTA_CERRAR_CAJA)
 def cerrar_caja(
     monto_final: str = Form(...),
     descripcion: str = Form(""),
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
-    cierre = servicio_caja.cerrar_caja(texto_a_centavos(monto_final), descripcion or None, usuario_id=usuario_actual.id)
-    return redireccionar_con_mensaje("/caja", "success", f"Caja cerrada correctamente. {_mensaje_resultado_cierre(cierre.diferencia_centavos)}")
+    """Cierra la caja y, ya confirmado el cierre, genera el backup
+    `CIERRE_CAJA`. Si el backup falla la caja sigue cerrada: se avisa con un
+    toast de advertencia y la alerta queda visible hasta un backup correcto."""
+    monto = texto_a_centavos(monto_final)
+    with control_escrituras.escritura_de_negocio():
+        cierre = servicio_caja.cerrar_caja(monto, descripcion or None, usuario_id=usuario_actual.id)
+    mensaje = f"Caja cerrada correctamente. {_mensaje_resultado_cierre(cierre.diferencia_centavos)}"
+    resultado = servicio_backup.backup_de_cierre_de_caja(
+        servicio_caja.sesion_de_movimiento(cierre.id), control_escrituras, usuario_id=usuario_actual.id
+    )
+    if resultado.ok:
+        return redireccionar_con_mensaje("/caja", "success", f"{mensaje} Backup guardado.")
+    return redireccionar_con_mensaje(
+        "/caja",
+        "warning",
+        f"{mensaje} ATENCIÓN: no se pudo guardar el backup automático ({resultado.error}) "
+        "Avisá al dueño para que haga un backup manual.",
+    )
 
 
 @router.post("/caja/ingreso")

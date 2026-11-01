@@ -9,6 +9,34 @@ from dataclasses import dataclass
 
 from excepciones import DatosInvalidosError
 
+ACCION_BACKUP_MANUAL_OK = "BACKUP_MANUAL_OK"
+ACCION_BACKUP_AUTOMATICO_OK = "BACKUP_AUTOMATICO_OK"
+ACCION_BACKUP_CIERRE_CAJA_OK = "BACKUP_CIERRE_CAJA_OK"
+ACCION_BACKUP_ERROR = "BACKUP_ERROR"
+ACCION_BACKUP_SECUNDARIO_OK = "BACKUP_SECUNDARIO_OK"
+ACCION_BACKUP_SECUNDARIO_ERROR = "BACKUP_SECUNDARIO_ERROR"
+ACCION_PRE_UPDATE_BACKUP_OK = "PRE_UPDATE_BACKUP_OK"
+ACCION_RESTORE = "RESTORE"
+ACCION_ROLLBACK = "ROLLBACK"
+ACCION_CONFIGURACION_BACKUP_CAMBIADA = "CONFIGURACION_BACKUP_CAMBIADA"
+
+ACCIONES_BACKUP = (
+    ACCION_BACKUP_MANUAL_OK,
+    ACCION_BACKUP_AUTOMATICO_OK,
+    ACCION_BACKUP_CIERRE_CAJA_OK,
+    ACCION_BACKUP_ERROR,
+    ACCION_BACKUP_SECUNDARIO_OK,
+    ACCION_BACKUP_SECUNDARIO_ERROR,
+    ACCION_PRE_UPDATE_BACKUP_OK,
+    ACCION_RESTORE,
+    ACCION_ROLLBACK,
+    ACCION_CONFIGURACION_BACKUP_CAMBIADA,
+)
+"""Eventos de backup (V1.15). Los del sistema (arranque, actualización,
+restore por consola) se registran sin usuario: no hay nadie autenticado y
+nunca se inventa uno. Los errores de un backup que el usuario está esperando
+y no se completa por otro backup en curso no se registran: no son fallos."""
+
 ACCIONES_VALIDAS = frozenset(
     {
         "PRODUCTO_CREADO",
@@ -67,6 +95,7 @@ ACCIONES_VALIDAS = frozenset(
         "INVENTARIO_CREADO",
         "INVENTARIO_CONFIRMADO",
         "INVENTARIO_CANCELADO",
+        *ACCIONES_BACKUP,
     }
 )
 

@@ -221,6 +221,11 @@ class ErrorBackup(ErrorAplicacion):
     """No se pudo generar el backup (ver `services.servicio_backup`)."""
 
 
+class BackupEnCursoError(ErrorBackup):
+    """Ya hay otro backup en curso (o escrituras que no terminaron a tiempo):
+    no es un fallo del backup, así que no se registra como error."""
+
+
 class BackupInvalidoError(ErrorBackup):
     """Un archivo de backup no pasó la validación (ZIP dañado, contenido
     inesperado o inseguro, base de datos corrupta o metadata inconsistente):

@@ -72,6 +72,13 @@ def obtener_sesion_abierta_en_conexion(conexion: sqlite3.Connection) -> SesionCa
     return _fila_a_sesion(fila) if fila is not None else None
 
 
+def obtener_sesion_de_movimiento(movimiento_id: int) -> int | None:
+    """Id de la sesión de caja a la que pertenece un movimiento."""
+    with obtener_conexion() as conexion:
+        fila = conexion.execute("SELECT sesion_caja_id FROM caja_movimientos WHERE id = ?", (movimiento_id,)).fetchone()
+    return fila["sesion_caja_id"] if fila is not None else None
+
+
 def obtener_sesion_abierta() -> SesionCaja | None:
     """Ver `obtener_sesion_abierta_en_conexion`."""
     with obtener_conexion() as conexion:

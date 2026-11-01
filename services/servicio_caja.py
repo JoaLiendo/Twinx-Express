@@ -49,6 +49,14 @@ def _caja_esta_abierta() -> bool:
     return repositorio_caja.obtener_sesion_abierta() is not None
 
 
+def sesion_de_movimiento(movimiento_id: int) -> int:
+    """Sesión de caja de un movimiento ya registrado (ej. la que cerró un CIERRE)."""
+    sesion_id = repositorio_caja.obtener_sesion_de_movimiento(movimiento_id)
+    if sesion_id is None:
+        raise CajaError("No se encontró la sesión de caja del movimiento.")
+    return sesion_id
+
+
 def consultar_estado() -> bool:
     """True si hay una caja abierta actualmente (para badges de estado en las interfaces)."""
     return _caja_esta_abierta()

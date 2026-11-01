@@ -218,6 +218,21 @@ def _validar_manifiesto(crudo: bytes, hashes: dict[str, ArchivoIncluido], migrac
     return manifiesto
 
 
+def leer_manifiesto(ruta_zip: Path) -> Manifiesto | None:
+    """Lectura liviana del manifiesto, sin validar el contenido: sirve para
+    clasificar y listar backups. `None` si no hay manifiesto legible (backup
+    anterior a V1.15, archivo dañado o ajeno). Nunca habilita por sí sola una
+    recuperación: para eso está `validar_backup`."""
+    try:
+        with zipfile.ZipFile(ruta_zip) as zf:
+            info = zf.getinfo(NOMBRE_MANIFIESTO)
+            if info.file_size > _LIMITE_TAMANO_MANIFIESTO:
+                return None
+            return manifiesto_desde_dict(json.loads(zf.read(info).decode("utf-8")))
+    except (KeyError, OSError, zipfile.BadZipFile, zlib.error, EOFError, UnicodeDecodeError, ValueError, BackupInvalidoError):
+        return None
+
+
 def validar_backup(ruta_zip: Path | str, directorio_extraccion: Path | None = None) -> InfoBackup:
     """Valida un backup por completo y devuelve su información.
 

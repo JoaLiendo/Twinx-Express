@@ -17,18 +17,29 @@ import re
 import shutil
 import tempfile
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import db.conexion as modulo_conexion
+import services.servicio_imagenes as modulo_imagenes
 from config import (
     ANTIGUEDAD_MINIMA_BACKUP_AUTOMATICO_HORAS,
     BACKUPS_A_CONSERVAR,
     BACKUPS_PREMIGRACION_A_CONSERVAR,
+    DIRECTORIO_BACKUPS,
 )
 from db.archivo_sqlite import copiar_base_consistente, verificar_archivo
-import db.conexion as modulo_conexion
-import services.servicio_imagenes as modulo_imagenes
 from db.conexion import hay_migraciones_pendientes_en_base_existente, inicializar_base_datos
+from db.repositorios import auditoria as repositorio_auditoria
+from domain.auditoria import (
+    ACCION_BACKUP_AUTOMATICO_OK,
+    ACCION_BACKUP_CIERRE_CAJA_OK,
+    ACCION_BACKUP_ERROR,
+    ACCION_BACKUP_MANUAL_OK,
+    ACCION_PRE_UPDATE_BACKUP_OK,
+    EntradaAuditoria,
+)
 from domain.backup import (
     TIPO_AUTOMATICO,
     TIPO_CIERRE_CAJA,
@@ -37,8 +48,15 @@ from domain.backup import (
     TIPO_SEGURIDAD,
     Manifiesto,
 )
-from excepciones import BackupInvalidoError, ErrorBackup, ErrorBaseDatos
-from services.formato_backup import CARPETA_IMAGENES, NOMBRE_DB, construir_paquete, describir_archivos, validar_backup
+from excepciones import BackupEnCursoError, BackupInvalidoError, ErrorBackup, ErrorBaseDatos
+from services.formato_backup import (
+    CARPETA_IMAGENES,
+    NOMBRE_DB,
+    construir_paquete,
+    describir_archivos,
+    leer_manifiesto,
+    validar_backup,
+)
 from version import VERSION
 
 logger = logging.getLogger(__name__)
@@ -107,6 +125,7 @@ def crear_backup(
     sesion_caja_id: int | None = None,
     version_destino: str | None = None,
     ahora: datetime | None = None,
+    esperar_turno: bool = False,
 ) -> Path:
     """Genera un backup validado dentro de `directorio_destino` y devuelve su
     ruta. Un backup que no pasa `formato_backup.validar_backup` nunca se
@@ -136,6 +155,7 @@ def crear_backup(
             fecha=fecha,
             sesion_caja_id=sesion_caja_id,
             version_destino=version_destino,
+            esperar_turno=esperar_turno,
         )
     except OSError as error:
         logger.error("No se pudo escribir el backup: %s", error)
@@ -159,6 +179,7 @@ def _crear_backup_validado(
     fecha: datetime,
     sesion_caja_id: int | None,
     version_destino: str | None,
+    esperar_turno: bool,
 ) -> Path:
     directorio_destino.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=directorio_destino, prefix=".kioscoapp_backup_tmp_") as tmp:
@@ -166,8 +187,8 @@ def _crear_backup_validado(
         datos_tmp = tmp_path / "data"
         datos_tmp.mkdir()
 
-        if not control_escrituras.iniciar_backup(timeout=30):
-            raise ErrorBackup("Ya hay un backup en curso. Esperá a que termine e intentá de nuevo.")
+        if not control_escrituras.iniciar_backup(timeout=30, esperar_otro_backup=esperar_turno):
+            raise BackupEnCursoError("Ya hay un backup en curso. Esperá a que termine e intentá de nuevo.")
         try:
             # Siempre la base y las imágenes que la aplicación está usando de verdad:
             # nunca un binding propio de `config` que pueda quedar desincronizado.
@@ -330,15 +351,160 @@ def ejecutar_backup_automatico_si_corresponde(
 
     try:
         ruta_zip = crear_backup(directorio_destino, control_escrituras, tipo=TIPO_AUTOMATICO)
-    except ErrorBackup as error:
+    except BackupEnCursoError as error:
         logger.warning("Backup automático omitido: %s", error)
+        return None
+    except ErrorBackup as error:
+        logger.error("Backup automático falló: %s", error)
+        _auditar(None, ACCION_BACKUP_ERROR, f"{TIPO_AUTOMATICO}: {error}")
         return None
     except Exception:
         logger.exception("Backup automático falló de forma inesperada.")
+        _auditar(None, ACCION_BACKUP_ERROR, f"{TIPO_AUTOMATICO}: error inesperado (ver registro)")
         return None
 
     logger.info("Backup automático creado: %s", ruta_zip.name)
+    _auditar(None, ACCION_BACKUP_AUTOMATICO_OK, ruta_zip.name)
     return ruta_zip
+
+
+_ENTIDAD_AUDITORIA = "BACKUP"
+_ACCION_OK_POR_TIPO = {
+    TIPO_MANUAL: ACCION_BACKUP_MANUAL_OK,
+    TIPO_AUTOMATICO: ACCION_BACKUP_AUTOMATICO_OK,
+    TIPO_CIERRE_CAJA: ACCION_BACKUP_CIERRE_CAJA_OK,
+    TIPO_PRE_UPDATE: ACCION_PRE_UPDATE_BACKUP_OK,
+}
+_ACCIONES_DE_ESTADO = (*_ACCION_OK_POR_TIPO.values(), ACCION_BACKUP_ERROR)
+
+
+@dataclass(frozen=True)
+class ResultadoBackup:
+    """Resultado de un backup pedido por la aplicación: o una ruta validada,
+    o el motivo del fallo. Nunca ambas cosas."""
+
+    ruta: Path | None
+    error: str | None = None
+    ya_existia: bool = False
+
+    @property
+    def ok(self) -> bool:
+        return self.ruta is not None
+
+
+@dataclass(frozen=True)
+class AlertaBackup:
+    fecha: str
+    detalle: str
+
+
+def _auditar(usuario_id: int | None, accion: str, resumen: str) -> None:
+    """Registra el evento sin poner en riesgo el backup ya resuelto: si la
+    auditoría no se puede escribir, queda en el log."""
+    try:
+        repositorio_auditoria.registrar(usuario_id, accion, _ENTIDAD_AUDITORIA, None, resumen)
+    except ErrorBaseDatos as error:
+        logger.error("No se pudo registrar en auditoría el evento %s (%s): %s", accion, resumen, error)
+
+
+def ejecutar_backup(
+    tipo: str,
+    control_escrituras,
+    *,
+    usuario_id: int | None = None,
+    sesion_caja_id: int | None = None,
+    esperar_turno: bool = False,
+) -> ResultadoBackup:
+    """Crea un backup en `DIRECTORIO_BACKUPS` y registra el resultado en
+    auditoría (OK por tipo, o `BACKUP_ERROR`).
+
+    Raises:
+        BackupEnCursoError: si otro backup ocupa el turno; no se audita porque
+            no es un fallo (el llamador decide si avisa o reintenta).
+    """
+    try:
+        ruta = crear_backup(
+            DIRECTORIO_BACKUPS,
+            control_escrituras,
+            tipo=tipo,
+            sesion_caja_id=sesion_caja_id,
+            esperar_turno=esperar_turno,
+        )
+    except BackupEnCursoError:
+        raise
+    except ErrorBackup as error:
+        logger.error("Falló el backup %s: %s", tipo, error)
+        _auditar(usuario_id, ACCION_BACKUP_ERROR, f"{tipo}: {error}")
+        return ResultadoBackup(None, str(error))
+    accion = _ACCION_OK_POR_TIPO.get(tipo)
+    if accion is not None:
+        _auditar(usuario_id, accion, ruta.name)
+    return ResultadoBackup(ruta)
+
+
+def _backup_de_cierre_existente(sesion_caja_id: int) -> Path | None:
+    """Un backup de cierre ya publicado y válido para esa sesión, si existe."""
+    if not DIRECTORIO_BACKUPS.is_dir():
+        return None
+    for ruta in sorted(DIRECTORIO_BACKUPS.glob(f"{_PREFIJO_POR_TIPO[TIPO_CIERRE_CAJA]}*.zip")):
+        manifiesto = leer_manifiesto(ruta)
+        if manifiesto is None or manifiesto.tipo != TIPO_CIERRE_CAJA or manifiesto.sesion_caja_id != sesion_caja_id:
+            continue
+        try:
+            validar_backup(ruta)
+        except BackupInvalidoError as error:
+            logger.warning("El backup de cierre %s no es válido: %s", ruta.name, error)
+            continue
+        return ruta
+    return None
+
+
+def backup_de_cierre_de_caja(sesion_caja_id: int, control_escrituras, usuario_id: int | None = None) -> ResultadoBackup:
+    """Backup `CIERRE_CAJA` de una sesión ya cerrada.
+
+    El cierre es la operación de negocio primaria y ya está confirmado
+    cuando se llama a esto: el backup nunca lo revierte ni lo hace fallar.
+    Por eso esta función no propaga ningún error -- lo devuelve en el
+    resultado y lo deja auditado, y la alerta (`alerta_de_backup`) queda
+    visible hasta que un backup posterior salga bien. Si ya existe un
+    backup válido de esa sesión (reintento, doble envío), lo devuelve sin
+    generar otro. Espera su turno si coincide con otro backup en curso.
+    """
+    existente = _backup_de_cierre_existente(sesion_caja_id)
+    if existente is not None:
+        return ResultadoBackup(existente, ya_existia=True)
+    try:
+        return ejecutar_backup(
+            TIPO_CIERRE_CAJA,
+            control_escrituras,
+            usuario_id=usuario_id,
+            sesion_caja_id=sesion_caja_id,
+            esperar_turno=True,
+        )
+    except BackupEnCursoError:
+        mensaje = "el sistema estuvo ocupado demasiado tiempo y no se pudo tomar la copia."
+        logger.error("Backup del cierre de caja %s: %s", sesion_caja_id, mensaje)
+        _auditar(usuario_id, ACCION_BACKUP_ERROR, f"{TIPO_CIERRE_CAJA}: {mensaje}")
+        return ResultadoBackup(None, mensaje)
+    except Exception:  # noqa: BLE001 -- el cierre ya está confirmado: no puede terminar en un error 500
+        logger.exception("Fallo inesperado en el backup del cierre de caja %s.", sesion_caja_id)
+        mensaje = "error inesperado al generar el backup (ver registro)."
+        _auditar(usuario_id, ACCION_BACKUP_ERROR, f"{TIPO_CIERRE_CAJA}: {mensaje}")
+        return ResultadoBackup(None, mensaje)
+
+
+def alerta_de_backup() -> AlertaBackup | None:
+    """Alerta vigente si el último evento de backup fue un error: se apaga
+    recién con un backup correcto posterior, así que ni un reinicio ni la
+    apertura de la caja siguiente la ocultan."""
+    try:
+        ultima: EntradaAuditoria | None = repositorio_auditoria.ultima_de(_ACCIONES_DE_ESTADO)
+    except ErrorBaseDatos as error:
+        logger.error("No se pudo consultar el estado de los backups: %s", error)
+        return AlertaBackup("", "No se pudo consultar el estado de los backups.")
+    if ultima is not None and ultima.accion == ACCION_BACKUP_ERROR:
+        return AlertaBackup(ultima.fecha, ultima.resumen)
+    return None
 
 
 def migrar_base_datos_con_backup_preventivo(directorio_backups: Path, control_escrituras) -> Path | None:

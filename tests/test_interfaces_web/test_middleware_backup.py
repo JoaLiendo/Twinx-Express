@@ -21,7 +21,6 @@ from interfaces.web.auth import NOMBRE_COOKIE_SESION
 from services import servicio_auth
 from services.control_escrituras import control_escrituras
 
-import interfaces.web.rutas.backup as modulo_ruta_backup
 import services.servicio_backup as modulo_servicio_backup
 
 from ._asgi_cliente import solicitud
@@ -47,7 +46,7 @@ def entorno_backup_real(tmp_path, monkeypatch, base_datos_temporal, directorio_i
     carpeta de backups a un directorio temporal."""
     monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", base_datos_temporal)
     monkeypatch.setattr(modulo_imagenes, "DIRECTORIO_IMAGENES_PRODUCTOS", directorio_imagenes_temporal)
-    monkeypatch.setattr(modulo_ruta_backup, "DIRECTORIO_BACKUPS", tmp_path / "backups")
+    monkeypatch.setattr(modulo_servicio_backup, "DIRECTORIO_BACKUPS", tmp_path / "backups")
     return tmp_path / "backups"
 
 

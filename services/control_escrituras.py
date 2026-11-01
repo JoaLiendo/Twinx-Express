@@ -19,6 +19,10 @@ contador que ella misma incrementó llegue a cero):
 
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+from excepciones import BackupEnCursoError
 
 
 class ControlEscrituras:
@@ -43,6 +47,23 @@ class ControlEscrituras:
             self._contador_escrituras_de_negocio += 1
             return True
 
+    @contextmanager
+    def escritura_de_negocio(self) -> Iterator[None]:
+        """Escritura de negocio registrada explícitamente, para las rutas que
+        el middleware no cuenta porque después disparan su propio backup
+        (ver `interfaces.web.rutas.caja.cerrar_caja`): la escritura termina
+        y se descuenta antes de que el backup espere a que no quede ninguna.
+
+        Raises:
+            BackupEnCursoError: si hay un backup activo (la escritura no se hace).
+        """
+        if not self.permitir_escritura_de_negocio():
+            raise BackupEnCursoError("Hay un backup en curso. Probá de nuevo en unos segundos.")
+        try:
+            yield
+        finally:
+            self.finalizar_escritura_de_negocio()
+
     def finalizar_escritura_de_negocio(self) -> None:
         """Marca el fin de una escritura ya registrada con
         `permitir_escritura_de_negocio`. Debe llamarse siempre, incluso
@@ -53,14 +74,18 @@ class ControlEscrituras:
             if self._contador_escrituras_de_negocio == 0:
                 self._condicion.notify_all()
 
-    def iniciar_backup(self, timeout: float | None = None) -> bool:
+    def iniciar_backup(self, timeout: float | None = None, *, esperar_otro_backup: bool = False) -> bool:
         """Operación atómica equivalente a: si ya hay un backup activo,
         rechazar; si no, marcar backup activo, impedir escrituras de
         negocio nuevas, y esperar a que las que ya estaban en curso
         drenen. Nunca se cuenta a sí misma como escritura de negocio.
 
         Devuelve `False` de inmediato (sin esperar nada) si ya había
-        otro backup activo -- así nunca corren dos backups a la vez.
+        otro backup activo -- así nunca corren dos backups a la vez --,
+        salvo con `esperar_otro_backup`: entonces espera a que ese otro
+        termine (dentro del mismo `timeout`) y toma el turno. Lo usan los
+        backups que no deben perderse porque coincidieron con otro (ej. el
+        del cierre de caja con el automático de arranque).
 
         Si se agota `timeout` mientras todavía quedan escrituras de
         negocio en curso, **nunca** devuelve `True`: libera el turno
@@ -72,11 +97,17 @@ class ControlEscrituras:
         se reinicia en cada `wait()` interno.
         """
         with self._condicion:
-            if self._backup_activo:
-                return False
+            limite = None if timeout is None else time.monotonic() + timeout
+            while self._backup_activo:
+                if not esperar_otro_backup:
+                    return False
+                restante = None if limite is None else limite - time.monotonic()
+                if restante is not None and (restante <= 0 or not self._condicion.wait(restante)):
+                    return False
+                if restante is None:
+                    self._condicion.wait()
             self._backup_activo = True
 
-            limite = None if timeout is None else time.monotonic() + timeout
             while self._contador_escrituras_de_negocio > 0:
                 if limite is None:
                     self._condicion.wait()
