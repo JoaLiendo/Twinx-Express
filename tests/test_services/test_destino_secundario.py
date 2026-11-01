@@ -210,3 +210,11 @@ def test_cajero_no_puede_configurar_el_segundo_destino(base_datos_temporal, exte
 
     assert respuesta.status in (303, 403)
     assert servicio_destino_secundario.obtener_destino_secundario() is None
+
+
+def test_configuracion_enlaza_a_backup(owner):
+    _, cookies = owner
+
+    pagina = solicitud("GET", "/configuracion", cookies=cookies).texto
+
+    assert 'id="config-backup"' in pagina and 'href="/backup"' in pagina

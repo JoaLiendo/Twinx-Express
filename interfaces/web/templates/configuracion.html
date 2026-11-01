@@ -7,6 +7,15 @@
 {% block content %}
 <div class="max-w-xl mx-auto space-y-6">
   {% call ui.card() %}
+    <div id="config-backup" class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-w-0">
+        <p class="font-semibold text-slate-900 dark:text-slate-100">Backups</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400">Estado, backup manual, copia externa y puntos de retorno.</p>
+      </div>
+      <a href="/backup" class="shrink-0 rounded-lg border border-slate-300 bg-white px-4 py-2 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50 transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">Ir a Backup</a>
+    </div>
+  {% endcall %}
+  {% call ui.card() %}
     <p class="font-semibold text-slate-900 dark:text-slate-100 mb-1">Datos del ticket</p>
     <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
       Se imprimen en el encabezado y el pie de cada ticket. Los campos vacíos no se imprimen.
