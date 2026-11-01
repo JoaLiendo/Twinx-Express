@@ -63,6 +63,18 @@ def fiscal_aislado(tmp_path, monkeypatch):
     return tmp_path / "fiscal_privado_aislado"
 
 
+@pytest.fixture
+def arca_falso():
+    """ARCA falso determinista inyectado como gateway de todos los servicios fiscales del test."""
+    from services.fiscal import gateway
+    from tests.fake_arca import ARCAFalso
+
+    falso = ARCAFalso()
+    gateway.establecer_fabrica(lambda perfil: falso)
+    yield falso
+    gateway.establecer_fabrica(None)
+
+
 @pytest.fixture(autouse=True)
 def limitador_login_aislado(monkeypatch, reloj_falso):
     """Reemplaza el limitador de login por uno nuevo (con reloj falso)
