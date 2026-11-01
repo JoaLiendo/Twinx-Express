@@ -157,44 +157,72 @@ completo de la aplicación debe incluir también la carpeta
 
 ## Backup y restore
 
-**Backup**: desde la propia aplicación web, en `/backup` (solo accesible para el
-rol OWNER; no tiene enlace en el menú: se abre escribiendo la dirección
-`http://127.0.0.1:8000/backup`). Genera un único archivo
-`KioscoApp_backup_YYYY-MM-DD_HHMMSS.zip` con `kiosco.db` +
-`imagenes_productos/`, guardado en `backups/` junto a `data/` (es decir,
-en modo frozen, `%LOCALAPPDATA%\KioscoApp\backups\`). Mientras se genera,
-la aplicación rechaza brevemente nuevas escrituras (ventas, altas de
-producto, etc. devuelven un 503 transitorio) para garantizar que la DB y
-las imágenes queden consistentes entre sí; las lecturas nunca se ven
-afectadas.
+Módulos: `services/formato_backup.py` (formato y validación), `services/servicio_backup.py`
+(creación, retención, alerta, pre-update), `services/servicio_destino_secundario.py`,
+`services/servicio_restore.py` y `services/servicio_actualizacion.py` (actualizar/rollback).
 
-**Retención**: tras cada backup se conservan los 30 más recientes (manuales y
-automáticos) y, aparte, los 5 más recientes de migración; el resto se borra
-(`config.BACKUPS_A_CONSERVAR`, `BACKUPS_PREMIGRACION_A_CONSERVAR`). El backup recién
-creado nunca se borra y solo se consideran archivos con el nombre exacto de
-los backups de la aplicación. Si dos backups caen en el mismo segundo, el nombre
-lleva un sufijo (`_2`, `_3`) y nunca se pisa uno anterior.
+**Formato**: un ZIP con `kiosco.db`, `imagenes_productos/` y `manifiesto.json` (versión, tipo
+`MANUAL`/`AUTOMATICO`/`CIERRE_CAJA`/`PRE_UPDATE`/`SEGURIDAD`, id, fecha, migraciones, integridad,
+SHA-256 y tamaño de cada archivo, sesión de caja, versión de origen/destino; sin secretos). La base
+se copia con la Online Backup API de SQLite bajo `ControlEscrituras` (las escrituras HTTP esperan o
+reciben un 503 breve). Los backups anteriores a V1.15 (sin manifiesto) siguen siendo restaurables.
 
-**Registro (logs)**: el ejecutable escribe `%LOCALAPPDATA%\KioscoApp\logs\twinx_express.log`
-(rotativo, 1 MB × 5) con timestamp y nivel, incluidos los errores de arranque. No
-registra contraseñas, hashes, cookies ni claves de idempotencia (ver `logging_config.py`).
+**Validación** (`validar_backup`, único criterio de "backup correcto"): ZIP legible, solo los
+nombres esperados (sin rutas absolutas, `..`, barras invertidas, dispositivos de Windows ni
+enlaces simbólicos), tamaño descomprimido acotado, `integrity_check` = ok, `foreign_key_check`
+vacío y manifiesto coherente con el contenido real (hashes y migraciones). Un backup solo se
+publica después de pasarla.
 
-**Backup preventivo antes de migrar**: si al iniciar la aplicación la base de
-datos ya existe y tiene migraciones pendientes, se genera antes un backup
-(`KioscoApp_backup_pre_migracion_<fecha>.zip`, mismo formato y misma carpeta).
-Si ese backup falla, no se migra. Una instalación nueva no genera ninguno.
+**Cuándo**: al cerrar la caja (`CIERRE_CAJA`, una vez confirmado el cierre: si falla, la caja sigue
+cerrada, se audita `BACKUP_ERROR` y Caja/Backup muestran una alerta hasta un backup correcto), al
+abrir la app si el último tiene más de 24 h, a mano desde `/backup` (OWNER, enlazada desde
+Configuración) y antes de actualizar. Eventos auditados: `BACKUP_*_OK`, `BACKUP_ERROR`,
+`BACKUP_SECUNDARIO_OK/ERROR`, `PRE_UPDATE_BACKUP_OK`, `RESTORE`, `ROLLBACK`.
 
-**Restore**: no tiene interfaz web -- requiere la aplicación **cerrada**:
+**Retención** (`domain/retencion_backups.py`, pura y determinista): 14 diarios, 8 semanales (ISO) y
+12 mensuales sobre días/semanas/meses *con backups*; además los 10 manuales más recientes, 3
+pre-update y 3 de seguridad, más los pre-update de las versiones conservadas para rollback. Se
+clasifica por manifiesto, nunca se tocan archivos ajenos y el recién creado nunca se borra.
+
+**Segundo destino**: carpeta opcional (disco externo, otra unidad, carpeta sincronizada) solo para
+copias; se valida al configurarla (absoluta, existente, escribible, fuera de `data/` y de la
+carpeta principal). Cada backup validado se copia a un temporal, se verifica tamaño y SHA-256 y
+recién entonces se publica; un fallo nunca afecta al primario.
+
+**Pre-update y migraciones**: al arrancar, una base con migraciones que esta versión no conoce no se
+abre (`DatosDeVersionMasNuevaError`); si una base existente tiene migraciones pendientes, primero se
+crea y valida un `PRE_UPDATE` y, si falla, las migraciones no empiezan. Un arranque normal no
+genera backups ni escribe la base.
+
+**Restore** (aplicación **cerrada**; `Restaurar_backup.bat` lo invoca):
 
 ```
 KioscoApp.exe --restore "C:\ruta\al\backup.zip"
 ```
 
-Valida el ZIP por completo (estructura, integridad de SQLite, rutas
-dentro del archivo) antes de tocar la instalación actual, y nunca deja
-la instalación a medio modificar: si algo falla durante el reemplazo,
-revierte automáticamente a los datos anteriores. Al terminar, se
-recomienda reiniciar la aplicación.
+Valida el backup, exige un esquema compatible con la versión que abrirá la base, guarda un
+`SEGURIDAD` del estado actual (o conserva la carpeta `data/` reemplazada si la base actual está
+dañada), reemplaza con renombrados en el mismo disco, verifica la base restaurada y, ante cualquier
+fallo, vuelve a los datos anteriores. Se niega si la app está abierta.
+
+**Actualizar y volver atrás** (técnico, app cerrada, nunca por Internet):
+
+```
+<carpeta nueva>\KioscoApp.exe --actualizar "C:\KioscoApp"
+%LOCALAPPDATA%\KioscoApp\versiones\<actual>\KioscoApp.exe --rollback <versión anterior>
+KioscoApp.exe --versiones
+```
+
+`--actualizar` crea y valida el `PRE_UPDATE` (si falla no sigue), archiva la versión instalada y la
+nueva en `%LOCALAPPDATA%\KioscoApp\versiones\` (registro `versiones.json`: actual + 2 anteriores),
+reemplaza el programa y migra; si la migración falla vuelve solo al programa y datos anteriores.
+`--rollback` nunca cambia solo el ejecutable: valida el pre-update asociado, comprueba que la
+versión anterior conoce su esquema, guarda un `SEGURIDAD` del estado actual, restaura la base y
+recién entonces pone el programa archivado.
+
+**Registro (logs)**: el ejecutable escribe `%LOCALAPPDATA%\KioscoApp\logs\twinx_express.log`
+(rotativo, 1 MB × 5) con timestamp y nivel, incluidos los errores de arranque. No
+registra contraseñas, hashes, cookies ni claves de idempotencia (ver `logging_config.py`).
 
 ## Estructura general del proyecto
 
@@ -720,6 +748,11 @@ reparten con FIFO y quedan marcados como reconstruidos (`HEREDADA_FIFO`). Los sa
 de actualizar nadie tiene crédito hasta que el OWNER configure la política general** (Configuración →
 Crédito a clientes); las deudas existentes se siguen cobrando normalmente.
 
+**Actualizar desde V1.14 (V1.15).** Sin migraciones: los datos no cambian (solo se registra la versión en
+`configuracion`). Desde esta versión conviene actualizar con `KioscoApp.exe --actualizar` (ver «Backup y
+restore»), que deja el backup previo y la versión anterior archivada para un rollback real. Después de
+actualizar, el OWNER puede configurar el segundo destino de backups en Backup.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -732,7 +765,7 @@ Crédito a clientes); las deudas existentes se siguen cobrando normalmente.
 - [x] Fase 5: Interfaz web local (FastAPI + Jinja2 + Tailwind CDN) — POS, productos, caja, dashboard
 - [x] Autenticación por sesión (OWNER/CASHIER), categorías, unidad de medida e imágenes de producto
 - [x] Compras, proveedores y empleados (alta/edición), reactivación de productos y categorías dados de baja
-- [x] Backup manual y restore (ver sección "Backup y restore" más arriba)
+- [x] Backups validados (manual, al cerrar caja, diario y pre-update), retención, segundo destino, restore y actualización/rollback (ver «Backup y restore»)
 - [x] Modo oscuro y layout responsive (375/768/1024/1440)
 - [x] Reportes de ventas, precios (historial y actualización masiva), auditoría, importación, configuración del ticket y reposición (V1.2, ver la sección «Control comercial y trazabilidad (V1.2)»)
 - [x] Caja por sesiones, clientes y cuenta corriente (ventas a cuenta y cobros en efectivo) (V1.3, ver sección anterior)

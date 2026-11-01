@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.14.0
+Twinx Express 1.15.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -72,41 +72,44 @@ reemplazar KioscoApp.exe NO requiere borrarla. Si la borras, se pierden
 esos datos y la aplicacion arranca como una instalacion nueva.
 
 
-4) COMO HACER UN BACKUP (copia de seguridad)
------------------------------------------------
+4) BACKUPS (copias de seguridad)
+-----------------------------------
 
-Con KioscoApp abierta, entra como dueño a la pagina de backup escribiendo
-esta direccion en la barra del navegador:
+KioscoApp hace backups solo:
 
-    http://127.0.0.1:8000/backup
+  - cada vez que se CIERRA LA CAJA;
+  - al abrirse, si el ultimo backup tiene mas de 24 horas;
+  - antes de cada actualizacion (ver punto 6).
 
-Ahi hay un boton "Crear backup". Al tocarlo, se genera un archivo con
-toda tu informacion: productos, ventas e imagenes. (La seccion
-"Configuracion" del menu es otra cosa: sirve para los datos del ticket,
-ver el punto 11.)
+Ademas, el dueño puede crear uno cuando quiera desde la pagina de
+Backup: menu Configuracion > "Ir a Backup" (o la direccion
+http://127.0.0.1:8000/backup). Ahi se ve tambien cuando fue el
+ultimo backup y si alguno fallo.
 
-Ese archivo (un ZIP con nombre "KioscoApp_backup_AAAA-MM-DD_HHMMSS.zip")
-se guarda solo en:
+Cada backup es un archivo ZIP con toda tu informacion (base de datos e
+imagenes) y se VERIFICA antes de darlo por bueno: si no pasa la
+verificacion, no cuenta como backup. Se guardan en:
 
     %LOCALAPPDATA%\KioscoApp\backups\
 
-(no hace falta elegir nada). La aplicacion muestra el nombre del archivo
-creado, pero no tiene un boton para descargarlo: para copiarlo tenes que
-buscarlo en la carpeta de arriba.
+Si un backup falla (por ejemplo, disco lleno), la caja igual queda
+cerrada, pero KioscoApp muestra un aviso en Caja y en Backup hasta que
+un backup nuevo salga bien. Si ves ese aviso, crea un backup desde la
+pagina de Backup y, si vuelve a fallar, pedi soporte.
 
-Ademas de los backups manuales, KioscoApp hace un backup automatico al
-abrirse si el ultimo backup tiene mas de 24 horas (o si todavia no hay
-ninguno). Se guardan en la misma carpeta.
+Cuantos se guardan: los backups de los ultimos 14 dias con uso, uno por
+semana de las ultimas 8 semanas y uno por mes de los ultimos 12 meses,
+mas siempre los ultimos 10 hechos a mano y los ultimos 3 previos a una
+actualizacion. Los demas se borran solos. KioscoApp nunca borra archivos
+que no sean sus propios backups.
 
-Para que la carpeta no crezca sin limite, KioscoApp conserva los 30
-backups mas recientes (manuales y automaticos) y, aparte, los 5 mas
-recientes de los que crea antes de actualizar. Los anteriores se borran
-solos; el backup recien creado nunca se borra. Si queres guardar uno
-para siempre, copialo a otra carpeta.
-
-Recomendacion: de vez en cuando, copia los ZIP de backup de esa carpeta
-a otro lugar (un pendrive, otra computadora, la nube). Si algo le pasa a
-esta computadora, un backup que quedo solo en ella no te va a servir.
+COPIA EXTERNA (muy recomendado): en la pagina de Backup podes elegir un
+segundo destino, por ejemplo un disco externo (E:\Backups Twinx), otra
+unidad o una carpeta que se sincronice con tu nube. Cada backup se copia
+ahi tambien y se verifica la copia. Si el disco esta desconectado, el
+backup principal se hace igual y la pagina muestra el error de la copia.
+Sin segundo destino, si el disco de esta computadora falla se pierden
+los datos y los backups juntos.
 
 
 5) COMO RESTAURAR UN BACKUP
@@ -119,16 +122,19 @@ que elijas, asi que fijate bien cual archivo estas por usar.
 Tene en cuenta:
 
   - Lo que se cargo despues de la fecha del backup (ventas, productos,
-    cambios) NO esta en el backup y se pierde al restaurar.
-  - Restaurar NO crea antes una copia de tus datos actuales. Si dudas,
-    copia a mano tus backups a otro lugar antes de restaurar.
-  - Los backups de la carpeta backups\ no se modifican al restaurar.
+    cambios) NO esta en el backup.
+  - Antes de reemplazar nada, KioscoApp guarda una copia de tus datos
+    actuales (un backup "seguridad"), asi que un restore equivocado se
+    puede deshacer restaurando esa copia.
+  - El backup se verifica completo antes de tocar nada. Si esta dañado
+    o es de una version mas nueva de KioscoApp, no se restaura nada.
   - No modifiques ni reemplaces a mano el archivo kiosco.db: usa
     siempre Restaurar_backup.bat.
 
 Pasos:
 
-  1. Cerra KioscoApp por completo (cerra la ventana negra).
+  1. Cerra KioscoApp por completo (cerra la ventana negra). Si sigue
+     abierta, el restore no se hace.
   2. Hace doble clic en "Restaurar_backup.bat" (esta en esta misma
      carpeta).
   3. Cuando te lo pida, arrastra el archivo de backup (termina en
@@ -138,58 +144,48 @@ Pasos:
   5. Volve a abrir KioscoApp normalmente.
 
 
-6) COMO ACTUALIZAR KIOSCOAPP SIN PERDER DATOS
--------------------------------------------------
+6) COMO ACTUALIZAR KIOSCOAPP (lo hace el soporte tecnico)
+-------------------------------------------------------------
 
-Cuando recibas una version nueva de KioscoApp:
+KioscoApp no se actualiza solo desde Internet. La actualizacion la hace
+el soporte tecnico con la carpeta de la version nueva (por ejemplo en un
+pendrive), con KioscoApp cerrado:
 
-  1. Cerra KioscoApp por completo.
-  2. Por las dudas, hace un backup antes de actualizar (ver punto 4).
-  3. NO borres la carpeta actual todavia: cambiale el nombre, por
-     ejemplo de "KioscoApp" a "KioscoApp_anterior".
-  4. Coloca la carpeta nueva en "C:\KioscoApp\" (el mismo lugar de
-     siempre).
-  5. Abri KioscoApp.exe de la carpeta nueva. Tus datos van a seguir
-     ahi, porque -como se explica en el punto 3- viven aparte de esta
-     carpeta.
+    <carpeta nueva>\KioscoApp.exe --actualizar "C:\KioscoApp"
 
-Importante: los datos NO estan dentro de esta carpeta, asi que no
-hace falta (ni conviene) copiarlos ni borrarlos a mano en ningun
-paso de este proceso. En particular, NO borres
-%LOCALAPPDATA%\KioscoApp\.
+Eso hace, en orden: un backup previo verificado (si falla, no se
+actualiza nada), guarda una copia de la version instalada y de la nueva
+en %LOCALAPPDATA%\KioscoApp\versiones\, reemplaza el programa y
+actualiza la base de datos. Si la actualizacion de la base falla, vuelve
+solo a la version y a los datos anteriores.
 
-Backup preventivo: cuando la version nueva trae cambios en la base de
-datos (migraciones pendientes), KioscoApp crea automaticamente un backup
-antes de aplicarlos. Se llama "KioscoApp_backup_pre_migracion_..." y
-queda en:
+Si alguien copia una version nueva a mano, KioscoApp igual crea un
+backup previo verificado antes de cambiar la base de datos, y no la
+cambia si ese backup falla.
 
-    %LOCALAPPDATA%\KioscoApp\backups\
-
-Si la version nueva no trae cambios en la base de datos, ese backup no
-se crea. Por eso el paso 2 (hacer un backup por las dudas) sigue siendo
-recomendable.
-
-Si actualizas desde la version 1.2: despues de abrir la nueva version
-tenes que abrir una caja nueva antes de vender. Lee el punto 12, apartado f).
+NO borres %LOCALAPPDATA%\KioscoApp\: ahi estan tus datos, tus backups y
+las versiones anteriores guardadas.
 
 
-7) SI UNA ACTUALIZACION FALLA (volver a la version anterior)
-------------------------------------------------------------------
+7) VOLVER A LA VERSION ANTERIOR (rollback, lo hace el soporte tecnico)
+-----------------------------------------------------------------------
 
-  1. Cerra la version nueva si la llegaste a abrir.
-  2. Borra (o mueve a otro lado) la carpeta nueva que no funciono.
-  3. Cambiale el nombre a "KioscoApp_anterior" de vuelta a
-     "KioscoApp".
-  4. Abri KioscoApp.exe como siempre.
+Volver atras nunca es solo cambiar el programa: la version anterior
+necesita los datos tal como estaban antes de actualizar. Con KioscoApp
+cerrado, desde la copia guardada de la version actual:
 
-Tus datos no se ven afectados por este paso, porque nunca estuvieron
-dentro de ninguna de las dos carpetas.
+    %LOCALAPPDATA%\KioscoApp\versiones\<version actual>\KioscoApp.exe --rollback <version anterior>
 
-Si la version nueva llego a abrirse y aplico cambios en la base de datos,
-antes de volver a la version anterior restaura el backup
-"KioscoApp_backup_pre_migracion_..." (ver punto 5). Si tenes dudas, pedi
-soporte antes de seguir.
+Verifica el backup previo de esa actualizacion, guarda una copia de los
+datos actuales, restaura los datos de antes de actualizar y vuelve a
+poner el programa anterior en C:\KioscoApp. Lo que se cargo despues de
+la actualizacion queda en esa copia de seguridad.
 
+Para ver que versiones hay guardadas:
+
+    KioscoApp.exe --versiones
+
+Se conservan la version actual y hasta 2 anteriores.
 
 8) CATALOGO INICIAL
 ------------------------

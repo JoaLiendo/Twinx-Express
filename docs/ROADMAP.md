@@ -2,7 +2,7 @@
 
 > Roadmap vivo, no retrospectivo (el detalle de lo ya implementado por versión está en `README.md`,
 > `LEEME.txt` y `PROGRESS.md`). Se actualiza a medida que cada versión se define o se cierra.
-> V1.11–V1.14 están cerradas; V1.15–V1.18 tienen el alcance acordado que se detalla abajo.
+> V1.11–V1.15 están cerradas; V1.16–V1.18 tienen el alcance acordado que se detalla abajo.
 
 ## V1.11 — Trazabilidad de ajustes de stock
 
@@ -103,16 +103,26 @@ Limitaciones aceptadas de V1.12 en `docs/V1.12_PARTIDAS.md`; de V1.13, en `PROGR
 Fuera de alcance (no implementado): intereses, recargos, refinanciaciones, cuotas, vencimientos por venta,
 saldo a favor, cobranza automática, notificaciones externas, scoring, calificación subjetiva de clientes.
 
-## V1.15 — Backups y actualizaciones
+## V1.15 — Backups y actualizaciones (cerrada, release 1.15.0)
 
-- Backups automáticos.
-- Backup al cerrar caja.
-- Backup pre-actualización.
-- Retención.
-- Segundo destino.
-- Validación de integridad.
-- Actualización controlada.
-- Rollback seguro usando ejecutable + backup correspondiente.
+Sin migraciones nuevas. Reutiliza y endurece el backup/restore existente (no hay un sistema paralelo).
+
+- **V1.15-A**: manifiesto en cada ZIP (versión, tipo, id, fecha, migraciones, integridad, SHA-256 por archivo)
+  y validación completa antes de publicar (ZIP, nombres seguros, symlinks, tamaño, `integrity_check`,
+  `foreign_key_check`, coherencia del manifiesto). El backup copia siempre la base activa.
+- **V1.15-B**: backup `CIERRE_CAJA` tras confirmar el cierre; si falla la caja sigue cerrada y queda una alerta
+  auditada hasta un backup correcto. Idempotente por sesión.
+- **V1.15-C**: retención 14 diarios / 8 semanales / 12 mensuales (días, semanas ISO y meses *con backups*),
+  10 manuales, 3 pre-update y 3 de seguridad; nunca borra archivos ajenos ni pre-update protegidos.
+- **V1.15-D**: segundo destino opcional solo para copias, verificado por tamaño y SHA-256; un fallo nunca
+  afecta al primario.
+- **V1.15-E**: `PRE_UPDATE` validado obligatorio antes de migrar una base existente; versión de origen/destino
+  en el manifiesto; una base de una versión más nueva no se abre.
+- **V1.15-F**: `--actualizar`, `--rollback` y `--versiones` (técnico, app cerrada); rollback = programa
+  archivado + su pre-update, con backup de seguridad previo; restore con compatibilidad de esquema, backup de
+  seguridad y rechazo con la app abierta.
+
+Fuera de alcance: actualización por Internet, integración con APIs de nube, rollback desde la web.
 
 ## V1.16 — Facturación fiscal ARCA
 
