@@ -399,3 +399,9 @@ class InventarioDesactualizadoError(ErrorAplicacion):
     def __init__(self, mensaje: str, productos: list[str]) -> None:
         super().__init__(mensaje)
         self.productos = productos
+
+
+class ErrorActualizacion(ErrorAplicacion):
+    """No se pudo actualizar o volver a una versión anterior (ver
+    `services.servicio_actualizacion`). El mensaje es para el técnico que
+    corre el comando: dice qué pasó y en qué estado quedó la instalación."""

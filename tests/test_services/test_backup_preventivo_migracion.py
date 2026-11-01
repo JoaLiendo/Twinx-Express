@@ -172,7 +172,7 @@ def test_el_backup_preventivo_usa_el_formato_existente_y_es_restaurable(entorno,
     ruta_backup = _migrar(entorno)
 
     # El validador del restore real acepta el ZIP: mismo formato que cualquier backup.
-    extraido = modulo_restore.validar_y_extraer_backup(ruta_backup, tmp_path / "validacion")
+    extraido, _ = modulo_restore.validar_y_extraer_backup(ruta_backup, tmp_path / "validacion")
 
     assert (extraido / "kiosco.db").is_file()
     assert (extraido / "imagenes_productos").is_dir()

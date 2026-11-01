@@ -85,3 +85,9 @@ RETENCION_BACKUPS = {"diarios": 14, "semanales": 8, "mensuales": 12, "pre_update
 
 # Log persistente (ver `logging_config.py`), hermano de `data/` y `backups/`.
 DIRECTORIO_LOGS = DIRECTORIO_DATA.parent / "logs"
+
+# Versiones del programa conservadas para rollback (V1.15-F, ver
+# `services.registro_versiones`): copia archivada de la versión actual y de
+# hasta `VERSIONES_ANTERIORES_A_CONSERVAR` anteriores, hermana de `data/`.
+DIRECTORIO_VERSIONES = DIRECTORIO_DATA.parent / "versiones"
+VERSIONES_ANTERIORES_A_CONSERVAR = 2

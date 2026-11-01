@@ -264,7 +264,7 @@ def test_backup_y_restore_conservan_el_marcador_y_no_se_vuelve_a_sembrar(
     monkeypatch.setattr(modulo_imagenes, "DIRECTORIO_IMAGENES_PRODUCTOS", dir_imagenes)
 
     ruta_zip = modulo_backup.crear_backup(tmp_path / "backups", ControlEscrituras())
-    extraido = modulo_restore.validar_y_extraer_backup(ruta_zip, tmp_path / "restore")
+    extraido, _ = modulo_restore.validar_y_extraer_backup(ruta_zip, tmp_path / "restore")
 
     conexion = sqlite3.connect(extraido / "kiosco.db")
     try:

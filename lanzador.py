@@ -225,20 +225,26 @@ def _importar_restaurar_desde_backup():
     return restaurar_desde_backup
 
 
-def _modo_restore(ruta_zip, obtener_ejecutar_restore):
+def _modo_restore(ruta_zip, obtener_ejecutar_restore, aplicacion_en_uso=_puerto_ocupado):
     """Ejecuta `KioscoApp.exe --restore <ruta_zip>`: no inicia FastAPI
     ni abre el navegador, solo corre la restauración y termina.
 
-    Un ZIP inválido (`ErrorRestore`) o un conflicto de datos ya
-    detectado por `config.py` (`ErrorMigracionDatos`) muestran un
-    mensaje claro sin traceback; cualquier otro error es inesperado y
-    conserva el diagnóstico completo. Devuelve el código de salida del
-    proceso (0 éxito, 1 error).
+    Se niega si la aplicación está abierta (puerto en uso): reemplazar los
+    datos mientras el servidor escribe los dañaría. Un ZIP inválido
+    (`ErrorRestore`) o un conflicto de datos ya detectado por `config.py`
+    (`ErrorMigracionDatos`) muestran un mensaje claro sin traceback;
+    cualquier otro error es inesperado y conserva el diagnóstico completo.
+    Devuelve el código de salida del proceso (0 éxito, 1 error).
     """
+    if aplicacion_en_uso():
+        print("\n--- NO SE RESTAURÓ NADA ---")
+        print("Twinx Express está abierto. Cerralo (y su ventana negra) y volvé a intentar.")
+        input("\nPresiona Enter para cerrar esta ventana...")
+        return 1
     try:
         _configurar_logging()
         ejecutar_restore = obtener_ejecutar_restore()
-        ejecutar_restore(ruta_zip)
+        resultado = ejecutar_restore(ruta_zip)
     except Exception as error:
         if isinstance(error, ErrorRestore) or type(error).__name__ == "ErrorMigracionDatos":
             print("\n--- ERROR AL RESTAURAR EL BACKUP ---")
@@ -250,7 +256,64 @@ def _modo_restore(ruta_zip, obtener_ejecutar_restore):
         return 1
 
     print(f"\nRestore completado correctamente desde: {ruta_zip}")
+    if getattr(resultado, "backup_seguridad", None):
+        print(f"Los datos que había antes quedaron guardados en: {resultado.backup_seguridad}")
+    elif getattr(resultado, "datos_reemplazados", None):
+        print(f"Los datos que había antes quedaron conservados en: {resultado.datos_reemplazados}")
     print("Se recomienda reiniciar la aplicación antes de usarla.")
+    input("\nPresiona Enter para cerrar esta ventana...")
+    return 0
+
+
+def _comando_de_mantenimiento(argv):
+    """`(comando, argumento)` para `--actualizar <carpeta>`, `--rollback
+    <version>` y `--versiones`; `None` en una ejecución normal."""
+    if len(argv) >= 3 and argv[1] in ("--actualizar", "--rollback"):
+        return argv[1], argv[2]
+    if len(argv) >= 2 and argv[1] == "--versiones":
+        return argv[1], None
+    return None
+
+
+def _ejecutar_mantenimiento(comando, argumento, aplicacion_en_uso=_puerto_ocupado):
+    """Comandos de técnico (V1.15-F): actualizar, volver a una versión
+    anterior y listar las versiones conservadas. Devuelve el código de salida."""
+    from pathlib import Path
+
+    try:
+        _configurar_logging()
+        from services import servicio_actualizacion
+
+        programa_actual = Path(sys.executable).resolve().parent
+        if comando == "--actualizar":
+            r = servicio_actualizacion.actualizar(Path(argumento), programa_actual, aplicacion_en_uso())
+            mensaje = (
+                f"Actualización completa: {r.version_anterior} -> {r.version_nueva}.\n"
+                f"Backup previo (para volver atrás): {r.backup_pre_update}"
+            )
+        elif comando == "--rollback":
+            r = servicio_actualizacion.rollback(argumento, programa_actual, aplicacion_en_uso())
+            mensaje = f"Se volvió a la versión {r.version} con los datos de {r.backup_restaurado.name}."
+            if r.backup_seguridad:
+                mensaje += f"\nLos datos que había antes quedaron guardados en: {r.backup_seguridad}"
+        else:
+            registro = servicio_actualizacion.versiones_conservadas()
+            lineas = [f"Instalación: {registro.instalacion or 'sin registrar'} (activa: {registro.activa or '-'})"]
+            for v in sorted(registro.versiones, key=lambda v: v.fecha):
+                lineas.append(f"  {v.version}  {v.carpeta}  backup previo: {v.backup_pre_update or '-'}")
+            mensaje = "\n".join(lineas)
+    except Exception as error:
+        from excepciones import ErrorAplicacion
+
+        if isinstance(error, ErrorAplicacion) or type(error).__name__ == "ErrorMigracionDatos":
+            print("\n--- NO SE PUDO COMPLETAR ---")
+            print(str(error))
+        else:
+            print("\n--- ERROR CRITICO ---")
+            traceback.print_exc()
+        input("\nPresiona Enter para cerrar esta ventana...")
+        return 1
+    print("\n" + mensaje)
     input("\nPresiona Enter para cerrar esta ventana...")
     return 0
 
@@ -259,6 +322,9 @@ if __name__ == "__main__":
     _ruta_zip_restore = _ruta_zip_restore_o_none(sys.argv)
     if _ruta_zip_restore is not None:
         sys.exit(_modo_restore(_ruta_zip_restore, _importar_restaurar_desde_backup))
+    _mantenimiento = _comando_de_mantenimiento(sys.argv)
+    if _mantenimiento is not None:
+        sys.exit(_ejecutar_mantenimiento(*_mantenimiento))
 
     evento_servidor_listo = threading.Event()
     hilo_servidor = threading.Thread(

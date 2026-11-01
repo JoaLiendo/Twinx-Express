@@ -334,3 +334,34 @@ def test_modo_restore_error_inesperado_conserva_traceback(monkeypatch, capsys):
     assert codigo == 1
     assert "RuntimeError" in salida.err
     assert "fallo inesperado durante restore" in salida.err
+
+
+# --- V1.15-F: comandos de mantenimiento ------------------------------------
+
+
+def test_detecta_comandos_de_mantenimiento():
+    assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--actualizar", "C:\KioscoApp"]) == ("--actualizar", "C:\KioscoApp")
+    assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--rollback", "1.14.0"]) == ("--rollback", "1.14.0")
+    assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--versiones"]) == ("--versiones", None)
+    assert lanzador._comando_de_mantenimiento(["KioscoApp.exe"]) is None
+    assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--rollback"]) is None
+
+
+def test_mantenimiento_con_error_de_negocio_da_mensaje_claro_y_codigo_1(monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda *_: "")
+    monkeypatch.setattr(lanzador, "_configurar_logging", lambda: None)
+
+    codigo = lanzador._ejecutar_mantenimiento("--rollback", "0.0.1", aplicacion_en_uso=lambda: False)
+
+    salida = capsys.readouterr().out
+    assert codigo == 1
+    assert "NO SE PUDO COMPLETAR" in salida
+    assert "Traceback" not in salida
+
+
+def test_mantenimiento_lista_versiones(monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda *_: "")
+    monkeypatch.setattr(lanzador, "_configurar_logging", lambda: None)
+
+    assert lanzador._ejecutar_mantenimiento("--versiones", None, aplicacion_en_uso=lambda: False) == 0
+    assert "Instalación" in capsys.readouterr().out

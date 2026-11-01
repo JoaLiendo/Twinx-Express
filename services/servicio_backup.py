@@ -19,7 +19,7 @@ import tempfile
 import threading
 import uuid
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -53,8 +53,17 @@ from domain.backup import (
     Manifiesto,
 )
 from domain.retencion_backups import TIPOS_REGULARES, BackupClasificado, PoliticaRetencion, backups_a_conservar
-from excepciones import BackupEnCursoError, BackupInvalidoError, DatosDeVersionMasNuevaError, ErrorBackup, ErrorBaseDatos
+from excepciones import (
+    BackupEnCursoError,
+    BackupInvalidoError,
+    DatosDeVersionMasNuevaError,
+    ErrorActualizacion,
+    ErrorBackup,
+    ErrorBaseDatos,
+)
 from services import servicio_destino_secundario
+from services import registro_versiones
+from services.registro_versiones import backups_protegidos
 from services.formato_backup import (
     CARPETA_IMAGENES,
     NOMBRE_DB,
@@ -135,6 +144,7 @@ def crear_backup(
     version_origen: str | None = None,
     ahora: datetime | None = None,
     esperar_turno: bool = False,
+    origen_datos: Path | None = None,
 ) -> Path:
     """Genera un backup validado dentro de `directorio_destino` y devuelve su
     ruta. Un backup que no pasa `formato_backup.validar_backup` nunca se
@@ -166,6 +176,7 @@ def crear_backup(
             version_destino=version_destino,
             version_origen=version_origen,
             esperar_turno=esperar_turno,
+            origen_datos=origen_datos,
         )
     except OSError as error:
         logger.error("No se pudo escribir el backup: %s", error)
@@ -173,7 +184,7 @@ def crear_backup(
     logger.info("Backup %s creado y validado: %s", tipo, ruta_final.name)
 
     try:
-        aplicar_retencion(directorio_destino, ruta_final)
+        aplicar_retencion(directorio_destino, ruta_final, protegidos=backups_protegidos())
     except OSError as error:
         # El backup ya está publicado y validado: un fallo de la limpieza no lo invalida.
         logger.error("No se pudo aplicar la retención de backups: %s", error)
@@ -191,6 +202,7 @@ def _crear_backup_validado(
     version_destino: str | None,
     version_origen: str | None,
     esperar_turno: bool,
+    origen_datos: Path | None,
 ) -> Path:
     directorio_destino.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=directorio_destino, prefix=".kioscoapp_backup_tmp_") as tmp:
@@ -201,10 +213,18 @@ def _crear_backup_validado(
         if not control_escrituras.iniciar_backup(timeout=30, esperar_otro_backup=esperar_turno):
             raise BackupEnCursoError("Ya hay un backup en curso. Esperá a que termine e intentá de nuevo.")
         try:
-            # Siempre la base y las imágenes que la aplicación está usando de verdad:
-            # nunca un binding propio de `config` que pueda quedar desincronizado.
-            copiar_base_consistente(modulo_conexion.RUTA_BASE_DATOS, datos_tmp / NOMBRE_DB)
-            shutil.copytree(modulo_imagenes.DIRECTORIO_IMAGENES_PRODUCTOS, datos_tmp / CARPETA_IMAGENES)
+            # Por defecto, la base y las imágenes que la aplicación está usando de
+            # verdad: nunca un binding propio de `config` que pueda desincronizarse.
+            # `origen_datos` (una carpeta `data/` explícita) lo usa el restore.
+            if origen_datos is not None:
+                ruta_db, imagenes = origen_datos / NOMBRE_DB, origen_datos / CARPETA_IMAGENES
+            else:
+                ruta_db, imagenes = modulo_conexion.RUTA_BASE_DATOS, modulo_imagenes.DIRECTORIO_IMAGENES_PRODUCTOS
+            copiar_base_consistente(ruta_db, datos_tmp / NOMBRE_DB)
+            if imagenes.is_dir():
+                shutil.copytree(imagenes, datos_tmp / CARPETA_IMAGENES)
+            else:
+                (datos_tmp / CARPETA_IMAGENES).mkdir()
         except ErrorBaseDatos as error:
             raise ErrorBackup(f"No se pudo copiar la base de datos: {error}") from error
         finally:
@@ -302,7 +322,7 @@ def aplicar_retencion(
     directorio_backups: Path,
     recien_creado: Path,
     politica: PoliticaRetencion | None = None,
-    protegidos: frozenset[str] = frozenset(),
+    protegidos: frozenset[str] | None = frozenset(),
 ) -> list[Path]:
     """Borra los backups que la política de retención ya no conserva (ver
     `domain.retencion_backups`) y devuelve los que borró.
@@ -319,6 +339,9 @@ def aplicar_retencion(
         if leer_manifiesto(ruta) is not None or zipfile.is_zipfile(ruta)
     ]
     politica = politica or POLITICA_RETENCION
+    if protegidos is None:  # registro de versiones ilegible: ningún pre-update se borra
+        politica = replace(politica, pre_update=len(candidatos))
+        protegidos = frozenset()
     conservar = backups_a_conservar([c for _, c in candidatos], politica, protegidos) | {recien_creado.name}
     borrados: list[Path] = []
     for ruta, clasificado in candidatos:
@@ -554,7 +577,7 @@ def copiar_a_destino_secundario(
         return resultado
     _auditar(usuario_id, ACCION_BACKUP_SECUNDARIO_OK, f"{ruta_backup.name} copiado a {destino}")
     try:
-        aplicar_retencion(destino, resultado.ruta)
+        aplicar_retencion(destino, resultado.ruta, protegidos=backups_protegidos())
     except OSError as error:
         logger.error("No se pudo aplicar la retención en el segundo destino: %s", error)
     return resultado
@@ -579,10 +602,74 @@ class EstadoBackups:
     ultima_copia_secundaria: EntradaAuditoria | None
     error_secundario: EntradaAuditoria | None
     politica: PoliticaRetencion
+    puntos_de_retorno: list["PuntoDeRetorno"]
+    """Backups previos a actualizaciones, ya validados de verdad."""
+    versiones_conservadas: list[str]
+
+
+@dataclass(frozen=True)
+class PuntoDeRetorno:
+    nombre: str
+    fecha: datetime
+    version_origen: str | None
+    version_destino: str | None
+    valido: bool
+    motivo: str | None = None
+
+
+_cache_validacion: dict[tuple[str, int, int], str | None] = {}
+
+
+def _motivo_si_invalido(ruta: Path) -> str | None:
+    """`None` si el backup pasa la validación completa; si no, el motivo.
+    Se recuerda por (nombre, tamaño, fecha de modificación): un archivo que
+    cambia se vuelve a validar."""
+    estado = ruta.stat()
+    clave = (ruta.name, estado.st_size, estado.st_mtime_ns)
+    if clave not in _cache_validacion:
+        try:
+            validar_backup(ruta)
+            _cache_validacion[clave] = None
+        except BackupInvalidoError as error:
+            _cache_validacion[clave] = str(error)
+    return _cache_validacion[clave]
+
+
+def _puntos_de_retorno(propios: list[tuple[Path, BackupClasificado]]) -> list[PuntoDeRetorno]:
+    puntos = []
+    for ruta, clasificado in propios:
+        if clasificado.tipo != TIPO_PRE_UPDATE:
+            continue
+        manifiesto = leer_manifiesto(ruta)
+        try:
+            motivo = _motivo_si_invalido(ruta)
+        except OSError as error:
+            motivo = f"no se pudo leer: {error.strerror or error}"
+        puntos.append(
+            PuntoDeRetorno(
+                ruta.name,
+                clasificado.fecha,
+                manifiesto.version_origen if manifiesto else None,
+                manifiesto.version_destino if manifiesto else None,
+                motivo is None,
+                motivo,
+            )
+        )
+    return sorted(puntos, key=lambda p: p.fecha, reverse=True)
+
+
+def _versiones_conservadas() -> list[str]:
+    try:
+        registro = registro_versiones.leer()
+    except ErrorActualizacion as error:
+        logger.error("%s", error)
+        return []
+    return [v.version for v in sorted(registro.versiones, key=lambda v: v.fecha, reverse=True) if v.backup_pre_update]
 
 
 def estado_backups() -> EstadoBackups:
-    propios = [c for _, c in _backups_propios(DIRECTORIO_BACKUPS)]
+    con_rutas = _backups_propios(DIRECTORIO_BACKUPS)
+    propios = [c for _, c in con_rutas]
     ultimo = max(propios, key=lambda c: (c.fecha, c.nombre)) if propios else None
     ultima_ok = ultimo_error = None
     try:
@@ -602,6 +689,8 @@ def estado_backups() -> EstadoBackups:
         ultima_copia_secundaria=ultima_ok,
         error_secundario=ultimo_error,
         politica=POLITICA_RETENCION,
+        puntos_de_retorno=_puntos_de_retorno(con_rutas),
+        versiones_conservadas=_versiones_conservadas(),
     )
 
 
@@ -618,7 +707,7 @@ def version_registrada_en_la_base() -> str | None:
         return None  # base anterior a la tabla de configuración
 
 
-def _registrar_version_en_la_base() -> None:
+def registrar_version_en_la_base() -> None:
     """Solo escribe si cambió: un arranque normal no modifica la base."""
     try:
         with modulo_conexion.obtener_conexion(inmediata=True) as conexion:
@@ -690,5 +779,5 @@ def migrar_base_datos_con_backup_preventivo(directorio_backups: Path, control_es
         logger.info("Backup preventivo previo a la migración creado: %s", ruta_backup.name)
 
     inicializar_base_datos()
-    _registrar_version_en_la_base()
+    registrar_version_en_la_base()
     return ruta_backup

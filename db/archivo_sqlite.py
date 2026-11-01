@@ -46,6 +46,28 @@ def copiar_base_consistente(origen: Path, destino: Path) -> None:
         raise ErrorBaseDatos(f"No se pudo copiar la base de datos: {error}") from error
 
 
+def registrar_auditoria_en_archivo(ruta: Path, accion: str, entidad: str, resumen: str) -> None:
+    """Deja una entrada de auditoría sin usuario en una base que la aplicación
+    no está usando (ej. la recién restaurada por consola, con el programa
+    cerrado). `accion` y `resumen` ya vienen normalizados por el dominio.
+
+    Raises:
+        ErrorBaseDatos: si la base no se puede escribir o no tiene la tabla.
+    """
+    try:
+        conexion = sqlite3.connect(ruta)
+        try:
+            with conexion:
+                conexion.execute(
+                    "INSERT INTO auditoria (usuario_id, accion, entidad, entidad_id, resumen) VALUES (NULL, ?, ?, NULL, ?)",
+                    (accion, entidad, resumen),
+                )
+        finally:
+            conexion.close()
+    except sqlite3.Error as error:
+        raise ErrorBaseDatos(f"No se pudo registrar la auditoría: {error}") from error
+
+
 def verificar_archivo(ruta: Path) -> VerificacionSQLite:
     """Abre `ruta` en solo lectura y corre `integrity_check` y
     `foreign_key_check`, más la lista de migraciones aplicadas (vacía si la

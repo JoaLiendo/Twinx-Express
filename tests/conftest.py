@@ -6,6 +6,7 @@ Tampoco se escriben imágenes reales bajo `data/imagenes_productos/`
 (ver `directorio_imagenes_temporal`).
 """
 
+import config
 import db.conexion as modulo_conexion
 import services.servicio_auth as modulo_auth
 import services.servicio_imagenes as modulo_imagenes
@@ -44,6 +45,7 @@ def backups_aislados(tmp_path, monkeypatch):
     imagenes = tmp_path / "imagenes_aisladas"
     imagenes.mkdir()
     monkeypatch.setattr(modulo_backup, "DIRECTORIO_BACKUPS", tmp_path / "backups_aislados")
+    monkeypatch.setattr(config, "DIRECTORIO_VERSIONES", tmp_path / "versiones_aisladas")
     monkeypatch.setattr(modulo_imagenes, "DIRECTORIO_IMAGENES_PRODUCTOS", imagenes)
     # Síncrona en tests: un hilo que sobreviviera al test leería la base real tras el teardown.
     monkeypatch.setattr(modulo_backup, "_lanzar_copia_secundaria", modulo_backup.copiar_a_destino_secundario)
