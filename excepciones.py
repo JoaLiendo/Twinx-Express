@@ -405,3 +405,82 @@ class ErrorActualizacion(ErrorAplicacion):
     """No se pudo actualizar o volver a una versión anterior (ver
     `services.servicio_actualizacion`). El mensaje es para el técnico que
     corre el comando: dice qué pasó y en qué estado quedó la instalación."""
+
+
+class ErrorFiscal(ErrorAplicacion):
+    """Base de los errores de facturación fiscal ARCA (V1.16). Ninguno autoriza nada: ante cualquiera
+    de ellos el comprobante queda en el estado que su máquina de estados indique, nunca "autorizado"."""
+
+
+class FiscalizacionBloqueadaError(ErrorFiscal):
+    """Faltan datos para fiscalizar correctamente (producto sin tratamiento de IVA, cliente sin
+    condición fiscal, receptor sin identificar sobre el umbral, clase de comprobante no implementada...).
+    La venta sigue registrada: lo que no se hace es falsificar un comprobante. `motivos` explica qué
+    corregir, uno por renglón."""
+
+    codigo = "FISCALIZACION_BLOQUEADA"
+
+    def __init__(self, mensaje: str, motivos: list[str] | None = None) -> None:
+        super().__init__(mensaje)
+        self.motivos = motivos or [mensaje]
+
+
+class ConfiguracionFiscalError(ErrorFiscal):
+    """El perfil fiscal del emisor no existe, está incompleto o no fue validado contra ARCA."""
+
+    codigo = "FISCAL_NO_CONFIGURADO"
+
+
+class ProduccionFiscalNoHabilitadaError(ErrorFiscal):
+    """Se intentó operar contra producción sin la habilitación explícita del técnico."""
+
+
+class CredencialesFiscalesError(ErrorFiscal):
+    """El certificado o la clave privada faltan, no corresponden entre sí, vencieron, son de otro
+    ambiente o no pueden descifrarse. El mensaje nunca incluye material secreto."""
+
+
+class ErrorWSAA(ErrorFiscal):
+    """WSAA rechazó el pedido de Ticket de Acceso o respondió algo inválido (mensaje sanitizado)."""
+
+
+class ErrorComunicacionARCA(ErrorFiscal):
+    """No se pudo completar el intercambio con ARCA. `enviado` distingue lo crítico: si el pedido no
+    llegó a enviarse es seguro reintentar; si se envió y no hubo respuesta, el resultado es INCIERTO."""
+
+    def __init__(self, mensaje: str, *, enviado: bool) -> None:
+        super().__init__(mensaje)
+        self.enviado = enviado
+
+
+class RespuestaARCAInvalidaError(ErrorFiscal):
+    """ARCA respondió algo que no puede interpretarse con seguridad (XML malformado, SOAP Fault,
+    estructura inesperada). Si el pedido era una autorización, el resultado es INCIERTO."""
+
+
+class SecuenciaFiscalBloqueadaError(ErrorFiscal):
+    """Hay un comprobante INCIERTO o en envío en el mismo punto de venta y tipo: hasta conciliarlo no se
+    emite el siguiente (podría duplicar o saltear numeración)."""
+
+    codigo = "SECUENCIA_FISCAL_BLOQUEADA"
+
+
+class ComprobanteFiscalNoEncontradoError(ErrorFiscal):
+    """No existe el comprobante fiscal pedido."""
+
+
+class OperacionFiscalInvalidaError(ErrorFiscal):
+    """La operación no corresponde al estado actual del comprobante (ej. conciliar uno autorizado,
+    descartar uno ya enviado, nota de crédito de un comprobante no autorizado)."""
+
+
+class VentaConComprobanteFiscalError(ErrorFiscal):
+    """La venta tiene un comprobante fiscal vivo: no se anula localmente como si la factura no hubiera
+    existido; se cancela con una nota de crédito."""
+
+
+class FiscalizacionNoDisponibleError(ErrorFiscal):
+    """ARCA no responde y no hay un CAEA vigente con contingencia habilitada: Twinx no emite ningún
+    comprobante fiscal (la venta sigue registrada)."""
+
+    codigo = "FISCALIZACION_NO_DISPONIBLE"

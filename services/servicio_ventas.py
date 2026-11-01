@@ -23,6 +23,7 @@ from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import caja as repositorio_caja
 from db.repositorios import clientes as repositorio_clientes
 from db.repositorios import compradores_autorizados as repositorio_autorizados
+from db.repositorios import fiscal as repositorio_fiscal
 from db.repositorios import obligaciones as repositorio_obligaciones
 from db.repositorios import partidas as repositorio_partidas
 from db.repositorios import productos as repositorio_productos
@@ -58,6 +59,7 @@ from excepciones import (
     ProductoNoEncontradoError,
     StockInsuficienteError,
     VentaACuentaNoAnulableError,
+    VentaConComprobanteFiscalError,
     VentaDeCajaCerradaError,
     VentaNoEncontradaError,
     VentaRequiereAutorizacionVencidosError,
@@ -566,6 +568,12 @@ def anular_venta(
             raise VentaYaAnuladaError(f"La venta {venta_id} ya fue anulada anteriormente.")
         if venta.tipo_pago == TIPO_PAGO_CUENTA_CORRIENTE:
             raise VentaACuentaNoAnulableError(f"La venta {venta_id} es a cuenta corriente y no puede anularse.")
+        # V1.16: una factura fiscal (autorizada, en envío o incierta) no desaparece anulando la venta: se
+        # cancela con una nota de crédito. El trigger de la migración 041 lo exige también en la base.
+        if repositorio_fiscal.venta_tiene_comprobante_vivo_en_conexion(conexion, venta_id):
+            raise VentaConComprobanteFiscalError(
+                f"La venta {venta_id} tiene un comprobante fiscal: cancelala con una nota de crédito desde su detalle."
+            )
 
         sesion_vigente = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion)
         if sesion_vigente is None:
