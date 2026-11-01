@@ -561,59 +561,67 @@ def anular_venta(
     validar_motivo_anulacion(motivo, observaciones)
 
     with obtener_conexion(inmediata=True) as conexion:
-        venta = repositorio_ventas.obtener_por_id_en_conexion(conexion, venta_id)
-        if venta is None:
-            raise VentaNoEncontradaError(f"No existe una venta con id {venta_id}.")
-        if venta.estado != "ACTIVA":
-            raise VentaYaAnuladaError(f"La venta {venta_id} ya fue anulada anteriormente.")
-        if venta.tipo_pago == TIPO_PAGO_CUENTA_CORRIENTE:
-            raise VentaACuentaNoAnulableError(f"La venta {venta_id} es a cuenta corriente y no puede anularse.")
+        validar_anulable_en_conexion(conexion, venta_id)
         # V1.16: una factura fiscal (autorizada, en envío o incierta) no desaparece anulando la venta: se
         # cancela con una nota de crédito. El trigger de la migración 041 lo exige también en la base.
         if repositorio_fiscal.venta_tiene_comprobante_vivo_en_conexion(conexion, venta_id):
             raise VentaConComprobanteFiscalError(
                 f"La venta {venta_id} tiene un comprobante fiscal: cancelala con una nota de crédito desde su detalle."
             )
-
-        sesion_vigente = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion)
-        if sesion_vigente is None:
-            raise VentaDeCajaCerradaError(
-                "No hay ninguna caja abierta en este momento: no se puede anular la venta."
-            )
-        if repositorio_ventas.obtener_sesion_id_en_conexion(conexion, venta_id) != sesion_vigente.id:
-            raise VentaDeCajaCerradaError(
-                f"La venta {venta_id} pertenece a una sesión de caja ya cerrada: "
-                "anularla implicaría modificar un cierre histórico, fuera de alcance."
-            )
-
-        items = repositorio_ventas.listar_items_en_conexion(conexion, venta_id)
-        cantidad_por_producto: dict[int, int] = {}
-        for item in items:
-            cantidad_por_producto[item.producto_id] = (
-                cantidad_por_producto.get(item.producto_id, 0) + item.cantidad
-            )
-
-        for producto_id, cantidad in cantidad_por_producto.items():
-            producto = repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos(
-                conexion, producto_id
-            )
-            if producto is None:
-                raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
-            producto.actualizar_stock(producto.stock_actual + cantidad)
-            repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
-        # V1.12: cada línea devuelve sus unidades a las mismas partidas de las que salieron.
-        for detalle_id, producto_id, cantidad in repositorio_partidas.lineas_de_venta_en_conexion(conexion, venta_id):
-            servicio_partidas.devolver_linea_de_venta_en_conexion(conexion, detalle_id, producto_id, cantidad)
-        servicio_partidas.verificar_conciliacion_en_conexion(conexion, cantidad_por_producto)
-
-        venta_anulada = repositorio_ventas.anular_venta_en_conexion(
-            conexion, venta_id, motivo=motivo, observaciones=observaciones, usuario_id=usuario_id
-        )
-        repositorio_auditoria.registrar_en_conexion(
-            conexion, usuario_id, "VENTA_ANULADA", "VENTA", venta_id, f"Motivo: {motivo}"
-        )
+        venta_anulada = anular_en_conexion(conexion, venta_id, motivo, observaciones, usuario_id)
 
     logger.info(
         "Venta anulada: id=%s motivo=%s usuario_id=%s", venta_id, motivo, usuario_id
     )
+    return venta_anulada
+
+
+def validar_anulable_en_conexion(conexion: ConexionBD, venta_id: int) -> Venta:
+    """Reglas comerciales de una anulación (V1.3): la venta existe, está ACTIVA, no es a cuenta corriente y
+    pertenece a la sesión de caja abierta. También las usa la cancelación con nota de crédito (V1.16-F),
+    que las verifica ANTES de pedir la NC a ARCA para no autorizar una NC que luego no pueda aplicarse."""
+    venta = repositorio_ventas.obtener_por_id_en_conexion(conexion, venta_id)
+    if venta is None:
+        raise VentaNoEncontradaError(f"No existe una venta con id {venta_id}.")
+    if venta.estado != "ACTIVA":
+        raise VentaYaAnuladaError(f"La venta {venta_id} ya fue anulada anteriormente.")
+    if venta.tipo_pago == TIPO_PAGO_CUENTA_CORRIENTE:
+        raise VentaACuentaNoAnulableError(f"La venta {venta_id} es a cuenta corriente y no puede anularse.")
+    sesion_vigente = repositorio_caja.obtener_sesion_abierta_en_conexion(conexion)
+    if sesion_vigente is None:
+        raise VentaDeCajaCerradaError(
+            "No hay ninguna caja abierta en este momento: no se puede anular la venta."
+        )
+    if repositorio_ventas.obtener_sesion_id_en_conexion(conexion, venta_id) != sesion_vigente.id:
+        raise VentaDeCajaCerradaError(
+            f"La venta {venta_id} pertenece a una sesión de caja ya cerrada: "
+            "anularla implicaría modificar un cierre histórico, fuera de alcance."
+        )
+    return venta
+
+
+def anular_en_conexion(
+    conexion: ConexionBD, venta_id: int, motivo: str, observaciones: str | None, usuario_id: int
+) -> Venta:
+    """Efecto comercial de la anulación dentro de la transacción recibida (stock, partidas, estado y
+    auditoría). Quien llama ya validó con `validar_anulable_en_conexion`."""
+    cantidad_por_producto: dict[int, int] = {}
+    for item in repositorio_ventas.listar_items_en_conexion(conexion, venta_id):
+        cantidad_por_producto[item.producto_id] = cantidad_por_producto.get(item.producto_id, 0) + item.cantidad
+
+    for producto_id, cantidad in cantidad_por_producto.items():
+        producto = repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos(conexion, producto_id)
+        if producto is None:
+            raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
+        producto.actualizar_stock(producto.stock_actual + cantidad)
+        repositorio_productos.actualizar_stock_en_conexion(conexion, producto.id, producto.stock_actual)
+    # V1.12: cada línea devuelve sus unidades a las mismas partidas de las que salieron.
+    for detalle_id, producto_id, cantidad in repositorio_partidas.lineas_de_venta_en_conexion(conexion, venta_id):
+        servicio_partidas.devolver_linea_de_venta_en_conexion(conexion, detalle_id, producto_id, cantidad)
+    servicio_partidas.verificar_conciliacion_en_conexion(conexion, cantidad_por_producto)
+
+    venta_anulada = repositorio_ventas.anular_venta_en_conexion(
+        conexion, venta_id, motivo=motivo, observaciones=observaciones, usuario_id=usuario_id
+    )
+    repositorio_auditoria.registrar_en_conexion(conexion, usuario_id, "VENTA_ANULADA", "VENTA", venta_id, f"Motivo: {motivo}")
     return venta_anulada

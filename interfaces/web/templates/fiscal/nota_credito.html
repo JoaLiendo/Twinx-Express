@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Nota de crédito{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Cancelar venta #{{ venta_id }} con nota de crédito</h1>{% endblock %}
+
+{% set campo = "w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" %}
+
+{% block content %}
+<div class="max-w-xl mx-auto space-y-4">
+  {% if original %}
+  <form method="post" action="/fiscal/ventas/{{ venta_id }}/nota-credito" id="form-nota-credito"
+        class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+    <p class="text-sm text-slate-700 dark:text-slate-200">
+      Se emitirá una <strong>nota de crédito total</strong> asociada a {{ original.nombre_tipo }} {{ original.numero_formateado }}
+      (CAE {{ original.codigo_autorizacion }}). La factura original no se modifica.
+    </p>
+    <p class="text-sm text-slate-600 dark:text-slate-300">
+      Solo cuando ARCA autorice la nota de crédito se anula la venta y se restaura el stock. Si ARCA no responde,
+      la venta queda como está y la cancelación pendiente: nunca se devuelve dos veces.
+    </p>
+    <div>
+      <label class="block text-sm font-medium mb-1.5" for="motivo">Motivo</label>
+      <select id="motivo" name="motivo" required class="{{ campo }}">
+        {% for motivo in motivos %}<option value="{{ motivo }}">{{ motivo | replace('_', ' ') | capitalize }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1.5" for="observaciones">Observaciones (obligatorias si el motivo es «Otro»)</label>
+      <textarea id="observaciones" name="observaciones" rows="3" maxlength="500" class="{{ campo }}"></textarea>
+    </div>
+    <div class="flex justify-between items-center">
+      <a href="/ventas/{{ venta_id }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400">Volver</a>
+      {{ ui.boton('Emitir nota de crédito', tipo='submit', variante='danger') }}
+    </div>
+  </form>
+  {% else %}
+    {{ ui.estado_vacio('Esta venta no tiene una factura autorizada.', 'Solo se emite una nota de crédito sobre un comprobante autorizado por ARCA.') }}
+  {% endif %}
+</div>
+{% endblock %}

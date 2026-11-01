@@ -47,6 +47,14 @@
             <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold px-3 py-1.5">Reintentar conciliación</button>
           </form>
         {% endif %}
+        {% if es_owner and c.autorizado and c.rol == 'PRINCIPAL' and resumen.estado == 'ACTIVA' and not nota_credito_viva %}
+          <a id="venta-nota-credito" href="/fiscal/ventas/{{ resumen.id }}/nota-credito" class="rounded-lg bg-error/10 hover:bg-error/20 text-error text-xs font-semibold px-3 py-1.5">Cancelar con nota de crédito</a>
+        {% endif %}
+        {% if es_owner and c.estado == 'PENDIENTE' and c.rol != 'PRINCIPAL' %}
+          <form method="post" action="/fiscal/comprobantes/{{ c.id }}/reintentar">
+            <button type="submit" class="rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold px-3 py-1.5">Reintentar envío</button>
+          </form>
+        {% endif %}
         {% if es_owner and c.estado == 'PENDIENTE' %}
           <form method="post" action="/fiscal/comprobantes/{{ c.id }}/descartar">
             <button type="submit" class="rounded-lg bg-error/10 hover:bg-error/20 text-error text-xs font-semibold px-3 py-1.5">Descartar pendiente</button>
@@ -57,6 +65,16 @@
     {% endfor %}
   </ul>
   {% endif %}
+
+  {% for cancelacion in cancelaciones_fiscales %}
+    <p class="mt-2 text-xs text-slate-600 dark:text-slate-300" data-cancelacion-fiscal="{{ cancelacion.estado }}">
+      Cancelación con nota de crédito ({{ cancelacion.motivo | replace('_', ' ') | lower }}):
+      {{ {'PENDIENTE': 'pendiente de autorización de ARCA; la venta no se anula hasta entonces',
+          'APLICADA': 'aplicada, la venta quedó anulada y el stock restaurado',
+          'RECHAZADA': 'no se aplicó (la nota de crédito no se autorizó)',
+          'SIN_APLICAR': 'nota de crédito autorizada, pero la anulación comercial no pudo aplicarse'}[cancelacion.estado] }}{% if cancelacion.detalle %} · {{ cancelacion.detalle }}{% endif %}.
+    </p>
+  {% endfor %}
 
   {% if resumen.estado == 'ACTIVA' and fiscal_activo and (not principal_fiscal_vivo or principal_fiscal_vivo.estado in ('PENDIENTE', 'INCIERTO')) %}
     <form method="post" action="/ventas/{{ resumen.id }}/fiscalizar" class="mt-4">

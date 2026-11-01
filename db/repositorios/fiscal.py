@@ -694,3 +694,72 @@ def listar_errores_recientes(limite: int = 10) -> list[IntentoFiscal]:
                 (limite,),
             )
         ]
+
+
+# --- Cancelaciones con nota de crédito (migración 043) ---------------------------------------------
+
+
+@dataclass(frozen=True)
+class CancelacionFiscal:
+    id: int
+    venta_id: int
+    comprobante_original_id: int
+    nota_credito_id: int
+    motivo: str
+    observaciones: str | None
+    estado: str
+    detalle: str | None
+    usuario_id: int
+    fecha_creacion: str
+    fecha_actualizacion: str
+
+
+def insertar_cancelacion_en_conexion(
+    conexion: sqlite3.Connection,
+    venta_id: int,
+    original_id: int,
+    nota_credito_id: int,
+    motivo: str,
+    observaciones: str | None,
+    usuario_id: int,
+) -> int:
+    return conexion.execute(
+        "INSERT INTO cancelaciones_fiscales (venta_id, comprobante_original_id, nota_credito_id, motivo, observaciones,"
+        " usuario_id) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+        (venta_id, original_id, nota_credito_id, motivo, observaciones, usuario_id),
+    ).fetchone()["id"]
+
+
+def _fila_a_cancelacion(fila: sqlite3.Row) -> CancelacionFiscal:
+    return CancelacionFiscal(**{clave: fila[clave] for clave in fila.keys()})
+
+
+def cancelaciones_por_estado_en_conexion(conexion: sqlite3.Connection, estados: tuple[str, ...]) -> list[CancelacionFiscal]:
+    marcadores = ", ".join("?" for _ in estados)
+    return [
+        _fila_a_cancelacion(fila)
+        for fila in conexion.execute(f"SELECT * FROM cancelaciones_fiscales WHERE estado IN ({marcadores}) ORDER BY id", estados)
+    ]
+
+
+def cancelaciones_de_venta(venta_id: int) -> list[CancelacionFiscal]:
+    with obtener_conexion() as conexion:
+        return [
+            _fila_a_cancelacion(fila)
+            for fila in conexion.execute("SELECT * FROM cancelaciones_fiscales WHERE venta_id = ? ORDER BY id", (venta_id,))
+        ]
+
+
+def obtener_cancelacion_en_conexion(conexion: sqlite3.Connection, cancelacion_id: int) -> CancelacionFiscal | None:
+    fila = conexion.execute("SELECT * FROM cancelaciones_fiscales WHERE id = ?", (cancelacion_id,)).fetchone()
+    return _fila_a_cancelacion(fila) if fila is not None else None
+
+
+def actualizar_cancelacion_en_conexion(
+    conexion: sqlite3.Connection, cancelacion_id: int, estado: str, detalle: str | None = None
+) -> None:
+    conexion.execute(
+        "UPDATE cancelaciones_fiscales SET estado = ?, detalle = ?, fecha_actualizacion = datetime('now', 'localtime')"
+        " WHERE id = ?",
+        (estado, detalle, cancelacion_id),
+    )

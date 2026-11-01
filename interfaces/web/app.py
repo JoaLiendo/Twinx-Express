@@ -53,7 +53,7 @@ from interfaces.web.rutas import (
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
 from services import servicio_backup, servicio_catalogo_inicial
 from services.control_escrituras import control_escrituras
-from services.fiscal import servicio_facturacion
+from services.fiscal import servicio_facturacion, servicio_notas
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ async def lifespan(app: FastAPI):
         args=(DIRECTORIO_BACKUPS, control_escrituras),
         daemon=True,
     ).start()
-    threading.Thread(target=servicio_facturacion.conciliar_inciertos, daemon=True).start()
+    threading.Thread(target=servicio_notas.conciliar_y_aplicar, daemon=True).start()
     yield
 
 

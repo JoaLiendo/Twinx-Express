@@ -84,7 +84,7 @@ def _exigir_usuario(usuario_id: int | None, roles: frozenset[str]) -> None:
         exigir_rol(repositorio_usuarios.obtener_por_id_en_conexion(conexion, usuario_id) if usuario_id else None, roles)
 
 
-def _perfil_listo() -> PerfilFiscal:
+def perfil_listo() -> PerfilFiscal:
     perfil = repositorio_fiscal.obtener_perfil()
     if perfil is None:
         raise ConfiguracionFiscalError("La facturación fiscal no está configurada: el dueño debe completar el perfil fiscal.")
@@ -209,7 +209,7 @@ def fiscalizar_venta(venta_id: int, usuario_id: int) -> ComprobanteFiscal:
         SecuenciaFiscalBloqueadaError: otro comprobante de la secuencia sigue incierto.
     """
     _exigir_usuario(usuario_id, _ROLES_OPERATIVOS)
-    perfil = _perfil_listo()
+    perfil = perfil_listo()
     with obtener_conexion() as conexion:
         vivo = repositorio_fiscal.principal_vivo_de_venta_en_conexion(conexion, venta_id)
     if vivo is None:
@@ -276,7 +276,7 @@ def _detalle_error(error: Exception) -> dict:
 def emitir(comprobante_id: int, usuario_id: int | None) -> ComprobanteFiscal:
     """Envía un comprobante PENDIENTE a ARCA (ver el orden en el docstring del módulo)."""
     comprobante = _obtener(comprobante_id)
-    perfil = _perfil_listo()
+    perfil = perfil_listo()
     if comprobante.ambiente != perfil.ambiente:
         raise OperacionFiscalInvalidaError("El comprobante es de otro ambiente fiscal: descartalo y fiscalizá de nuevo.")
     gateway = gateway_para(perfil)
@@ -566,6 +566,17 @@ def descartar(comprobante_id: int, usuario_id: int) -> ComprobanteFiscal:
         repositorio_fiscal.actualizar_estado_en_conexion(conexion, comprobante_id, estados.DESCARTADO)
         _auditar(conexion, usuario_id, ACCION_FISCAL_DESCARTADO, comprobante, "descartado antes de enviarse")
     return _obtener(comprobante_id)
+
+
+def reintentar(comprobante_id: int, usuario_id: int) -> ComprobanteFiscal:
+    """OWNER: reenvía un PENDIENTE (factura o nota). Un INCIERTO nunca se reenvía: se concilia."""
+    _exigir_usuario(usuario_id, _SOLO_OWNER)
+    comprobante = _obtener(comprobante_id)
+    if comprobante.estado == estados.INCIERTO:
+        comprobante = conciliar(comprobante_id, usuario_id)
+    if comprobante.estado != estados.PENDIENTE:
+        return comprobante
+    return emitir(comprobante_id, usuario_id)
 
 
 def obtener(comprobante_id: int) -> ComprobanteFiscal:

@@ -132,6 +132,26 @@ class TestDetalleEHistorial:
         assert "data-estado-fiscal" in solicitud("GET", "/ventas/historial", cookies=owner[1]).texto
 
 
+class TestNotaCreditoWeb:
+    def test_owner_cancela_con_nota_de_credito(self, fiscal, owner):
+        comprobante = _autorizado(owner[0].id)
+        detalle = solicitud("GET", f"/ventas/{comprobante.venta_id}", cookies=owner[1]).texto
+        assert 'id="venta-nota-credito"' in detalle
+        assert 'id="form-nota-credito"' in solicitud("GET", f"/fiscal/ventas/{comprobante.venta_id}/nota-credito", cookies=owner[1]).texto
+        respuesta = solicitud("POST", f"/fiscal/ventas/{comprobante.venta_id}/nota-credito", cookies=owner[1],
+                              formulario={"motivo": "ERROR_CARGA"})
+        assert respuesta.status == 303 and "Nota%20de%20Cr" in respuesta.header("location")
+        detalle = solicitud("GET", f"/ventas/{comprobante.venta_id}", cookies=owner[1]).texto
+        assert 'data-cancelacion-fiscal="APLICADA"' in detalle and 'id="venta-nota-credito"' not in detalle
+
+    def test_cashier_no_emite_nota_de_credito(self, fiscal, owner, cashier):
+        comprobante = _autorizado(owner[0].id)
+        ruta = f"/fiscal/ventas/{comprobante.venta_id}/nota-credito"
+        assert solicitud("GET", ruta, cookies=cashier[1]).status == 403
+        assert solicitud("POST", ruta, cookies=cashier[1], formulario={"motivo": "ERROR_CARGA"}).status == 403
+        assert 'id="venta-nota-credito"' not in solicitud("GET", f"/ventas/{comprobante.venta_id}", cookies=cashier[1]).texto
+
+
 class TestPermisos:
     @pytest.mark.parametrize(
         "metodo, ruta",
