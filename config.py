@@ -91,3 +91,14 @@ DIRECTORIO_LOGS = DIRECTORIO_DATA.parent / "logs"
 # hasta `VERSIONES_ANTERIORES_A_CONSERVAR` anteriores, hermana de `data/`.
 DIRECTORIO_VERSIONES = DIRECTORIO_DATA.parent / "versiones"
 VERSIONES_ANTERIORES_A_CONSERVAR = 2
+
+# Material secreto de facturación ARCA (V1.16): clave privada del certificado y caché del Ticket de
+# Acceso, cifrados con DPAPI (usuario de Windows actual). Hermano de `data/`, NUNCA dentro: así no viaja
+# en ningún backup (que solo empaqueta `data/`), ni en el segundo destino, ni en el restore. En modo
+# desarrollo queda en la raíz del proyecto y `.gitignore` lo excluye. Se crea recién al importar el
+# primer certificado.
+DIRECTORIO_SECRETOS_FISCALES = DIRECTORIO_DATA.parent / "fiscal_privado"
+
+# Timeouts explícitos (segundos) de cada llamada a ARCA: nunca una espera infinita.
+TIMEOUT_CONEXION_ARCA = 10
+TIMEOUT_LECTURA_ARCA = 30

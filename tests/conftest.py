@@ -53,6 +53,17 @@ def backups_aislados(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fiscal_aislado(tmp_path, monkeypatch):
+    """V1.16: ningún test lee ni escribe credenciales fiscales reales, y ninguno puede abrir conexión con
+    ARCA producción (el transporte lo rechaza con esta variable, pase lo que pase en la configuración)."""
+    from services.fiscal.arca.endpoints import VARIABLE_BLOQUEO_PRODUCCION
+
+    monkeypatch.setenv(VARIABLE_BLOQUEO_PRODUCCION, "1")
+    monkeypatch.setattr(config, "DIRECTORIO_SECRETOS_FISCALES", tmp_path / "fiscal_privado_aislado")
+    return tmp_path / "fiscal_privado_aislado"
+
+
+@pytest.fixture(autouse=True)
 def limitador_login_aislado(monkeypatch, reloj_falso):
     """Reemplaza el limitador de login por uno nuevo (con reloj falso)
     en cada test. Cada test usa una base temporal nueva donde los ids de

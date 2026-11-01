@@ -40,6 +40,12 @@ Thumbs.db
 # Variables de entorno / secretos
 .env
 
+# Facturación ARCA (V1.16): clave privada y Ticket de Acceso cifrados con DPAPI. Nunca se versionan.
+fiscal_privado/
+*.key
+*.p12
+*.pfx
+
 # Tests E2E (Fase 5E): dependencias npm, resultados/reportes de
 # Playwright y la DB temporal que usa tests_e2e/servidor_pruebas.py.
 # package.json y package-lock.json SÍ se versionan.
