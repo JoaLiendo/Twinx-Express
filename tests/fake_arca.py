@@ -27,7 +27,7 @@ from domain.fiscal.protocolo import (
     RespuestaAutorizacion,
     SolicitudAutorizacion,
 )
-from excepciones import ErrorComunicacionARCA, RespuestaARCAInvalidaError
+from excepciones import ErrorComunicacionARCA, ErrorWSAA, RespuestaARCAInvalidaError
 
 _TASAS = {3: Decimal("0"), 4: Decimal("0.105"), 5: Decimal("0.21"), 6: Decimal("0.27"), 8: Decimal("0.05"), 9: Decimal("0.025")}
 _CLASE_DE_TIPO = {1: "A", 2: "A", 3: "A", 6: "B", 7: "B", 8: "B", 11: "C", 12: "C", 13: "C"}
@@ -69,6 +69,9 @@ class ARCAFalso:
     timeout_sin_procesar: bool = False
     perder_respuesta: bool = False
     respuesta_invalida: bool = False
+    cae_no_enviado: bool = False
+    caer_tras_cae: bool = False
+    credenciales_rechazadas: bool = False
     rechazar_proximo: list[MensajeARCA] | None = None
     observar_proximo: list[MensajeARCA] | None = None
     llamadas: list[str] = field(default_factory=list)
@@ -161,6 +164,12 @@ class ARCAFalso:
     def solicitar_cae(self, solicitud: SolicitudAutorizacion) -> RespuestaAutorizacion:
         self._entrar("FECAESolicitar")
         with self._candado:
+            if self.cae_no_enviado:
+                self.cae_no_enviado = False
+                raise ErrorComunicacionARCA("ARCA falso: conexión rechazada al enviar.", enviado=False)
+            if self.credenciales_rechazadas:
+                self.credenciales_rechazadas = False
+                raise ErrorWSAA("ARCA falso: no validaron las credenciales.")
             if self.timeout_sin_procesar:
                 self.timeout_sin_procesar = False
                 raise ErrorComunicacionARCA("ARCA falso: timeout de lectura.", enviado=True)
@@ -178,6 +187,10 @@ class ARCAFalso:
             self._ultimos[(solicitud.punto_venta, solicitud.tipo)] = solicitud.numero
             observaciones = tuple(self.observar_proximo or ())
             self.observar_proximo = None
+            if self.caer_tras_cae:
+                self.caer_tras_cae = False
+                self.caido = True
+                raise ErrorComunicacionARCA("ARCA falso: se cayó con la respuesta en viaje.", enviado=True)
             if self.perder_respuesta:
                 self.perder_respuesta = False
                 raise ErrorComunicacionARCA("ARCA falso: se cortó la conexión con la respuesta.", enviado=True)

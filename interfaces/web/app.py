@@ -52,6 +52,7 @@ from interfaces.web.rutas import (
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
 from services import servicio_backup, servicio_catalogo_inicial
 from services.control_escrituras import control_escrituras
+from services.fiscal import servicio_facturacion
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,9 @@ async def lifespan(app: FastAPI):
     """
     try:
         servicio_backup.migrar_base_datos_con_backup_preventivo(DIRECTORIO_BACKUPS, control_escrituras)
+        # V1.16: un comprobante que quedó "enviando" cuando se cerró la app pasa a INCIERTO (solo base);
+        # su conciliación con ARCA corre después, en segundo plano, sin demorar el arranque.
+        servicio_facturacion.recuperar_al_iniciar()
         if SEMBRAR_CATALOGO_INICIAL:
             # Si falla, el error se propaga: el arranque se aborta y el operador ve el
             # error en la consola (`lanzador.py`), en vez de seguir con un catálogo a medias.
@@ -98,6 +102,7 @@ async def lifespan(app: FastAPI):
         args=(DIRECTORIO_BACKUPS, control_escrituras),
         daemon=True,
     ).start()
+    threading.Thread(target=servicio_facturacion.conciliar_inciertos, daemon=True).start()
     yield
 
 
