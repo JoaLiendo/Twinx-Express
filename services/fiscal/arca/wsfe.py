@@ -11,12 +11,14 @@ from decimal import Decimal, InvalidOperation
 
 from domain.dinero import centavos_a_texto
 from domain.fiscal.protocolo import (
+    CAEAObtenido,
     ComprobanteConsultado,
     EstadoServidores,
     MensajeARCA,
     ParametroARCA,
     PuntoVentaARCA,
     RespuestaAutorizacion,
+    RespuestaInforme,
     SolicitudAutorizacion,
 )
 from excepciones import ErrorWSAA, RespuestaARCAInvalidaError
@@ -291,3 +293,77 @@ class ClienteWSFE:
             return Decimal(soap.valor(soap.hijo(resultado, "ResultGet"), "MonCotiz") or "")
         except InvalidOperation as error:
             raise RespuestaARCAInvalidaError("ARCA devolvió una cotización inválida.") from error
+
+    # --- CAEA (métodos verificados en el WSDL vigente) ---------------------------------------------
+
+    @staticmethod
+    def _caea_de(resultado) -> CAEAObtenido | None:
+        datos = soap.hijo(resultado, "ResultGet")
+        codigo = soap.valor(datos, "CAEA")
+        if datos is None or not codigo:
+            return None
+        return CAEAObtenido(
+            codigo=codigo,
+            periodo=_entero(soap.valor(datos, "Periodo"), "período"),
+            orden=_entero(soap.valor(datos, "Orden"), "orden"),
+            vigente_desde=soap.valor(datos, "FchVigDesde") or "",
+            vigente_hasta=soap.valor(datos, "FchVigHasta") or "",
+            tope_informe=soap.valor(datos, "FchTopeInf") or "",
+            fecha_proceso=soap.valor(datos, "FchProceso"),
+            observaciones=_mensajes(datos, "Observaciones", "Obs"),
+        )
+
+    def solicitar_caea(self, periodo: int, orden: int) -> CAEAObtenido:
+        resultado = self._llamar("FECAEASolicitar", f"<Periodo>{periodo}</Periodo><Orden>{orden}</Orden>")
+        caea = self._caea_de(resultado)
+        if caea is None:
+            self._exigir_sin_errores("FECAEASolicitar", resultado)
+            raise RespuestaARCAInvalidaError("FECAEASolicitar no devolvió un CAEA.")
+        return caea
+
+    def consultar_caea(self, periodo: int, orden: int) -> CAEAObtenido | None:
+        resultado = self._llamar("FECAEAConsultar", f"<Periodo>{periodo}</Periodo><Orden>{orden}</Orden>")
+        caea = self._caea_de(resultado)
+        if caea is None:
+            errores = _mensajes(resultado, "Errors", "Err")
+            if any(e.codigo in ERRORES_DE_CREDENCIALES for e in errores):
+                self._exigir_sin_errores("FECAEAConsultar", resultado)
+            return None
+        return caea
+
+    def informar_caea(self, solicitud: SolicitudAutorizacion) -> RespuestaInforme:
+        resultado = self._llamar("FECAEARegInformativo", f"<FeCAEARegInfReq>{xml_solicitud(solicitud, caea=True)}</FeCAEARegInfReq>")
+        errores = _mensajes(resultado, "Errors", "Err")
+        detalle = soap.hijo(soap.hijo(resultado, "FeDetResp"), "FECAEADetResponse")
+        if detalle is None:
+            if errores:
+                self._exigir_sin_errores_de_credenciales(errores)
+                return RespuestaInforme("R", errores=errores)
+            raise RespuestaARCAInvalidaError("FECAEARegInformativo no devolvió detalle.")
+        estado = soap.valor(detalle, "Resultado")
+        if estado not in ("A", "R"):
+            raise RespuestaARCAInvalidaError(f"Resultado de informe CAEA desconocido: {estado!r}.")
+        return RespuestaInforme(
+            estado,
+            soap.valor(soap.hijo(resultado, "FeCabResp"), "FchProceso"),
+            _mensajes(detalle, "Observaciones", "Obs"),
+            errores,
+        )
+
+    def informar_sin_movimiento(self, punto_venta: int, caea: str) -> RespuestaInforme:
+        resultado = self._llamar("FECAEASinMovimientoInformar", f"<PtoVta>{punto_venta}</PtoVta><CAEA>{soap.texto(caea)}</CAEA>")
+        errores = _mensajes(resultado, "Errors", "Err")
+        self._exigir_sin_errores_de_credenciales(errores)
+        estado = soap.valor(resultado, "Resultado") or ("R" if errores else "")
+        if estado not in ("A", "R"):
+            raise RespuestaARCAInvalidaError(f"Resultado de informe sin movimiento desconocido: {estado!r}.")
+        return RespuestaInforme(estado, soap.valor(resultado, "FchProceso"), errores=errores)
+
+    def consultar_sin_movimiento(self, punto_venta: int, caea: str) -> bool:
+        resultado = self._llamar("FECAEASinMovimientoConsultar", f"<CAEA>{soap.texto(caea)}</CAEA><PtoVta>{punto_venta}</PtoVta>")
+        return bool(soap.hijos(soap.hijo(resultado, "ResultGet"), "FECAEASinMov"))
+
+    @staticmethod
+    def _exigir_sin_errores_de_credenciales(errores: tuple[MensajeARCA, ...]) -> None:
+        if any(e.codigo in ERRORES_DE_CREDENCIALES for e in errores):
+            raise ErrorWSAA(f"ARCA no validó las credenciales: {errores[0].mensaje[:200]}")

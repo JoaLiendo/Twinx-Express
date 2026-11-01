@@ -83,6 +83,31 @@
   </section>
   {% endif %}
 
+  {% if perfil and perfil.punto_venta_caea %}
+  <section id="fiscal-caea" class="{{ tarjeta }}">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="{{ etiqueta }}">Contingencia CAEA · punto de venta {{ perfil.punto_venta_caea }}</p>
+      <div class="flex flex-wrap gap-2">
+        <form method="post" action="/fiscal/caea/solicitar">{{ ui.boton('Solicitar CAEA', tipo='submit', variante='secondary', tamano='compact') }}</form>
+        <form method="post" action="/fiscal/caea/informar">{{ ui.boton('Informar a ARCA', tipo='submit', variante='primary', tamano='compact') }}</form>
+      </div>
+    </div>
+    <p class="mt-2 text-sm" id="fiscal-caea-vigente">
+      {% if panel.caea.vigente %}
+        CAEA vigente hoy: <strong>{{ panel.caea.vigente.codigo }}</strong> ({{ panel.caea.vigente.etiqueta }}, hasta {{ panel.caea.vigente.vigente_hasta }}).
+      {% else %}
+        No hay CAEA vigente para hoy{% if not perfil.contingencia_caea %} (contingencia deshabilitada){% endif %}.
+      {% endif %}
+    </p>
+    <p class="mt-1 text-sm {{ 'text-error font-semibold' if panel.caea.por_informar else 'text-slate-600 dark:text-slate-300' }}" id="fiscal-caea-por-informar">
+      Pendientes de informar: {{ panel.caea.por_informar | length }}{% if panel.caea.dias_minimos is not none %} · días hasta el tope: {{ panel.caea.dias_minimos }}{% endif %}
+    </p>
+    {% if panel.caea.recientes %}
+    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Últimos CAEA: {% for c in panel.caea.recientes %}{{ c.etiqueta }} (informar hasta {{ c.tope_informe }}){{ ' · ' if not loop.last }}{% endfor %}</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section id="fiscal-comprobantes" class="{{ tarjeta }}">
     <p class="{{ etiqueta }}">Comprobantes</p>
     <p class="mt-2 text-sm text-slate-600 dark:text-slate-300" id="fiscal-conteos">

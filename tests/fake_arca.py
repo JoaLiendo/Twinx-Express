@@ -18,7 +18,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+from domain.fiscal import caea as dominio_caea
 from domain.fiscal.protocolo import (
+    CAEAObtenido,
+    RespuestaInforme,
     ComprobanteConsultado,
     EstadoServidores,
     MensajeARCA,
@@ -28,6 +31,7 @@ from domain.fiscal.protocolo import (
     SolicitudAutorizacion,
 )
 from excepciones import ErrorComunicacionARCA, ErrorWSAA, RespuestaARCAInvalidaError
+from services.fiscal.arca.wsfe import ErrorWSFE
 
 _TASAS = {3: Decimal("0"), 4: Decimal("0.105"), 5: Decimal("0.21"), 6: Decimal("0.27"), 8: Decimal("0.05"), 9: Decimal("0.025")}
 _CLASE_DE_TIPO = {1: "A", 2: "A", 3: "A", 6: "B", 7: "B", 8: "B", 11: "C", 12: "C", 13: "C"}
@@ -80,6 +84,9 @@ class ARCAFalso:
         self._ultimos: dict[tuple[int, int], int] = {}
         self._registros: dict[tuple[int, int, int], Registro] = {}
         self._cae = 70000000000000
+        self._caeas: dict[tuple[int, int], CAEAObtenido] = {}
+        self._sin_movimiento: set[tuple[int, str]] = set()
+        self._codigo_caea = 31000000000000
         self._candado = threading.Lock()
 
     # --- utilidades de test ---
@@ -219,3 +226,61 @@ class ARCAFalso:
         return Decimal("1") if moneda == "PES" else Decimal("1000")
 
 
+
+    # --- CAEA ---
+
+
+    def solicitar_caea(self, periodo: int, orden: int) -> CAEAObtenido:
+        self._entrar("FECAEASolicitar")
+        if (periodo, orden) in self._caeas:
+            raise ErrorWSFE("FECAEASolicitar", (MensajeARCA(15008, "Ya existe un CAEA otorgado para el período y orden."),))
+        desde, hasta = dominio_caea.rango(periodo, orden)
+        self._codigo_caea += 1
+        otorgado = CAEAObtenido(
+            codigo=str(self._codigo_caea), periodo=periodo, orden=orden, vigente_desde=desde.strftime("%Y%m%d"),
+            vigente_hasta=hasta.strftime("%Y%m%d"), tope_informe=(hasta + timedelta(days=8)).strftime("%Y%m%d"),
+            fecha_proceso=desde.strftime("%Y%m%d"),
+        )
+        self._caeas[(periodo, orden)] = otorgado
+        return otorgado
+
+    def consultar_caea(self, periodo: int, orden: int) -> CAEAObtenido | None:
+        self._entrar("FECAEAConsultar")
+        return self._caeas.get((periodo, orden))
+
+    def informar_caea(self, solicitud: SolicitudAutorizacion) -> RespuestaInforme:
+        self._entrar("FECAEARegInformativo")
+        with self._candado:
+            otorgado = next((c for c in self._caeas.values() if c.codigo == solicitud.caea), None)
+            errores = []
+            if otorgado is None:
+                errores.append(MensajeARCA(10600, "El CAEA informado no existe."))
+            elif not otorgado.vigente_desde <= solicitud.fecha <= otorgado.vigente_hasta:
+                errores.append(MensajeARCA(10601, "La fecha del comprobante no está dentro de la vigencia del CAEA."))
+            punto = next((p for p in self.puntos if p.numero == solicitud.punto_venta), None)
+            if punto is None or punto.emision_tipo != "CAEA":
+                errores.append(MensajeARCA(10602, "El punto de venta no es de emisión CAEA."))
+            if (solicitud.punto_venta, solicitud.tipo, solicitud.numero) in self._registros:
+                errores.append(MensajeARCA(10603, "El comprobante ya fue informado."))
+            elif solicitud.numero != self._ultimos.get((solicitud.punto_venta, solicitud.tipo), 0) + 1:
+                errores.append(MensajeARCA(10016, "El número no se corresponde con el próximo a informar."))
+            if not solicitud.fecha_hora_generacion or len(solicitud.fecha_hora_generacion) != 14:
+                errores.append(MensajeARCA(10604, "CbteFchHsGen inválido."))
+            if errores:
+                return RespuestaInforme("R", solicitud.fecha, errores=tuple(errores))
+            self._registros[(solicitud.punto_venta, solicitud.tipo, solicitud.numero)] = Registro(
+                solicitud, solicitud.caea, otorgado.vigente_hasta, emision="CAEA"
+            )
+            self._ultimos[(solicitud.punto_venta, solicitud.tipo)] = solicitud.numero
+            return RespuestaInforme("A", solicitud.fecha)
+
+    def informar_sin_movimiento(self, punto_venta: int, caea: str) -> RespuestaInforme:
+        self._entrar("FECAEASinMovimientoInformar")
+        if any(r.cae == caea and pto == punto_venta for (pto, _, _), r in self._registros.items()):
+            return RespuestaInforme("R", errores=(MensajeARCA(10605, "El punto de venta tuvo movimientos con ese CAEA."),))
+        self._sin_movimiento.add((punto_venta, caea))
+        return RespuestaInforme("A")
+
+    def consultar_sin_movimiento(self, punto_venta: int, caea: str) -> bool:
+        self._entrar("FECAEASinMovimientoConsultar")
+        return (punto_venta, caea) in self._sin_movimiento

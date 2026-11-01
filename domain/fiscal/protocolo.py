@@ -151,3 +151,27 @@ class ComprobanteConsultado:
     resultado: str | None
     fecha_proceso: str | None
     observaciones: tuple[MensajeARCA, ...] = field(default=())
+
+
+@dataclass(frozen=True)
+class CAEAObtenido:
+    """Lo que devuelve `FECAEASolicitar` / `FECAEAConsultar` (fechas en AAAAMMDD)."""
+
+    codigo: str
+    periodo: int
+    orden: int
+    vigente_desde: str
+    vigente_hasta: str
+    tope_informe: str
+    fecha_proceso: str | None
+    observaciones: tuple[MensajeARCA, ...] = ()
+
+
+@dataclass(frozen=True)
+class RespuestaInforme:
+    """Resultado de informar a ARCA (`FECAEARegInformativo`, `FECAEASinMovimientoInformar`)."""
+
+    resultado: str
+    fecha_proceso: str | None = None
+    observaciones: tuple[MensajeARCA, ...] = ()
+    errores: tuple[MensajeARCA, ...] = ()

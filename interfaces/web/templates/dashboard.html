@@ -10,6 +10,14 @@
 {% set clase_icono = "flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 text-primary" %}
 <div class="max-w-6xl mx-auto space-y-6">
 
+  {% if alertas_fiscales %}
+  <div id="dashboard-alertas-fiscales" class="rounded-2xl border border-error/30 bg-error/5 p-4 text-sm text-slate-800 dark:text-slate-100">
+    <p class="font-semibold text-error">Atención fiscal</p>
+    {% for alerta in alertas_fiscales %}<p class="mt-1">{{ alerta }}</p>{% endfor %}
+    <a href="/fiscal" class="mt-2 inline-block text-sm font-medium text-primary hover:text-primary-hover">Ir al panel fiscal →</a>
+  </div>
+  {% endif %}
+
   <!-- Accesos principales (máximo cuatro) -->
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="accesos-principales">
 

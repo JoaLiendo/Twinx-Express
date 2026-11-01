@@ -281,3 +281,47 @@ class TestValidarCodigos:
         arca_falso.caido = True
         assert len(servicio_parametros.refrescar(arca_falso)) == 10
         servicio_parametros.validar_codigos("HOMOLOGACION", "B", 6, 99, 5, self._importes(), date.today())
+
+
+class TestCAEA:
+    def _caea(self, operacion="FECAEASolicitar"):
+        return _sobre(operacion, (
+            "<ResultGet><CAEA>31234567890123</CAEA><Periodo>202611</Periodo><Orden>1</Orden><FchVigDesde>20261101</FchVigDesde>"
+            "<FchVigHasta>20261115</FchVigHasta><FchTopeInf>20261123</FchTopeInf><FchProceso>20261027</FchProceso></ResultGet>"
+        ))
+
+    def test_solicitar(self):
+        cliente, transporte = _cliente(self._caea())
+        caea = cliente.solicitar_caea(202611, 1)
+        assert (caea.codigo, caea.tope_informe) == ("31234567890123", "20261123")
+        assert "<Periodo>202611</Periodo><Orden>1</Orden>" in transporte.pedidos[0][1]
+
+    def test_solicitar_con_error_lanza(self):
+        cliente, _ = _cliente(_sobre("FECAEASolicitar", "<Errors><Err><Code>15008</Code><Msg>Ya existe</Msg></Err></Errors>"))
+        with pytest.raises(wsfe.ErrorWSFE):
+            cliente.solicitar_caea(202611, 1)
+
+    def test_consultar_inexistente(self):
+        cliente, _ = _cliente(_sobre("FECAEAConsultar", "<Errors><Err><Code>602</Code><Msg>Sin datos</Msg></Err></Errors>"))
+        assert cliente.consultar_caea(202611, 1) is None
+
+    def test_reg_informativo_lleva_caea_y_hora_de_generacion(self):
+        respuesta = _sobre("FECAEARegInformativo", (
+            f"<FeCabResp><Cuit>{uf.CUIT_EMISOR}</Cuit><PtoVta>4</PtoVta><CbteTipo>6</CbteTipo><FchProceso>20261102</FchProceso>"
+            "<CantReg>1</CantReg><Resultado>A</Resultado></FeCabResp><FeDetResp><FECAEADetResponse><Concepto>1</Concepto>"
+            "<DocTipo>99</DocTipo><DocNro>0</DocNro><CbteDesde>1</CbteDesde><CbteHasta>1</CbteHasta><CbteFch>20261101</CbteFch>"
+            "<Resultado>A</Resultado><CAEA>31234567890123</CAEA></FECAEADetResponse></FeDetResp>"
+        ))
+        cliente, transporte = _cliente(respuesta)
+        import dataclasses
+
+        solicitud = dataclasses.replace(_solicitud(numero=1), punto_venta=4, caea="31234567890123", fecha_hora_generacion="20261101101500")
+        assert cliente.informar_caea(solicitud).resultado == "A"
+        cuerpo = transporte.pedidos[0][1]
+        assert "<FeCAEARegInfReq>" in cuerpo and "<FECAEADetRequest>" in cuerpo
+        assert cuerpo.index("<Iva>") < cuerpo.index("<CAEA>31234567890123</CAEA><CbteFchHsGen>20261101101500</CbteFchHsGen>")
+
+    def test_sin_movimiento(self):
+        cliente, _ = _cliente(_sobre("FECAEASinMovimientoInformar",
+                                     "<CAEA>31234567890123</CAEA><FchProceso>20261124</FchProceso><PtoVta>4</PtoVta><Resultado>A</Resultado>"))
+        assert cliente.informar_sin_movimiento(4, "31234567890123").resultado == "A"

@@ -305,7 +305,7 @@ class TestIncertidumbre:
         cid = uf.insertar(uf.nuevo_comprobante_para_venta(otro.id))
         uf.transicionar(cid, "ENVIANDO", numero=2, fecha_comprobante=comprobante.fecha_comprobante)
         fiscal.emitir_externo(3, 6)
-        solicitud = facturacion._solicitud_de(facturacion.obtener(cid), 2, date.fromisoformat(comprobante.fecha_comprobante))
+        solicitud = facturacion.solicitud_de(facturacion.obtener(cid), 2, date.fromisoformat(comprobante.fecha_comprobante))
         from tests.fake_arca import Registro
 
         fiscal._registros[(3, 6, 2)] = Registro(solicitud, "70000000009999", "20991231")

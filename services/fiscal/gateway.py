@@ -14,11 +14,13 @@ from typing import Protocol
 
 from domain.fiscal.emisor import PerfilFiscal
 from domain.fiscal.protocolo import (
+    CAEAObtenido,
     ComprobanteConsultado,
     EstadoServidores,
     ParametroARCA,
     PuntoVentaARCA,
     RespuestaAutorizacion,
+    RespuestaInforme,
     SolicitudAutorizacion,
 )
 from services.fiscal.arca import endpoints
@@ -45,6 +47,16 @@ class GatewayARCA(Protocol):
     def condiciones_iva_receptor(self, clase: str) -> list[ParametroARCA]: ...
 
     def cotizacion(self, moneda: str) -> Decimal: ...
+
+    def solicitar_caea(self, periodo: int, orden: int) -> CAEAObtenido: ...
+
+    def consultar_caea(self, periodo: int, orden: int) -> CAEAObtenido | None: ...
+
+    def informar_caea(self, solicitud: SolicitudAutorizacion) -> RespuestaInforme: ...
+
+    def informar_sin_movimiento(self, punto_venta: int, caea: str) -> RespuestaInforme: ...
+
+    def consultar_sin_movimiento(self, punto_venta: int, caea: str) -> bool: ...
 
     def invalidar_credenciales(self) -> None: ...
 
@@ -80,6 +92,21 @@ class GatewayARCAReal:
 
     def cotizacion(self, moneda: str) -> Decimal:
         return self._wsfe.cotizacion(moneda)
+
+    def solicitar_caea(self, periodo: int, orden: int) -> CAEAObtenido:
+        return self._wsfe.solicitar_caea(periodo, orden)
+
+    def consultar_caea(self, periodo: int, orden: int) -> CAEAObtenido | None:
+        return self._wsfe.consultar_caea(periodo, orden)
+
+    def informar_caea(self, solicitud: SolicitudAutorizacion) -> RespuestaInforme:
+        return self._wsfe.informar_caea(solicitud)
+
+    def informar_sin_movimiento(self, punto_venta: int, caea: str) -> RespuestaInforme:
+        return self._wsfe.informar_sin_movimiento(punto_venta, caea)
+
+    def consultar_sin_movimiento(self, punto_venta: int, caea: str) -> bool:
+        return self._wsfe.consultar_sin_movimiento(punto_venta, caea)
 
     def invalidar_credenciales(self) -> None:
         self._wsaa.invalidar()

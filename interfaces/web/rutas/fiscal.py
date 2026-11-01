@@ -23,6 +23,7 @@ from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
 from domain.venta import MOTIVOS_ANULACION_VALIDOS
 from services.fiscal import (
     credenciales,
+    servicio_caea,
     documentos,
     servicio_conexion,
     servicio_facturacion,
@@ -54,12 +55,12 @@ def _json_comprobante(comprobante: ComprobanteFiscal) -> dict:
 
 @router.post("/api/fiscal/ventas/{venta_id}/fiscalizar")
 def api_fiscalizar(venta_id: int, usuario: Usuario = Depends(obtener_usuario_actual)) -> dict:
-    return _json_comprobante(servicio_facturacion.fiscalizar_venta(venta_id, usuario.id))
+    return _json_comprobante(servicio_caea.fiscalizar_con_contingencia(venta_id, usuario.id))
 
 
 @router.post("/ventas/{venta_id}/fiscalizar")
 def fiscalizar_desde_detalle(venta_id: int, usuario: Usuario = Depends(obtener_usuario_actual)):
-    comprobante = servicio_facturacion.fiscalizar_venta(venta_id, usuario.id)
+    comprobante = servicio_caea.fiscalizar_con_contingencia(venta_id, usuario.id)
     tipo = "success" if comprobante.autorizado else "warning"
     return redireccionar_con_mensaje(f"/ventas/{venta_id}", tipo, f"{comprobante.nombre_tipo}: {comprobante.etiqueta_estado}.")
 
@@ -119,6 +120,21 @@ def probar_conexion(usuario: Usuario = Depends(obtener_usuario_actual)):
 def ultimos_autorizados(usuario: Usuario = Depends(obtener_usuario_actual)):
     ultimos = servicio_conexion.ultimos_autorizados(usuario.id)
     return redireccionar_con_mensaje("/fiscal", "success", "Último autorizado en ARCA: " + ", ".join(f"{t} n° {n}" for t, n in ultimos.items()))
+
+
+@router.post("/fiscal/caea/solicitar", dependencies=[_SOLO_OWNER])
+def solicitar_caea(usuario: Usuario = Depends(obtener_usuario_actual)):
+    obtenidos = servicio_caea.solicitar(usuario.id)
+    return redireccionar_con_mensaje("/fiscal", "success", "CAEA: " + ", ".join(f"{c.etiqueta} {c.codigo}" for c in obtenidos))
+
+
+@router.post("/fiscal/caea/informar", dependencies=[_SOLO_OWNER])
+def informar_caea():
+    informados = servicio_caea.informar_pendientes()
+    sin_movimiento = servicio_caea.informar_sin_movimiento()
+    return redireccionar_con_mensaje(
+        "/fiscal", "success", f"Informados a ARCA: {informados} comprobante(s) CAEA, {sin_movimiento} período(s) sin movimiento."
+    )
 
 
 @router.post("/fiscal/conciliar-inciertos", dependencies=[_SOLO_OWNER])

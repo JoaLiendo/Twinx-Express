@@ -7,7 +7,7 @@ from db.repositorios import fiscal as repositorio_fiscal
 from domain.fiscal import comprobante as estados
 from domain.fiscal.comprobante import AMBIENTE_HOMOLOGACION, AMBIENTE_PRODUCCION, ComprobanteFiscal
 from domain.fiscal.emisor import PerfilFiscal
-from services.fiscal import credenciales, servicio_parametros
+from services.fiscal import credenciales, servicio_caea, servicio_parametros
 
 _CERTIFICADO_USABLE = (credenciales.VIGENTE, credenciales.POR_VENCER)
 
@@ -24,6 +24,7 @@ class EstadoPanel:
     errores_recientes: list
     productos_sin_clasificar: int
     tablas: list
+    caea: dict
     avisos: list[str] = field(default_factory=list)
 
     @property
@@ -43,7 +44,9 @@ def fiscalizacion_activa() -> bool:
     return fiscalizacion_activa_para(repositorio_fiscal.obtener_perfil())
 
 
-def avisos(perfil: PerfilFiscal | None, certificados: dict[str, credenciales.InfoCertificado], conteos: dict[str, int]) -> list[str]:
+def avisos(
+    perfil: PerfilFiscal | None, certificados: dict[str, credenciales.InfoCertificado], conteos: dict[str, int], caea: dict
+) -> list[str]:
     resultado = []
     if conteos.get(estados.INCIERTO):
         resultado.append(f"Hay {conteos[estados.INCIERTO]} comprobante(s) con resultado incierto: conciliá antes de seguir facturando esa secuencia.")
@@ -57,6 +60,14 @@ def avisos(perfil: PerfilFiscal | None, certificados: dict[str, credenciales.Inf
             resultado.append(f"El certificado fiscal vence en {certificado.dias_restantes} día(s): renovalo en ARCA.")
         elif certificado.estado in (credenciales.AUSENTE, credenciales.ILEGIBLE):
             resultado.append("No hay un certificado fiscal utilizable para el ambiente en uso.")
+    if caea.get("por_informar"):
+        dias = caea.get("dias_minimos")
+        plazo = "" if dias is None else (f" (vence el plazo en {dias} día/s)" if dias >= 0 else " (¡el plazo de ARCA ya venció!)")
+        resultado.append(
+            f"Hay {len(caea['por_informar'])} comprobante(s) emitidos bajo CAEA pendientes de informar a ARCA{plazo}."
+        )
+    if perfil is not None and perfil.contingencia_caea and caea.get("vigente") is None:
+        resultado.append("La contingencia CAEA está habilitada pero no hay un CAEA vigente para hoy: solicitalo.")
     return resultado
 
 
@@ -64,6 +75,7 @@ def estado() -> EstadoPanel:
     perfil = repositorio_fiscal.obtener_perfil()
     certificados = {ambiente: credenciales.estado(ambiente) for ambiente in (AMBIENTE_HOMOLOGACION, AMBIENTE_PRODUCCION)}
     conteos = repositorio_fiscal.contar_por_estado()
+    caea = servicio_caea.estado(perfil)
     return EstadoPanel(
         perfil=perfil,
         certificados=certificados,
@@ -75,7 +87,8 @@ def estado() -> EstadoPanel:
         errores_recientes=repositorio_fiscal.listar_errores_recientes(10),
         productos_sin_clasificar=repositorio_fiscal.contar_productos_activos_sin_clasificar(),
         tablas=servicio_parametros.tablas(perfil.ambiente) if perfil else [],
-        avisos=avisos(perfil, certificados, conteos),
+        caea=caea,
+        avisos=avisos(perfil, certificados, conteos, caea),
     )
 
 
@@ -84,7 +97,10 @@ def alerta_fiscal() -> list[str]:
     perfil = repositorio_fiscal.obtener_perfil()
     if perfil is None:
         return []
-    return avisos(perfil, {perfil.ambiente: credenciales.estado(perfil.ambiente)}, repositorio_fiscal.contar_por_estado())
+    return avisos(
+        perfil, {perfil.ambiente: credenciales.estado(perfil.ambiente)}, repositorio_fiscal.contar_por_estado(),
+        servicio_caea.estado(perfil),
+    )
 
 
 def estado_fiscal_de_ventas(venta_ids: list[int]) -> dict[int, str]:

@@ -110,7 +110,7 @@ def _fecha_iso(aaaammdd: str | None) -> str | None:
     return datetime.strptime(aaaammdd[:8], "%Y%m%d").date().isoformat()
 
 
-def _auditar(conexion, usuario_id: int | None, accion: str, comprobante: ComprobanteFiscal, detalle: str) -> None:
+def auditar(conexion, usuario_id: int | None, accion: str, comprobante: ComprobanteFiscal, detalle: str) -> None:
     repositorio_auditoria.registrar_en_conexion(
         conexion, usuario_id, accion, ENTIDAD, comprobante.id,
         f"{comprobante.nombre_tipo} {comprobante.numero_formateado} (venta #{comprobante.venta_id}): {detalle}",
@@ -129,7 +129,9 @@ class _Preparado:
     nuevo: repositorio_fiscal.NuevoComprobante
 
 
-def _preparar_principal(perfil: PerfilFiscal, venta_id: int, usuario_id: int | None) -> _Preparado:
+def preparar_principal(perfil: PerfilFiscal, venta_id: int, usuario_id: int | None, punto_venta: int | None = None) -> _Preparado:
+    """Snapshot del comprobante principal de la venta (sin escribir nada). `punto_venta` es el de CAE salvo
+    que se emita bajo CAEA (ver `servicio_caea`)."""
     with obtener_conexion() as conexion:
         venta = repositorio_fiscal.venta_para_fiscalizar_en_conexion(conexion, venta_id)
         if venta is None:
@@ -149,7 +151,7 @@ def _preparar_principal(perfil: PerfilFiscal, venta_id: int, usuario_id: int | N
     servicio_parametros.validar_codigos(
         perfil.ambiente, clase, tipo, receptor.doc_tipo, receptor.condicion_iva_receptor_id, importes, hoy
     )
-    emisor = perfil.snapshot(perfil.punto_venta_cae)
+    emisor = perfil.snapshot(punto_venta or perfil.punto_venta_cae)
     return _Preparado(
         repositorio_fiscal.NuevoComprobante(
             venta_id=venta_id,
@@ -185,7 +187,7 @@ def _alta(nuevo: repositorio_fiscal.NuevoComprobante, buscar_existente) -> Compr
                 return existente
             comprobante_id = repositorio_fiscal.insertar_comprobante_en_conexion(conexion, nuevo)
             comprobante = repositorio_fiscal.obtener_comprobante_en_conexion(conexion, comprobante_id)
-            _auditar(conexion, nuevo.usuario_id, ACCION_FISCAL_SOLICITUD, comprobante,
+            auditar(conexion, nuevo.usuario_id, ACCION_FISCAL_SOLICITUD, comprobante,
                      f"solicitud por ${centavos_a_texto(nuevo.importes.total_centavos)}")
             return comprobante
     except ErrorBaseDatos:
@@ -213,7 +215,7 @@ def fiscalizar_venta(venta_id: int, usuario_id: int) -> ComprobanteFiscal:
     with obtener_conexion() as conexion:
         vivo = repositorio_fiscal.principal_vivo_de_venta_en_conexion(conexion, venta_id)
     if vivo is None:
-        preparado = _preparar_principal(perfil, venta_id, usuario_id)
+        preparado = preparar_principal(perfil, venta_id, usuario_id)
         vivo = _alta(preparado.nuevo, lambda c: repositorio_fiscal.principal_vivo_de_venta_en_conexion(c, venta_id))
     if vivo.estado == estados.INCIERTO:
         # Primero se le pregunta a ARCA; solo si demuestra que no lo procesó, se vuelve a emitir.
@@ -226,7 +228,7 @@ def fiscalizar_venta(venta_id: int, usuario_id: int) -> ComprobanteFiscal:
 # --- 3-5. Emitir -----------------------------------------------------------------------------------
 
 
-def _solicitud_de(comprobante: ComprobanteFiscal, numero: int, fecha: date) -> SolicitudAutorizacion:
+def solicitud_de(comprobante: ComprobanteFiscal, numero: int, fecha: date) -> SolicitudAutorizacion:
     asociados = ()
     if comprobante.comprobante_asociado_id is not None:
         original = _obtener(comprobante.comprobante_asociado_id)
@@ -295,7 +297,7 @@ def emitir(comprobante_id: int, usuario_id: int | None) -> ComprobanteFiscal:
             )
         if ultimo < ultimo_local:
             with obtener_conexion() as conexion:
-                _auditar(conexion, usuario_id, ACCION_FISCAL_ERROR, comprobante,
+                auditar(conexion, usuario_id, ACCION_FISCAL_ERROR, comprobante,
                          f"ARCA informa último {ultimo} y Twinx tiene autorizado el {ultimo_local}: numeración inconsistente")
             raise ErrorFiscal(
                 f"Numeración inconsistente: ARCA informa como último el {ultimo} y Twinx ya tiene autorizado el {ultimo_local}"
@@ -331,7 +333,7 @@ def _resolver_en_vuelo_de_la_secuencia(comprobante: ComprobanteFiscal, gateway: 
 
 def _enviar(comprobante: ComprobanteFiscal, numero: int, gateway: GatewayARCA, usuario_id: int | None) -> ComprobanteFiscal:
     fecha = date.today()
-    solicitud = _solicitud_de(comprobante, numero, fecha)
+    solicitud = solicitud_de(comprobante, numero, fecha)
     with obtener_conexion(inmediata=True) as conexion:
         repositorio_fiscal.actualizar_estado_en_conexion(
             conexion, comprobante.id, estados.ENVIANDO, numero=numero, fecha_comprobante=fecha.isoformat()
@@ -378,7 +380,7 @@ def _marcar_incierto(comprobante_id: int, motivo: str) -> ComprobanteFiscal:
         comprobante = repositorio_fiscal.obtener_comprobante_en_conexion(conexion, comprobante_id)
         if comprobante.estado == estados.ENVIANDO:
             repositorio_fiscal.actualizar_estado_en_conexion(conexion, comprobante_id, estados.INCIERTO)
-            _auditar(conexion, None, ACCION_FISCAL_INCIERTO, comprobante, motivo)
+            auditar(conexion, None, ACCION_FISCAL_INCIERTO, comprobante, motivo)
     return _obtener(comprobante_id)
 
 
@@ -438,7 +440,7 @@ def _registrar_respuesta(
             texto = f"rechazado por ARCA ({primero.codigo}: {primero.mensaje[:120]})"
         _cerrar_intento(correlacion, respuesta.resultado, inicio, detalle, conexion)
         comprobante = repositorio_fiscal.obtener_comprobante_en_conexion(conexion, comprobante_id)
-        _auditar(conexion, usuario_id, accion, comprobante, texto)
+        auditar(conexion, usuario_id, accion, comprobante, texto)
     logger.info("FECAESolicitar resultado=%s comprobante=%s correlacion=%s", respuesta.resultado, comprobante_id, correlacion)
     return _obtener(comprobante_id)
 
@@ -510,21 +512,21 @@ def _conciliar_bajo_candado(comprobante_id: int, gateway: GatewayARCA, usuario_i
                 observaciones_json=_mensajes_json(consultado.observaciones),
             )
             _cerrar_intento(correlacion, "ENCONTRADO", inicio, {"codigo": consultado.codigo_autorizacion}, conexion)
-            _auditar(conexion, usuario_id, ACCION_FISCAL_RECONCILIADO, actual,
+            auditar(conexion, usuario_id, ACCION_FISCAL_RECONCILIADO, actual,
                      f"ARCA lo tenía autorizado: CAE {consultado.codigo_autorizacion} recuperado")
         elif consultado is not None:
             repositorio_fiscal.actualizar_estado_en_conexion(conexion, comprobante_id, estados.PENDIENTE, numero=None, fecha_comprobante=None)
             _cerrar_intento(correlacion, "ENCONTRADO", inicio, {"mensaje": "número usado por otro comprobante"}, conexion)
-            _auditar(conexion, usuario_id, ACCION_FISCAL_RECONCILIADO, actual,
+            auditar(conexion, usuario_id, ACCION_FISCAL_RECONCILIADO, actual,
                      "ARCA tiene ese número con otros datos: el pedido no se procesó; queda pendiente con número nuevo")
         elif ultimo < actual.numero:
             repositorio_fiscal.actualizar_estado_en_conexion(conexion, comprobante_id, estados.PENDIENTE, numero=None, fecha_comprobante=None)
             _cerrar_intento(correlacion, "NO_ENCONTRADO", inicio, {"ultimo": ultimo}, conexion)
-            _auditar(conexion, usuario_id, ACCION_FISCAL_RECONCILIADO, actual,
+            auditar(conexion, usuario_id, ACCION_FISCAL_RECONCILIADO, actual,
                      f"ARCA no lo procesó (último autorizado {ultimo}): queda pendiente para reintento seguro")
         else:
             _cerrar_intento(correlacion, "ERROR", inicio, {"ultimo": ultimo, "mensaje": "ARCA no lo tiene pero su último lo supera"}, conexion)
-            _auditar(conexion, usuario_id, ACCION_FISCAL_ERROR, actual,
+            auditar(conexion, usuario_id, ACCION_FISCAL_ERROR, actual,
                      f"conciliación contradictoria: ARCA no tiene el número y su último es {ultimo}")
     return _obtener(comprobante_id)
 
@@ -564,7 +566,7 @@ def descartar(comprobante_id: int, usuario_id: int) -> ComprobanteFiscal:
         if comprobante.estado != estados.PENDIENTE:
             raise OperacionFiscalInvalidaError("Solo se descarta un comprobante pendiente que no está en ARCA.")
         repositorio_fiscal.actualizar_estado_en_conexion(conexion, comprobante_id, estados.DESCARTADO)
-        _auditar(conexion, usuario_id, ACCION_FISCAL_DESCARTADO, comprobante, "descartado antes de enviarse")
+        auditar(conexion, usuario_id, ACCION_FISCAL_DESCARTADO, comprobante, "descartado antes de enviarse")
     return _obtener(comprobante_id)
 
 

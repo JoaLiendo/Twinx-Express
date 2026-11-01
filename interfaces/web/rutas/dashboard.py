@@ -14,6 +14,7 @@ from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base
 from services import servicio_caja, servicio_configuracion, servicio_partidas, servicio_reportes, servicio_stock
+from services.fiscal import servicio_panel
 
 MOVIMIENTOS_RECIENTES = 5
 
@@ -34,4 +35,6 @@ def ver_dashboard(request: Request, usuario_actual: Usuario = Depends(obtener_us
     if usuario_actual.rol == "OWNER":
         contexto["valorizacion"] = servicio_stock.calcular_valorizacion_inventario()
         contexto["perdidas"] = servicio_reportes.generar_reporte_perdidas()
+        # V1.16: lo fiscal que no puede esperar (inciertos, certificado, CAEA sin informar).
+        contexto["alertas_fiscales"] = servicio_panel.alerta_fiscal()
     return templates.TemplateResponse(request, "dashboard.html", contexto)

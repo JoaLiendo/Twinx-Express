@@ -26,7 +26,7 @@ from domain.usuario import exigir_rol
 from domain.venta import validar_motivo_anulacion
 from excepciones import ErrorAplicacion, ErrorBaseDatos, OperacionFiscalInvalidaError
 from services import servicio_ventas
-from services.fiscal import servicio_facturacion, servicio_parametros
+from services.fiscal import servicio_caea, servicio_facturacion, servicio_parametros
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +154,11 @@ def _aplicar(cancelacion_id: int) -> None:
 
 
 def conciliar_y_aplicar() -> None:
-    """Conciliación automática (arranque y panel): primero los inciertos, después las cancelaciones."""
+    """Conciliación automática (arranque y panel): primero los inciertos, después las cancelaciones y por
+    último el mantenimiento CAEA (pedir el código del período, informar lo emitido)."""
     servicio_facturacion.conciliar_inciertos()
     aplicar_pendientes()
+    servicio_caea.mantenimiento_automatico()
 
 
 def cancelaciones_de_venta(venta_id: int):
