@@ -146,11 +146,16 @@ class TestCsv:
     def test_cabeceras_bom_y_columnas(self, e):
         _datos(e)
 
+        antes = date.today()
         respuesta = solicitud("GET", EXPORTAR, cookies=e.co)
+        despues = date.today()
 
         assert respuesta.status == 200
         assert respuesta.header("content-type").startswith("text/csv")
-        assert respuesta.header("content-disposition") == f'attachment; filename="deuda_proveedores_{HOY.isoformat()}.csv"'
+        # El nombre lleva la fecha del momento del request: acotada por el reloj leído antes y después.
+        assert respuesta.header("content-disposition") in {
+            f'attachment; filename="deuda_proveedores_{dia.isoformat()}.csv"' for dia in (antes, despues)
+        }
         assert respuesta.cuerpo.startswith(b"\xef\xbb\xbf")
         assert respuesta.cuerpo.decode("utf-8-sig").splitlines()[0] == ",".join(COLUMNAS_DEUDA_PROVEEDORES)
 
@@ -162,7 +167,7 @@ class TestCsv:
 
     def test_dinero_fechas_y_criterio(self, e):
         _datos(e)
-        servicio_pagos_proveedor.registrar_pago(e.b.id, 5000, "TRANSFERENCIA", e.owner.id)
+        pago = servicio_pagos_proveedor.registrar_pago(e.b.id, 5000, "TRANSFERENCIA", e.owner.id)
 
         filas = {f["proveedor"]: f for f in _filas(solicitud("GET", EXPORTAR, cookies=e.co))}
 
@@ -170,7 +175,7 @@ class TestCsv:
         assert filas["Alfa SA"]["saldo"] == "100.00" and filas["Alfa SA"]["vencida"] == "100.00"
         assert filas["Beta SRL"]["saldo"] == "250.00"  # el pago de 50,00 cubre lo más antiguo (la próxima)
         assert filas["Beta SRL"]["proxima"] == "200.00" and filas["Beta SRL"]["sin_vencimiento"] == "50.00"
-        assert filas["Beta SRL"]["ultimo_pago"] == HOY.isoformat()
+        assert filas["Beta SRL"]["ultimo_pago"] == pago.fecha[:10]
         assert filas["Alfa SA"]["ultimo_pago"] == ""
         assert filas["Alfa SA"]["ultima_compra"] == (HOY - timedelta(days=60)).isoformat()
         assert filas["Alfa SA"]["criterio"] == "Estimado por antigüedad (FIFO)"

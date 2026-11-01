@@ -9,17 +9,23 @@ import pytest
 
 from domain.compra import ItemCompra
 from excepciones import DatosInvalidosError
+from db.repositorios import compras as repositorio_compras
 from services import servicio_compras, servicio_deuda_proveedores, servicio_pagos_proveedor, servicio_proveedores, servicio_stock
 from tests.utilidades_clientes import consultar, escribir
 
-HOY = date.fromisoformat(date.today().isoformat())
+HOY = date.today()
 
 
 @pytest.fixture
-def e(base_datos_temporal):
+def e(base_datos_temporal, monkeypatch):
     from db.repositorios import usuarios as repositorio_usuarios
     from domain.usuario import Usuario
 
+    # Las compras quedan fechadas en HOY (el mismo "hoy" que recibe el servicio), no en el reloj real:
+    # si la suite cruza medianoche entre la importación del módulo y el test, ambos siguen coincidiendo.
+    monkeypatch.setattr(
+        repositorio_compras, "obtener_fecha_hora_actual_en_conexion", lambda conexion: f"{HOY.isoformat()} 10:00:00"
+    )
     owner = repositorio_usuarios.crear_usuario(
         Usuario(nombre_usuario="duenio", nombre_completo="Dueño", password_hash="hash-de-prueba", rol="OWNER")
     )
@@ -168,7 +174,7 @@ class TestUltimoPago:
     def test_ultima_compra_es_la_fecha_de_la_compra_activa(self, e):
         _comprar(e, e.a, 500)
 
-        assert _fila(_reporte(), e.a).ultima_compra == date.today().isoformat()
+        assert _fila(_reporte(), e.a).ultima_compra == HOY.isoformat()
 
 
 class TestMultiplesProveedores:
