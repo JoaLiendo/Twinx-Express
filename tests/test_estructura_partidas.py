@@ -14,7 +14,8 @@ ESPERADAS = {
     ("services/servicio_compras.py", "registrar_compra"),
     ("services/servicio_compras.py", "anular_compra"),
     ("services/servicio_ventas.py", "registrar_venta"),
-    ("services/servicio_ventas.py", "anular_venta"),
+    # V1.16-F: el efecto comercial de anular vive en `anular_en_conexion` (lo usan la anulación y la NC).
+    ("services/servicio_ventas.py", "anular_en_conexion"),
     ("services/servicio_stock.py", "aplicar_ajuste_en_conexion"),
 }
 

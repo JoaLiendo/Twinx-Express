@@ -76,6 +76,8 @@ class ARCAFalso:
     cae_no_enviado: bool = False
     caer_tras_cae: bool = False
     credenciales_rechazadas: bool = False
+    # Solo E2E (el navegador no puede tocar flags de otro proceso): total en centavos -> "rechazar" | "incierto".
+    reglas_por_total: dict[int, str] = field(default_factory=dict)
     rechazar_proximo: list[MensajeARCA] | None = None
     observar_proximo: list[MensajeARCA] | None = None
     llamadas: list[str] = field(default_factory=list)
@@ -181,6 +183,13 @@ class ARCAFalso:
                 self.timeout_sin_procesar = False
                 raise ErrorComunicacionARCA("ARCA falso: timeout de lectura.", enviado=True)
             errores = self._validar(solicitud)
+            regla = self.reglas_por_total.get(solicitud.importes.total_centavos) if solicitud.tipo not in (3, 8, 13) else None
+            if regla == "rechazar":
+                self.rechazar_proximo = [MensajeARCA(10013, "Regla E2E: el documento del receptor es inválido.")]
+            elif regla == "incierto" and not errores:
+                self.reglas_por_total.pop(solicitud.importes.total_centavos)
+                self.perder_respuesta = True
+                self.fallar_antes_de_enviar = 1  # la conciliación inmediata tampoco llega: queda INCIERTO
             if self.rechazar_proximo:
                 errores, self.rechazar_proximo = list(self.rechazar_proximo), None
             if errores:

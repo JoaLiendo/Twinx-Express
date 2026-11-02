@@ -2,7 +2,7 @@
 
 > Roadmap vivo, no retrospectivo (el detalle de lo ya implementado por versión está en `README.md`,
 > `LEEME.txt` y `PROGRESS.md`). Se actualiza a medida que cada versión se define o se cierra.
-> V1.11–V1.15 están cerradas; V1.16–V1.18 tienen el alcance acordado que se detalla abajo.
+> V1.11–V1.15 están cerradas; V1.16 es candidato a release (falta la homologación externa con ARCA); V1.17–V1.18 tienen el alcance acordado que se detalla abajo.
 
 ## V1.11 — Trazabilidad de ajustes de stock
 
@@ -124,19 +124,29 @@ Sin migraciones nuevas. Reutiliza y endurece el backup/restore existente (no hay
 
 Fuera de alcance: actualización por Internet, integración con APIs de nube, rollback desde la web.
 
-## V1.16 — Facturación fiscal ARCA
+## V1.16 — Facturación fiscal ARCA (candidato a release; homologación externa pendiente)
 
-- Integración fiscal.
-- Comprobantes correspondientes.
-- CAE.
-- Numeración/punto de venta.
-- QR.
-- Notas de crédito/débito.
-- PDF.
-- Impresión térmica.
-- Contingencia.
+- **V1.16-A** (041): perfil del emisor (producción bloqueada por trigger sin habilitación del técnico),
+  tratamiento de IVA por producto en tabla aparte (sin clasificar lo histórico), comprobantes con snapshot
+  inmutable, líneas, alícuotas e intentos; máquina de estados y unicidades exigidas por la base; clase A/B/C,
+  umbral fechado de consumidor final (RG 5700/2025) y bloqueo de clase A con leyenda (RG 5762/2025, ex M).
+- **V1.16-B**: certificados por ambiente con clave privada cifrada con DPAPI fuera de `data/` y backups;
+  WSAA (TRA, CMS SignedData adjunto SHA-256, LoginCms, faults) con TA en memoria + copia DPAPI; transporte
+  HTTPS con timeouts que distingue "no enviado" de "incierto"; producción bloqueada en tests.
+- **V1.16-C** (042): cliente WSFEv1 según el WSDL vigente, caché de tablas `FEParam*` por ambiente con fuente y
+  fecha, validación del punto de venta contra ARCA, gateway real y ARCA falso determinista para tests.
+- **V1.16-D**: CAE con número de `FECompUltimoAutorizado`, ENVIANDO persistido antes del envío, INCIERTO
+  conciliado con `FECompConsultar` (nunca reenvío ciego), bloqueo de la secuencia, recuperación al arrancar.
+- **V1.16-E**: POS con estado fiscal, QR oficial, factura A4/80 mm/PDF, ticket interno «no válido como
+  factura», historial y detalle, panel del dueño, permisos; `--habilitar-produccion-fiscal` por consola.
+- **V1.16-F** (043): nota de crédito total con cancelación comercial aplicada una única vez y solo con la NC
+  autorizada; la venta fiscalizada no se anula localmente.
+- **V1.16-G** (044): CAEA real (solicitar/consultar, emisión solo si el CAE no se envió, informe posterior,
+  sin movimiento, alertas persistentes).
 
-Nada de esto se implementa antes de V1.16.
+Fuera de alcance: WSMTXCA, notas de débito, NC parciales/devoluciones parciales, clase A con leyenda, otras
+monedas, exportación, multi-sucursal, «Otros Impuestos Nacionales Indirectos» discriminados. Para declararla
+lista para producción falta el smoke real contra ARCA homologación con un certificado de homologación.
 
 ## V1.17 — Analítica
 

@@ -753,6 +753,60 @@ Crédito a clientes); las deudas existentes se siguen cobrando normalmente.
 restore»), que deja el backup previo y la versión anterior archivada para un rollback real. Después de
 actualizar, el OWNER puede configurar el segundo destino de backups en Backup.
 
+## Facturación fiscal ARCA (V1.16)
+
+Cuatro migraciones nuevas (041–044; 44 en total) y dos dependencias de runtime: `cryptography` (firma CMS
+del TRA de WSAA y certificados X.509, con su propio OpenSSL) y `segno` (QR, Python puro). Sin Chromium ni
+OpenSSL externo. **Venta interna ≠ comprobante fiscal ≠ autorización ARCA**: una venta se registra igual
+aunque ARCA no responda, pero solo es factura cuando ARCA devolvió el CAE (o se emitió bajo un CAEA vigente).
+
+- **Arquitectura**: `domain/fiscal/` (reglas puras: IVA, clase, receptor, QR, CAEA), `db/repositorios/fiscal.py`,
+  `caea.py` y `parametros_arca.py`, `services/fiscal/` (casos de uso) y `services/fiscal/arca/` (único lugar con
+  HTTPS, SOAP, WSAA y WSFEv1). Los servicios usan un `GatewayARCA`; en tests y E2E se inyecta un ARCA falso
+  determinista (`tests/fake_arca.py`), que no forma parte del ejecutable.
+- **Fuentes**: WSDL vigente de WSFEv1 (homologación, 01/11/2026), especificación oficial del QR (verificada con
+  su vector de prueba), RG 5700/2025 (identificar al consumidor final desde $10.000.000), RG 5762/2025 (la ex
+  clase M es clase A con leyenda: Twinx la bloquea), RG 5614/2024 (IVA contenido en factura B) y RG 5782
+  (CAEA como primera contingencia). Las tablas de ARCA no se copian al código: se cachean desde `FEParam*`.
+- **Emisor** (041): CUIT, razón social, condición IVA, domicilio, IIBB, inicio de actividades y punto de
+  venta, que **ARCA confirma** (`FEParamGetPtosVenta`). Nace en **homologación**; producción solo se habilita
+  por consola (`KioscoApp.exe --habilitar-produccion-fiscal <CUIT>`), con certificado de producción vigente
+  de ese CUIT, y la base lo exige por trigger.
+- **Certificados y secretos**: uno por ambiente (homologación ≠ producción), validados contra su clave, su
+  ambiente, su vigencia y el CUIT. La clave privada y el Ticket de Acceso viven en
+  `%LOCALAPPDATA%\KioscoApp\fiscal_privado\` (hermano de `data\`, **fuera de todo backup**) cifrados con
+  DPAPI del usuario de Windows; la contraseña de la clave no se guarda. Nada de eso llega a SQLite, logs,
+  auditoría ni HTML. El TA se reutiliza (memoria + copia DPAPI): WSAA no entrega otro mientras siga vigente.
+- **IVA**: cada producto queda SIN CLASIFICAR hasta que el OWNER le asigna gravado (con su alícuota ARCA),
+  exento o no gravado (Fiscal → IVA de productos); nada histórico se clasifica solo. Los precios siguen siendo
+  finales: neto e IVA se derivan con `Decimal` por alícuota (redondeo mitad arriba del neto, IVA = bruto −
+  neto) y se reconcilian al centavo contra el total; un producto sin clasificar bloquea A/B (C no lo necesita).
+- **Comprobante**: la clase la deciden las condiciones de emisor y receptor (nunca el cajero). Receptor desde
+  el cliente V1.14 (persona/empresa no decide la condición); sin cliente, consumidor final anónimo solo
+  debajo del umbral vigente. Snapshot inmutable de emisor, receptor, líneas e importes.
+- **Numeración e incertidumbre**: el número sale de `FECompUltimoAutorizado`; se persiste ENVIANDO antes del
+  `FECAESolicitar`. Si el pedido no salió, vuelve a PENDIENTE; si salió y no hubo respuesta, queda INCIERTO,
+  que se resuelve con `FECompConsultar` (recupera el CAE o libera el número), nunca reenviando. Un incierto
+  bloquea su secuencia; al arrancar, todo ENVIANDO pasa a INCIERTO y se concilia en segundo plano. La base
+  exige número único por ambiente+CUIT+punto de venta+tipo y una sola factura viva por venta.
+- **Documentos**: factura A4, ticket térmico de 80 mm y PDF (escritor propio) desde el mismo modelo, con CAE,
+  vencimiento y QR oficial; nada de eso existe sin autorización. El ticket interno dice «NO VÁLIDO COMO
+  FACTURA». El POS fiscaliza en un pedido aparte y muestra el estado.
+- **Notas de crédito** (043): NC total asociada a la factura (la original no cambia). Las reglas de
+  anulación se verifican antes de pedirla; solo con la NC autorizada se restaura stock y se anula la venta,
+  una única vez. Una venta fiscalizada no se anula localmente. Sin notas de débito.
+- **Contingencia CAEA** (044): CAEA por quincena (vigente y, 5 días antes, el próximo) en un punto de venta
+  CAEA propio y validado; se usa solo si el CAE falló sin enviarse (nunca ante un incierto). Lo emitido se
+  informa (`FECAEARegInformativo`) y los períodos sin comprobantes con `FECAEASinMovimientoInformar`; los
+  pendientes se alertan en el dashboard y el panel. Sin CAE ni CAEA: «Fiscalización no disponible».
+- **Permisos**: el CASHIER fiscaliza e imprime; panel, emisor, certificados, IVA, conciliación, NC y CAEA son
+  del OWNER. Ningún formulario permite elegir número, CAE ni ambiente.
+
+**Actualizar desde V1.15.** Backup previo automático y migraciones 041–044: ventas, stock, caja, clientes y
+saldos no cambian, ningún producto recibe IVA ni ninguna venta un comprobante. La facturación queda inactiva
+hasta configurar el emisor, validar el punto de venta, cargar el certificado y clasificar los productos. El
+rollback a V1.15 restaura el backup previo (V1.15 rechaza abrir una base con migraciones que no conoce).
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -780,5 +834,6 @@ actualizar, el OWNER puede configurar el segundo destino de backups en Backup.
 - [x] Partidas de stock, vencimientos de productos, ventas FEFO, alertas, baja/venta controlada de vencidos y liquidación sugerida (V1.12, ver «Partidas, vencimientos y liquidación (V1.12)»)
 - [x] Proveedores con categorías, datos fiscales, evaluaciones, reclamos auditables y documentación fiscal declarada (V1.13, ver «Proveedores (V1.13)»)
 - [x] Clientes persona/empresa, políticas de crédito, venta mixta, obligaciones con FIFO persistido, estados, cierres, strikes y veto (V1.14, ver «Clientes y crédito (V1.14)»)
+- [x] Facturación fiscal ARCA: WSAA + WSFEv1, factura A/B/C con CAE, QR, A4/80 mm/PDF, notas de crédito, conciliación de inciertos y contingencia CAEA (V1.16, ver «Facturación fiscal ARCA (V1.16)»; homologación externa pendiente)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

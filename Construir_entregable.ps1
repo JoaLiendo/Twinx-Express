@@ -41,8 +41,9 @@ $archivosDeEntrega = @('LEEME.txt', 'Restaurar_backup.bat')
 
 # Ruta relativa (a dist\KioscoApp) de los unicos ZIP legitimos del bundle.
 $zipsPermitidos = @('_internal\base_library.zip')
-$directoriosProhibidos = @('data', 'imagenes_productos', 'backups')
-$patronesArchivoProhibido = @('*.db', '*.db-*', '*.sqlite', '*.sqlite3', '*.zip')
+# V1.16: tampoco secretos fiscales (clave privada / Ticket de Acceso cifrados, claves sueltas).
+$directoriosProhibidos = @('data', 'imagenes_productos', 'backups', 'fiscal_privado')
+$patronesArchivoProhibido = @('*.db', '*.db-*', '*.sqlite', '*.sqlite3', '*.zip', '*.dpapi', '*.key', '*.p12', '*.pfx')
 
 function Fallar([string]$mensaje) {
     Write-Host ''

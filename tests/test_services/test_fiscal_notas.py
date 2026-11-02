@@ -174,3 +174,11 @@ class TestBloqueosPreviosAArca:
         venta = uf.vender([(uf.producto(5000), 1)])
         facturacion.fiscalizar_venta(venta.id, owner)
         assert servicio_notas.emitir_nota_credito_total(venta.id, "ERROR_CARGA", None, owner).tipo_comprobante == 13
+
+
+def test_mantenimiento_automatico_nunca_lanza(tmp_path, monkeypatch):
+    """Corre en un hilo de arranque: una base sin esquema (o cualquier falla) se registra, no explota."""
+    import db.conexion as modulo_conexion
+
+    monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", tmp_path / "sin_esquema.db")
+    servicio_notas.conciliar_y_aplicar()

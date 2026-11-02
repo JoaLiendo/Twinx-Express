@@ -277,6 +277,41 @@ def _aislar_backups(ruta_db: Path) -> None:
     modulo_backup.DIRECTORIO_BACKUPS = directorio_backups
 
 
+DIRECTORIO_CERTIFICADOS_E2E = Path("tests_e2e") / ".tmp" / "certificados_fiscales"
+PRODUCTOS_FISCALES = (
+    ("7790000000501", "Factura E2E", 12100, None),
+    ("7790000000502", "Rechazo Fiscal E2E", 777, "rechazar"),
+    ("7790000000503", "Incierto Fiscal E2E", 888, "incierto"),
+)
+
+
+def _preparar_fiscal(ruta_db: Path) -> None:
+    """V1.16: facturación contra un ARCA FALSO determinista (`tests/fake_arca.py`), con los secretos fiscales
+    dentro del directorio temporal de la corrida y el acceso a ARCA producción bloqueado. Deja un certificado
+    de prueba (autofirmado, sin valor) en una ruta fija para que el test lo suba por la interfaz, y tres
+    productos exclusivos de los flujos fiscales: uno normal, uno que el ARCA falso rechaza y uno cuya
+    respuesta se pierde (resultado incierto)."""
+    import os
+
+    import config
+    from services import servicio_stock
+    from services.fiscal import gateway
+    from services.fiscal.arca.endpoints import VARIABLE_BLOQUEO_PRODUCCION
+    from tests import certificados_prueba
+    from tests.fake_arca import ARCAFalso
+
+    os.environ[VARIABLE_BLOQUEO_PRODUCCION] = "1"
+    config.DIRECTORIO_SECRETOS_FISCALES = ruta_db.parent / "fiscal_privado"
+    falso = ARCAFalso(reglas_por_total={precio: regla for _, _, precio, regla in PRODUCTOS_FISCALES if regla})
+    gateway.establecer_fabrica(lambda perfil: falso)
+
+    DIRECTORIO_CERTIFICADOS_E2E.mkdir(parents=True, exist_ok=True)
+    (DIRECTORIO_CERTIFICADOS_E2E / "homologacion.crt").write_bytes(certificados_prueba.pem(certificados_prueba.certificado()))
+    (DIRECTORIO_CERTIFICADOS_E2E / "homologacion.key").write_bytes(certificados_prueba.clave_pem())
+    for codigo, nombre, precio, _ in PRODUCTOS_FISCALES:
+        servicio_stock.registrar_producto(codigo, nombre, precio_costo_centavos=100, precio_venta_centavos=precio, stock_actual=50)
+
+
 def main() -> None:
     if len(sys.argv) != 3:
         print(
@@ -303,6 +338,7 @@ def main() -> None:
     _sembrar_productos_de_prueba()
     _abrir_caja_de_prueba()
     _sembrar_clientes_con_deuda_vieja()
+    _preparar_fiscal(ruta_db)
 
     print(f"[servidor_pruebas] DB temporal: {ruta_db}")
     print(f"[servidor_pruebas] Sirviendo en http://127.0.0.1:{puerto}")

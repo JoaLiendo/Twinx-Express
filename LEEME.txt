@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.15.0
+Twinx Express 1.16.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -865,3 +865,57 @@ g) AL ACTUALIZAR DESDE LA VERSION 1.13
    Cada venta a cuenta anterior queda como deuda de esa venta, con su
    fecha; los cobros anteriores se reparten pagando primero lo mas viejo.
    Ningun saldo cambia. Si algo sale mal, segui el punto 7.
+
+24) NOVEDADES DE LA VERSION 1.16: FACTURACION ELECTRONICA (ARCA)
+-----------------------------------------------------------------
+
+a) VENTA NO ES LO MISMO QUE FACTURA
+   La venta se registra siempre, aunque Internet o ARCA no funcionen.
+   Solo es factura cuando ARCA la autoriza (devuelve el CAE). El ticket
+   de siempre dice "COMPROBANTE INTERNO - NO VALIDO COMO FACTURA".
+   Despues de cobrar, el POS muestra si la factura quedo AUTORIZADA,
+   pendiente, rechazada o con resultado incierto. Si quedo autorizada,
+   aparece el boton "Imprimir factura" (80 mm, A4 o PDF, con el QR).
+
+b) CONFIGURACION (la hace el dueño o el soporte tecnico)
+   Menu Fiscal:
+   - Configurar emisor: CUIT, razon social, condicion frente al IVA,
+     domicilio, IIBB, inicio de actividades y punto de venta. El punto
+     de venta se valida con ARCA (boton "Validar punto de venta").
+   - Certificados: cargar el certificado (.crt) y la clave (.key) que da
+     ARCA. El de pruebas (homologacion) y el real (produccion) son
+     distintos. La clave queda protegida para este usuario de Windows,
+     fuera de los backups: si cambias de computadora hay que volver a
+     cargarla.
+   - IVA de productos: indicar si cada producto es gravado (y su
+     alicuota), exento o no gravado. KioscoApp no supone ninguna: un
+     producto sin clasificar no permite emitir factura A o B.
+   KioscoApp arranca en HOMOLOGACION (pruebas, sin validez fiscal).
+   Pasar a PRODUCCION lo hace solo el soporte tecnico, con KioscoApp
+   cerrado:
+
+       KioscoApp.exe --habilitar-produccion-fiscal <CUIT del negocio>
+
+c) SI ARCA NO RESPONDE
+   La venta queda registrada y la factura "pendiente". Si la respuesta
+   de ARCA se pierde, la factura queda "resultado incierto": KioscoApp NO
+   la vuelve a mandar (podria duplicarla); le pregunta a ARCA y la
+   resuelve sola, o el dueño usa "Reintentar conciliacion".
+   Contingencia CAEA (opcional): con un punto de venta CAEA validado y la
+   opcion activada, KioscoApp pide el codigo CAEA de cada quincena y, si
+   ARCA no responde, factura con el. Esas facturas hay que informarlas a
+   ARCA (el panel y el inicio avisan) antes de la fecha tope.
+   Sin CAE ni CAEA: "Fiscalizacion no disponible". ARCA preve otras
+   alternativas (controlador fiscal, Comprobantes en linea) fuera de
+   KioscoApp.
+
+d) CANCELAR UNA VENTA FACTURADA
+   Una venta con factura no se anula: el dueño emite una nota de credito
+   desde el detalle de la venta. Cuando ARCA la autoriza, la venta queda
+   anulada y el stock vuelve. La factura original no se modifica.
+
+e) AL ACTUALIZAR DESDE LA VERSION 1.15
+   KioscoApp crea un backup y aplica 4 migraciones nuevas (41 a 44).
+   Nada de lo anterior cambia y ningun producto recibe IVA solo. La
+   facturacion queda apagada hasta configurarla. Si algo sale mal,
+   segui el punto 7.

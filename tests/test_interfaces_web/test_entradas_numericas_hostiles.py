@@ -286,6 +286,17 @@ RUTAS_CON_ID = [
     ("POST", "/proveedores/{id}/documentos"),
     ("GET", "/proveedores/{id}/reclamos/{id}"),
     ("POST", "/proveedores/{id}/reclamos/{id}/estado"),
+    # V1.16: facturación fiscal.
+    ("POST", "/api/fiscal/ventas/{id}/fiscalizar"),
+    ("POST", "/ventas/{id}/fiscalizar"),
+    ("GET", "/fiscal/comprobantes/{id}"),
+    ("GET", "/fiscal/comprobantes/{id}/ticket"),
+    ("GET", "/fiscal/comprobantes/{id}/pdf"),
+    ("POST", "/fiscal/comprobantes/{id}/conciliar"),
+    ("POST", "/fiscal/comprobantes/{id}/descartar"),
+    ("POST", "/fiscal/comprobantes/{id}/reintentar"),
+    ("GET", "/fiscal/ventas/{id}/nota-credito"),
+    ("POST", "/fiscal/ventas/{id}/nota-credito"),
 ]
 
 

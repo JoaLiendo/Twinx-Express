@@ -428,6 +428,10 @@ def test_migracion_desde_base_completamente_vacia_aplica_todo(tmp_path, monkeypa
             " AND name NOT LIKE 'trg_obligaciones_cliente_%' AND name NOT LIKE 'trg_imputaciones_cobro_%'"
             " AND name <> 'trg_movimientos_cuenta_cargo_crea_obligacion' AND name <> 'trg_movimientos_cuenta_cargo_credito_cerrado'"
             " AND name NOT LIKE 'trg_episodios_credito_%' AND name NOT LIKE 'trg_autorizaciones_credito_%'"
+            # V1.16 (041-044): modelo fiscal.
+            " AND name NOT LIKE 'trg_comprobante%' AND name NOT LIKE 'trg_perfil_fiscal_%' AND name NOT LIKE 'trg_habilitaciones_%'"
+            " AND name NOT LIKE 'trg_intentos_fiscales_%' AND name NOT LIKE 'trg_cancelaciones_fiscales_%' AND name NOT LIKE 'trg_caea_%'"
+            " AND name <> 'trg_ventas_fiscalizada_no_anulable'"
         ).fetchall()
         assert len(triggers_019_020) == 20
     finally:

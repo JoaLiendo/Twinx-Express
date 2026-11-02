@@ -8,4 +8,4 @@ título de `LEEME.txt` (un test verifica que coincidan).
 """
 
 NOMBRE_APLICACION = "Twinx Express"
-VERSION = "1.15.0"
+VERSION = "1.16.0"

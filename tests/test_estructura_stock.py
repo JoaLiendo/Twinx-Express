@@ -67,7 +67,7 @@ def test_el_update_con_columna_dinamica_solo_admite_columnas_de_precio():
 def test_los_cuatro_escritores_de_stock_pasan_por_el_punto_autorizado():
     for funcion in (
         servicio_ventas.registrar_venta,
-        servicio_ventas.anular_venta,
+        servicio_ventas.anular_en_conexion,  # V1.16-F: compartido por la anulación y la nota de crédito
         servicio_compras.registrar_compra,
         servicio_stock.aplicar_ajuste_en_conexion,
     ):

@@ -27,6 +27,7 @@ from domain.venta import validar_motivo_anulacion
 from excepciones import ErrorAplicacion, ErrorBaseDatos, OperacionFiscalInvalidaError
 from services import servicio_ventas
 from services.fiscal import servicio_caea, servicio_facturacion, servicio_parametros
+from services.fiscal.gateway import gateway_para
 
 logger = logging.getLogger(__name__)
 
@@ -154,11 +155,21 @@ def _aplicar(cancelacion_id: int) -> None:
 
 
 def conciliar_y_aplicar() -> None:
-    """Conciliación automática (arranque y panel): primero los inciertos, después las cancelaciones y por
-    último el mantenimiento CAEA (pedir el código del período, informar lo emitido)."""
-    servicio_facturacion.conciliar_inciertos()
-    aplicar_pendientes()
-    servicio_caea.mantenimiento_automatico()
+    """Conciliación automática (arranque y panel): primero los inciertos, después las cancelaciones, el
+    mantenimiento CAEA (pedir el código del período, informar lo emitido) y el refresco de tablas de ARCA.
+    Nunca lanza (corre en un hilo de arranque): cada paso que falla se registra y no impide los siguientes."""
+
+    def refrescar_tablas() -> None:
+        perfil = repositorio_fiscal.obtener_perfil()
+        if perfil is not None and perfil.punto_venta_cae_listo:
+            servicio_parametros.refrescar_si_vencida(gateway_para(perfil))
+
+    for paso in (servicio_facturacion.conciliar_inciertos, aplicar_pendientes, servicio_caea.mantenimiento_automatico,
+                 refrescar_tablas):
+        try:
+            paso()
+        except ErrorAplicacion as error:
+            logger.warning("Mantenimiento fiscal automático incompleto (%s): %s", paso.__name__, error)
 
 
 def cancelaciones_de_venta(venta_id: int):
