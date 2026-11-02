@@ -8,7 +8,7 @@ const { test, expect } = require('@playwright/test');
 const {
   loginViaUI,
   agregarPorCodigoBarras,
-  agregarPorTarjeta,
+  agregarDesdeLista,
   filaDelCarrito,
   registrarListenersDeErrores,
   PRODUCTO_1,
@@ -22,7 +22,7 @@ test('carrito: agregar, cantidades, subtotal/total, incrementar/decrementar/elim
   // Producto 1 por el flujo real del lector de código de barras.
   await agregarPorCodigoBarras(page, PRODUCTO_1.codigoBarras);
   // Producto 2 por el flujo real de selección manual (click en la card).
-  await agregarPorTarjeta(page, PRODUCTO_2.nombre);
+  await agregarDesdeLista(page, PRODUCTO_2.nombre);
 
   const filaProducto1 = filaDelCarrito(page, PRODUCTO_1.nombre);
   const filaProducto2 = filaDelCarrito(page, PRODUCTO_2.nombre);

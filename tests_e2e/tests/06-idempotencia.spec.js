@@ -14,13 +14,13 @@
 // solo confirma que el mismo mecanismo funciona de punta a punta desde
 // un navegador real.
 const { test, expect } = require('@playwright/test');
-const { loginViaUI, agregarPorCodigoBarras, seleccionarMedioDePago, leerStockDeCard, registrarListenersDeErrores, PRODUCTO_1 } = require('./helpers');
+const { loginViaUI, agregarPorCodigoBarras, seleccionarMedioDePago, leerStockDeLista, registrarListenersDeErrores, PRODUCTO_1 } = require('./helpers');
 
 test('reintento de red real (misma clave de idempotencia) no duplica la venta', async ({ page }) => {
   const errores = registrarListenersDeErrores(page);
   await loginViaUI(page);
 
-  const stockAntes = await leerStockDeCard(page, PRODUCTO_1.nombre);
+  const stockAntes = await leerStockDeLista(page, PRODUCTO_1.nombre);
 
   await agregarPorCodigoBarras(page, PRODUCTO_1.codigoBarras);
   await seleccionarMedioDePago(page, 'TARJETA'); // no requiere monto recibido
@@ -48,7 +48,7 @@ test('reintento de red real (misma clave de idempotencia) no duplica la venta', 
 
   // Stock descontado una sola vez, no dos.
   await page.goto('/ventas');
-  const stockDespues = await leerStockDeCard(page, PRODUCTO_1.nombre);
+  const stockDespues = await leerStockDeLista(page, PRODUCTO_1.nombre);
   expect(stockDespues).toBe(stockAntes - 1);
 
   errores.afirmarSinErrores();

@@ -6,8 +6,8 @@
 {% block content %}
 <div class="flex flex-col lg:flex-row gap-6 h-full items-start">
 
-  <!-- Grilla de productos -->
-  <div class="flex-1 min-w-0 w-full space-y-5 pb-24 lg:pb-0">
+  <!-- Lector + selección manual (lista de productos) -->
+  <div class="flex-1 min-w-0 w-full space-y-4 pb-24 lg:pb-0">
 
     {% if not caja_abierta %}
       <div id="aviso-caja-cerrada" role="alert"
@@ -17,7 +17,7 @@
       </div>
     {% endif %}
 
-    <div class="flex flex-wrap gap-3">
+    <div class="flex flex-wrap items-center gap-3">
       <div class="relative flex-1 min-w-[220px]">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
              class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-primary/70">
@@ -31,50 +31,135 @@
                       dark:text-slate-100
                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
       </div>
-      <form method="get" action="/ventas" class="flex flex-1 min-w-[220px] sm:flex-none items-center gap-2">
-        <input type="text" name="q" value="{{ q }}" placeholder="Filtrar por nombre..."
-               class="px-3.5 py-2.5 flex-1 sm:flex-none sm:w-56 rounded-lg border border-slate-300 bg-white text-sm text-slate-900 placeholder:text-slate-400
-                      dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
-                      focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
-        <button type="submit" class="shrink-0 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2.5">
-          Filtrar
-        </button>
-      </form>
-      <a href="/ventas/historial" class="shrink-0 self-center text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">
+      <a href="/ventas/historial" class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">
         Ver historial
       </a>
     </div>
 
     {% if productos %}
-      <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
-        {% for producto in productos %}
-          {% set sin_stock = producto.stock_actual <= 0 %}
-          {% set sin_precio = producto.precio_venta_centavos <= 0 %}
-          <button type="button"
-                  data-producto-card
-                  data-id="{{ producto.id }}"
-                  data-nombre="{{ producto.nombre }}"
-                  data-precio="{{ producto.precio_venta_centavos }}"
-                  data-stock="{{ producto.stock_actual }}"
-                  {{ 'disabled' if sin_stock else '' }}
-                  class="text-left rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition
-                         dark:border-slate-800 dark:bg-slate-900
-                         {{ 'opacity-50 cursor-not-allowed' if sin_stock else ('opacity-60 border-dashed' if sin_precio else 'hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5 active:translate-y-0') }}">
-            <div class="flex items-start justify-between gap-2">
-              <p class="font-semibold text-slate-900 dark:text-slate-100 text-sm leading-snug line-clamp-2">{{ producto.nombre }}</p>
-              {% if producto.tiene_stock_critico %}
-                <span class="shrink-0 w-2 h-2 rounded-full bg-error mt-1"></span>
-              {% endif %}
-            </div>
-            {% if sin_precio %}
-              <p class="mt-3 text-sm font-semibold text-warning" data-precio-no-configurado>Precio no configurado</p>
-            {% else %}
-              <p class="mt-3 text-lg font-bold text-primary tabular-nums">${{ producto.precio_venta_centavos | dinero_ar }}</p>
-            {% endif %}
-            <p data-stock-texto class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ 'Sin stock' if sin_stock else 'Stock: ' ~ producto.stock_actual }}</p>
+      {% set clase_control = "rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" %}
+      {% set estados_stock = {
+        'disponible': ('Disponible', 'text-success'),
+        'bajo': ('Stock bajo', 'text-warning'),
+        'sin_stock': ('Sin stock', 'text-slate-400 dark:text-slate-500'),
+      } %}
+      {# Selección manual. La búsqueda y los filtros corren en el navegador (pos_listado.js) sobre estas filas. #}
+      <section id="listado-productos" aria-label="Selección manual de productos"
+               class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+        <div class="p-3 border-b border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_13rem_10rem_auto] gap-2 items-center">
+          <div class="relative sm:col-span-2 xl:col-span-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                 class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m21 21-4.3-4.3"></path>
+            </svg>
+            <input type="search" id="buscar-producto" autocomplete="off" spellcheck="false"
+                   placeholder="Buscar por nombre o código de barras..." aria-label="Buscar producto"
+                   class="pl-9 w-full {{ clase_control }} placeholder:text-slate-400" />
+          </div>
+          <select id="filtro-categoria" aria-label="Categoría" class="w-full {{ clase_control }}">
+            <option value="">Todas las categorías</option>
+            {% for opcion in categorias %}
+              <option value="{{ opcion.categoria.id }}">{{ '— ' * (opcion.nivel - 1) }}{{ opcion.categoria.nombre }}</option>
+            {% endfor %}
+          </select>
+          <select id="filtro-stock" aria-label="Stock" class="w-full {{ clase_control }}">
+            <option value="">Todo el stock</option>
+            <option value="con_stock">Con stock</option>
+            <option value="bajo">Stock bajo</option>
+            <option value="sin_stock">Sin stock</option>
+          </select>
+          <button type="button" id="limpiar-filtros"
+                  class="hidden justify-self-start xl:justify-self-end text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2 py-2 rounded-lg
+                         focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            Limpiar
           </button>
-        {% endfor %}
-      </div>
+        </div>
+
+        <p id="listado-contador" aria-live="polite" class="px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
+          {{ productos | length }} producto{{ 's' if productos | length != 1 else '' }} encontrado{{ 's' if productos | length != 1 else '' }}
+        </p>
+
+        <div id="listado-tabla" class="lg:max-h-[calc(100vh-17rem)] overflow-y-auto">
+          {# Anchos fijos en pantallas anchas: las columnas no "saltan" mientras se escribe en la búsqueda. #}
+          <table class="w-full text-sm min-[1600px]:table-fixed">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+              <tr>
+                <th scope="col" class="hidden 2xl:table-cell min-[1600px]:w-32 px-3 xl:px-4 py-2.5">Código</th>
+                <th scope="col" class="px-3 xl:px-4 py-2.5">Producto</th>
+                <th scope="col" class="hidden xl:table-cell min-[1600px]:w-[24%] px-3 xl:px-4 py-2.5">Categoría</th>
+                <th scope="col" class="lg:max-xl:hidden min-[1600px]:w-20 px-3 xl:px-4 py-2.5 text-right">Stock</th>
+                <th scope="col" class="min-[1600px]:w-28 px-3 xl:px-4 py-2.5 text-right">Precio</th>
+                <th scope="col" class="min-[1600px]:w-28 px-3 xl:px-4 py-2.5 text-right">Acción</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+              {% for producto in productos %}
+                {% set sin_stock = producto.stock_actual <= 0 %}
+                {% set estado = 'sin_stock' if sin_stock else ('bajo' if producto.tiene_stock_critico else 'disponible') %}
+                {% set ruta_categoria = rutas_de_categoria.get(producto.categoria_id, 'Sin categoría') if producto.categoria_id else 'Sin categoría' %}
+                <tr data-producto-fila
+                    data-id="{{ producto.id }}"
+                    data-nombre="{{ producto.nombre }}"
+                    data-codigo="{{ producto.codigo_barras }}"
+                    data-categorias="{{ linajes_de_categoria.get(producto.categoria_id, '') if producto.categoria_id else '' }}"
+                    data-precio="{{ producto.precio_venta_centavos }}"
+                    data-stock="{{ producto.stock_actual }}"
+                    data-stock-minimo="{{ producto.stock_minimo }}"
+                    {% if sin_stock %}aria-disabled="true"{% endif %}
+                    class="group cursor-pointer transition-colors hover:bg-primary-subtle dark:hover:bg-slate-800/60
+                           data-[unico]:bg-primary-subtle data-[unico]:shadow-[inset_3px_0_0_var(--color-primary)] dark:data-[unico]:bg-slate-800/70
+                           aria-disabled:cursor-not-allowed aria-disabled:hover:bg-transparent dark:aria-disabled:hover:bg-transparent">
+                  <td class="hidden 2xl:table-cell px-3 xl:px-4 py-2.5 font-mono text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap group-aria-disabled:opacity-60">{{ producto.codigo_barras }}</td>
+                  {# `break-word` y no `anywhere`: este último achica el ancho mínimo y la tabla aplasta la columna. #}
+                  <td class="px-3 xl:px-4 py-2.5 group-aria-disabled:opacity-60">
+                    <p class="font-medium text-slate-900 dark:text-slate-100 [overflow-wrap:break-word]">{{ producto.nombre }}</p>
+                    <p class="2xl:hidden mt-0.5 text-xs text-slate-500 dark:text-slate-400 [overflow-wrap:break-word]"><span class="font-mono">{{ producto.codigo_barras }}</span><span class="xl:hidden"> · {{ ruta_categoria }}</span></p>
+                    {# Entre lg y xl la columna del POS es angosta (carrito al lado): el stock va debajo del nombre. #}
+                    <p class="hidden lg:max-xl:block mt-0.5 text-xs whitespace-nowrap">
+                      <span data-stock-numero class="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{{ producto.stock_actual }}</span>
+                      <span class="text-slate-500 dark:text-slate-400">u. ·</span>
+                      <span data-stock-estado="{{ estado }}" class="font-medium {{ estados_stock[estado][1] }}">{{ estados_stock[estado][0] }}</span>
+                    </p>
+                  </td>
+                  <td class="hidden xl:table-cell px-3 xl:px-4 py-2.5 text-slate-600 dark:text-slate-300 group-aria-disabled:opacity-60">{{ ruta_categoria }}</td>
+                  <td class="lg:max-xl:hidden px-3 xl:px-4 py-2.5 text-right whitespace-nowrap">
+                    <span data-stock-numero class="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{{ producto.stock_actual }}</span>
+                    <span data-stock-estado="{{ estado }}" class="block text-xs font-medium {{ estados_stock[estado][1] }}">{{ estados_stock[estado][0] }}</span>
+                  </td>
+                  <td class="px-3 xl:px-4 py-2.5 text-right whitespace-nowrap group-aria-disabled:opacity-60">
+                    {% if producto.precio_venta_centavos <= 0 %}
+                      <span class="text-xs font-semibold text-warning" data-precio-no-configurado>Precio no configurado</span>
+                    {% else %}
+                      <span class="font-semibold tabular-nums text-slate-900 dark:text-slate-100">${{ producto.precio_venta_centavos | dinero_ar }}</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-3 lg:max-xl:pl-0 xl:px-4 py-2 text-right">
+                    <button type="button" data-agregar {{ 'disabled' if sin_stock else '' }} aria-label="Agregar {{ producto.nombre }} al carrito"
+                            class="rounded-lg border border-primary/30 bg-primary-subtle px-3 lg:max-xl:px-2.5 py-1.5 text-xs font-semibold text-primary transition
+                                   enabled:hover:bg-primary enabled:hover:text-white enabled:group-hover:bg-primary enabled:group-hover:text-white enabled:group-hover:border-primary
+                                   focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900
+                                   disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400
+                                   dark:disabled:border-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-500">
+                      <span class="lg:max-xl:hidden">Agregar</span><span class="hidden lg:max-xl:inline text-sm leading-none" aria-hidden="true">+</span>
+                    </button>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div id="listado-sin-resultados" class="hidden px-6 py-14 text-center">
+          <p class="text-sm font-semibold text-slate-600 dark:text-slate-300">No encontramos productos con esos filtros.</p>
+          <button type="button" data-limpiar-filtros
+                  class="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50
+                         dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800
+                         focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            Limpiar filtros
+          </button>
+        </div>
+      </section>
     {% else %}
       <div class="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center dark:border-slate-700 dark:bg-slate-900">
         <p class="text-slate-500 dark:text-slate-400 text-sm">No se encontraron productos.</p>
@@ -108,7 +193,7 @@
 
     <div id="carrito-vacio" class="flex-1 flex flex-col items-center justify-center px-6 py-10 text-center">
       <p class="text-sm text-slate-400 dark:text-slate-500">El carrito está vacío.</p>
-      <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">Escaneá un producto o hacé clic en la grilla.</p>
+      <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">Escaneá un producto o elegilo de la lista.</p>
     </div>
 
     <!-- Fase 5D: acciones tras un cobro exitoso. Oculto por defecto; lo
@@ -308,5 +393,6 @@
 <script src="/static/js/cliente_selector.js"></script>
 <script src="/static/js/credito_pos.js"></script>
 <script src="/static/js/fiscal_pos.js"></script>
+<script src="/static/js/pos_listado.js"></script>
 <script src="/static/js/pos.js"></script>
 {% endblock %}

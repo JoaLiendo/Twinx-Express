@@ -7,7 +7,7 @@
 // (agrupación, validaciones, costos, idempotencia, que la precarga no escribe) están en pytest
 // (test_reposicion_compra.py).
 const { test, expect } = require('@playwright/test');
-const { loginViaUI, leerStockDeCard, registrarListenersDeErrores } = require('./helpers');
+const { loginViaUI, leerStockDeLista, registrarListenersDeErrores } = require('./helpers');
 
 const PRODUCTO = 'Bajo Stock E2E'; // stock 1, mínimo 5, costo $3,00, sin proveedor principal (ver servidor_pruebas.py)
 const PROVEEDOR = 'Proveedor Reposicion E2E';
@@ -15,7 +15,7 @@ const PROVEEDOR = 'Proveedor Reposicion E2E';
 test('reposición: imprimir y pasar a compra un grupo, y confirmar registra la compra una sola vez', async ({ page }) => {
   const errores = registrarListenersDeErrores(page);
   await loginViaUI(page, { irA: '/ventas' });
-  const stockAntes = await leerStockDeCard(page, PRODUCTO);
+  const stockAntes = await leerStockDeLista(page, PRODUCTO);
 
   // El proveedor y su vínculo como principal se crean por los flujos normales de la app.
   await page.goto('/reposicion');
@@ -44,7 +44,7 @@ test('reposición: imprimir y pasar a compra un grupo, y confirmar registra la c
   await expect(impresion.locator('#reposicion-total')).toContainText('30,00');
   await impresion.close();
   await page.goto('/ventas');
-  expect(await leerStockDeCard(page, PRODUCTO)).toBe(stockAntes);
+  expect(await leerStockDeLista(page, PRODUCTO)).toBe(stockAntes);
 
   // Pasar a compra: formulario precargado (proveedor, cantidad, costo, total), todavía sin registrar.
   await page.goto('/reposicion');
@@ -59,7 +59,7 @@ test('reposición: imprimir y pasar a compra un grupo, y confirmar registra la c
   await expect(linea.locator('.linea-costo')).toHaveValue('3.00');
   await expect(page.locator('#total-compra')).toHaveText('$30.00');
   await page.goto('/ventas');
-  expect(await leerStockDeCard(page, PRODUCTO)).toBe(stockAntes);
+  expect(await leerStockDeLista(page, PRODUCTO)).toBe(stockAntes);
 
   // Confirmar por el flujo de compra normal: el stock sube una sola vez.
   await page.goto('/reposicion');
@@ -69,7 +69,7 @@ test('reposición: imprimir y pasar a compra un grupo, y confirmar registra la c
   await page.getByRole('button', { name: 'Registrar compra' }).click();
   await page.waitForURL(/\/compras\/\d+$/);
   await page.goto('/ventas');
-  expect(await leerStockDeCard(page, PRODUCTO)).toBe(stockAntes + 10);
+  expect(await leerStockDeLista(page, PRODUCTO)).toBe(stockAntes + 10);
 
   errores.afirmarSinErrores();
 });

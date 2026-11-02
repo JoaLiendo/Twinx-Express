@@ -1,4 +1,4 @@
-"""Ruta del panel de ventas (POS): grilla de productos + carrito dinámico.
+"""Ruta del panel de ventas (POS): lista de productos + carrito dinámico.
 
 El carrito vive en el navegador (`static/js/pos.js`); esta ruta solo
 sirve la página y expone la API JSON que confirma la venta a través de
@@ -31,6 +31,7 @@ from interfaces.web.rutas.fiscal import contexto_fiscal_de_venta
 from interfaces.web.utilidades import contexto_base, pagina_o_primera, redireccionar_con_mensaje, respuesta_csv
 from services import (
     servicio_auth,
+    servicio_categorias,
     servicio_clientes,
     servicio_configuracion,
     servicio_cuenta_corriente,
@@ -52,12 +53,25 @@ _SOLO_OWNER = Depends(requiere_rol("OWNER"))
 
 
 @router.get("/ventas")
-def panel_ventas(request: Request, q: str = ""):
-    productos = servicio_stock.buscar_por_nombre(q) if q else servicio_stock.listar_todos()
+def panel_ventas(request: Request):
+    """POS. Entrega el catálogo activo completo: la búsqueda y los filtros de la selección manual corren en
+    el navegador (`static/js/pos_listado.js`) para no recargar la página ni perder el carrito. Cada producto
+    lleva solo lo que el cajero necesita para vender: nunca costos."""
+    productos = servicio_stock.listar_todos()
+    # El árbol completo (con categorías dadas de baja) evita mostrar "Sin categoría" en productos viejos; el
+    # filtro solo ofrece las activas, igual que el listado de Stock.
+    arbol = servicio_categorias.obtener_arbol()
+    ids_de_categoria = {producto.categoria_id for producto in productos if producto.categoria_id}
     contexto = {
         **contexto_base(request),
         "productos": productos,
-        "q": q,
+        "categorias": arbol.en_orden(solo_activas=True),
+        "rutas_de_categoria": {categoria_id: arbol.ruta(categoria_id) for categoria_id in ids_de_categoria},
+        # Filtrar por una categoría incluye sus subcategorías: cada fila lleva su categoría y sus ancestros.
+        "linajes_de_categoria": {
+            categoria_id: " ".join(str(categoria.id) for categoria in arbol.ancestros(categoria_id))
+            for categoria_id in ids_de_categoria
+        },
         # Los 4 medios de cobro inmediato, tal cual antes: el primero (EFECTIVO) es el predeterminado.
         "tipos_pago": sorted(TIPOS_PAGO_VALIDOS),
         # Venta a cuenta: opción aparte, nunca marcada por defecto (ver `ventas/pos.html`).

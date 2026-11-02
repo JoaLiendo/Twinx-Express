@@ -521,7 +521,7 @@ class TestAlertaVisualDeStockCritico:
 
         assert "Sembrado" in lista.texto and "Sembrado" in pos.texto
         assert "tabular-nums text-error" not in lista.texto
-        assert "bg-error mt-1" not in pos.texto
+        assert 'data-stock-estado="bajo"' not in pos.texto
 
     def test_producto_con_stock_bajo_el_minimo_si_muestra_alerta_en_lista_y_pos(self, base_datos_temporal):
         servicio_stock.registrar_producto("TX-A-002", "Escaso", 0, 100, stock_actual=2, stock_minimo=5)
@@ -531,4 +531,5 @@ class TestAlertaVisualDeStockCritico:
         pos = solicitud("GET", "/ventas", cookies=cookies)
 
         assert "tabular-nums text-error" in lista.texto
-        assert "bg-error mt-1" in pos.texto
+        assert 'data-stock-estado="bajo"' in pos.texto
+        assert "Stock bajo" in pos.texto

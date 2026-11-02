@@ -2,7 +2,7 @@
 endpoint que consume el lector USB) y cards de productos sin precio.
 
 El comportamiento de JavaScript (bloqueo durante el cobro, Enter, stock de
-la grilla, respuestas no JSON) se cubre en `tests_e2e/tests/09-robustez-pos.spec.js`."""
+la lista, respuestas no JSON) se cubre en `tests_e2e/tests/09-robustez-pos.spec.js`."""
 
 from db.repositorios import usuarios as repositorio_usuarios
 from domain.usuario import Usuario

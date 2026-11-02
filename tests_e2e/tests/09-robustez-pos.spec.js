@@ -3,16 +3,17 @@
 //
 // Cubre en un navegador real: flujo del lector USB (código -> Enter ->
 // producto), bloqueo del carrito durante un cobro en vuelo, "Precio no
-// configurado", Enter para cobrar, stock de la grilla tras una venta,
+// configurado", Enter para cobrar, stock de la lista tras una venta,
 // respuestas no JSON del servidor y el aviso antes de abandonar la página.
 const { test, expect } = require('@playwright/test');
 const {
   loginViaUI,
   agregarPorCodigoBarras,
-  agregarPorTarjeta,
+  agregarDesdeLista,
+  filaDelListado,
   filaDelCarrito,
   seleccionarMedioDePago,
-  leerStockDeCard,
+  leerStockDeLista,
   registrarListenersDeErrores,
   PRODUCTO_1,
   PRODUCTO_2,
@@ -57,10 +58,10 @@ test('lector USB: un código inexistente avisa y no agrega nada', async ({ page 
 test('producto sin precio: se ve como "Precio no configurado" y no entra al carrito', async ({ page }) => {
   await loginViaUI(page);
 
-  const tarjeta = page.locator(`[data-producto-card][data-nombre="${PRODUCTO_SIN_PRECIO.nombre}"]`);
-  await expect(tarjeta).toContainText('Precio no configurado');
+  const fila = filaDelListado(page, PRODUCTO_SIN_PRECIO.nombre);
+  await expect(fila).toContainText('Precio no configurado');
 
-  await tarjeta.click();
+  await fila.click();
   await expect(page.locator('#toast-container')).toContainText('no tiene precio configurado');
   await expect(page.locator('#carrito-lista > div')).toHaveCount(0);
 
@@ -83,10 +84,10 @@ test('cobro en vuelo: el carrito se bloquea y ningún producto se pierde en sile
   await page.locator('#boton-cobrar').click();
   await expect(page.locator('#boton-cobrar')).toBeDisabled();
 
-  // Mientras el cobro está en curso: escanear y tocar una card se rechaza con aviso.
+  // Mientras el cobro está en curso: escanear y elegir de la lista se rechaza con aviso.
   await agregarPorCodigoBarras(page, PRODUCTO_2.codigoBarras);
   await expect(page.locator('#toast-container')).toContainText('venta procesándose');
-  await agregarPorTarjeta(page, PRODUCTO_2.nombre);
+  await agregarDesdeLista(page, PRODUCTO_2.nombre);
 
   // Al confirmarse el cobro, el carrito queda vacío y el producto bloqueado NO
   // aparece "vendido a medias": se puede escanear de nuevo como venta nueva.
@@ -120,9 +121,9 @@ test('Enter en "Monto recibido" cobra, una sola vez, cuando el monto alcanza', a
   expect(cobros).toBe(1);
 });
 
-test('tras una venta, el stock de la grilla se actualiza sin recargar', async ({ page }) => {
+test('tras una venta, el stock de la lista se actualiza sin recargar', async ({ page }) => {
   await loginViaUI(page);
-  const stockAntes = await leerStockDeCard(page, PRODUCTO_2.nombre);
+  const stockAntes = await leerStockDeLista(page, PRODUCTO_2.nombre);
 
   await agregarPorCodigoBarras(page, PRODUCTO_2.codigoBarras);
   await agregarPorCodigoBarras(page, PRODUCTO_2.codigoBarras);
@@ -130,9 +131,8 @@ test('tras una venta, el stock de la grilla se actualiza sin recargar', async ({
   await page.locator('#boton-cobrar').click();
   await expect(page.getByRole('button', { name: 'Nueva venta' })).toBeVisible();
 
-  const tarjeta = page.locator(`[data-producto-card][data-nombre="${PRODUCTO_2.nombre}"]`);
-  await expect(tarjeta).toContainText(`Stock: ${stockAntes - 2}`);
-  expect(await leerStockDeCard(page, PRODUCTO_2.nombre)).toBe(stockAntes - 2);
+  await expect(filaDelListado(page, PRODUCTO_2.nombre).locator('[data-stock-numero]:visible')).toHaveText(String(stockAntes - 2));
+  expect(await leerStockDeLista(page, PRODUCTO_2.nombre)).toBe(stockAntes - 2);
 });
 
 test('un 500 con texto plano se informa como error del servidor, no como falla de conexión', async ({ page }) => {

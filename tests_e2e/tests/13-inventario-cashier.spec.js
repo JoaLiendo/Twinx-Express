@@ -6,7 +6,7 @@
 // por URL y por POST con la sesión real del CASHIER. Las reglas de negocio están en pytest
 // (test_inventario.py, test_inventario_permisos.py); esto confirma el comportamiento desde el navegador.
 const { test, expect } = require('@playwright/test');
-const { loginViaUI, leerStockDeCard, registrarListenersDeErrores, USUARIO_CASHIER, PRODUCTO_2 } = require('./helpers');
+const { loginViaUI, leerStockDeLista, registrarListenersDeErrores, USUARIO_CASHIER, PRODUCTO_2 } = require('./helpers');
 
 /** El OWNER inicia un inventario manual con un solo producto; devuelve el id del inventario. */
 async function iniciarInventarioComoOwner(page, nombreProducto) {
@@ -31,11 +31,11 @@ test('inventario CASHIER: cuenta a ciegas y no puede confirmar, cancelar ni entr
   const errores = registrarListenersDeErrores(page);
   page.on('dialog', (dialogo) => dialogo.accept());
   await loginViaUI(page, { irA: '/ventas' });
-  const stockAntes = await leerStockDeCard(page, PRODUCTO_2.nombre);
+  const stockAntes = await leerStockDeLista(page, PRODUCTO_2.nombre);
   const idInventario = await iniciarInventarioComoOwner(page, PRODUCTO_2.nombre);
   await page.goto('/ventas');
   const idProducto = Number(
-    await page.locator(`[data-producto-card][data-nombre="${PRODUCTO_2.nombre}"]`).getAttribute('data-id'),
+    await page.locator(`[data-producto-fila][data-nombre="${PRODUCTO_2.nombre}"]`).getAttribute('data-id'),
   );
 
   // --- Navegación y conteo permitidos ---
@@ -93,7 +93,7 @@ test('inventario CASHIER: cuenta a ciegas y no puede confirmar, cancelar ni entr
   const lineaRevision = page.locator('#tabla-lineas-inventario tr', { hasText: PRODUCTO_2.nombre });
   await expect(lineaRevision.locator('[data-contado]')).toHaveText('9');
   await page.goto('/ventas');
-  expect(await leerStockDeCard(page, PRODUCTO_2.nombre)).toBe(stockAntes);
+  expect(await leerStockDeLista(page, PRODUCTO_2.nombre)).toBe(stockAntes);
 
   // Limpieza: el OWNER cancela para no dejar un inventario abierto a los demás specs.
   await page.goto(`/inventario/${idInventario}`);

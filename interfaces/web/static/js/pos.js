@@ -123,10 +123,10 @@
   }
 
   // Fase 5B: devuelve el foco al input de código de barras después de
-  // agregar un producto (card de la grilla o Enter en el scanner), para que
+  // agregar un producto (fila de la lista o Enter en el scanner), para que
   // el lector USB (que emula teclado) siga funcionando aunque el cajero
-  // haya tocado una card con el mouse/dedo. No roba el foco si el usuario
-  // está tipeando a mano en otro input/textarea (ej. el filtro por nombre).
+  // haya tocado una fila con el mouse/dedo. No roba el foco si el usuario
+  // está tipeando a mano en otro input/textarea (ej. la búsqueda manual).
   function refocarCodigoBarras() {
     if (!inputCodigo) return;
     const activo = document.activeElement;
@@ -434,17 +434,15 @@
     if (boton.dataset.accion === 'quitar') quitarDelCarrito(id);
   });
 
-  document.querySelectorAll('[data-producto-card]').forEach((tarjeta) => {
-    tarjeta.addEventListener('click', () => {
-      if (tarjeta.disabled) return;
-      agregarAlCarrito({
-        id: Number(tarjeta.dataset.id),
-        nombre: tarjeta.dataset.nombre,
-        precio: Number(tarjeta.dataset.precio),
-        stock: Number(tarjeta.dataset.stock),
-      });
-    });
-  });
+  // Selección manual desde la lista (búsqueda y filtros en pos_listado.js). Agrega por el mismo
+  // agregarAlCarrito que el lector; Esc en la búsqueda vacía devuelve el foco al lector.
+  const listado = window.PosListado
+    ? window.PosListado.iniciar(document, {
+        alAgregar: agregarAlCarrito,
+        avisar: (mensaje) => mostrarToast(mensaje, 'warning'),
+        alSalir: () => inputCodigo && inputCodigo.focus(),
+      })
+    : null;
 
   if (inputCodigo) {
     inputCodigo.addEventListener('keydown', async (evento) => {
@@ -529,25 +527,6 @@
     if (botonCobrar) botonCobrar.textContent = procesando ? 'Procesando...' : 'Cobrar';
     if (botonCobrarBar) botonCobrarBar.textContent = procesando ? '...' : 'Cobrar';
     for (const boton of botonesCobrar) boton.disabled = procesando;
-  }
-
-  // Tras un cobro confirmado se descuenta lo vendido de las cards de la grilla
-  // (data-stock y texto) para que no muestren stock viejo hasta la próxima venta.
-  // Es solo visual: el servidor sigue siendo quien valida el stock real.
-  function actualizarStockDeGrilla(itemsVendidos) {
-    const vendidoPorId = new Map(itemsVendidos.map((item) => [item.producto_id, item.cantidad]));
-    document.querySelectorAll('[data-producto-card]').forEach((tarjeta) => {
-      const vendido = vendidoPorId.get(Number(tarjeta.dataset.id));
-      if (!vendido) return;
-      const nuevoStock = Math.max(0, Number(tarjeta.dataset.stock) - vendido);
-      tarjeta.dataset.stock = String(nuevoStock);
-      const texto = tarjeta.querySelector('[data-stock-texto]');
-      if (texto) texto.textContent = nuevoStock <= 0 ? 'Sin stock' : `Stock: ${nuevoStock}`;
-      if (nuevoStock <= 0) {
-        tarjeta.disabled = true;
-        tarjeta.classList.add('opacity-50', 'cursor-not-allowed');
-      }
-    });
   }
 
   async function cobrar() {
@@ -641,7 +620,7 @@
       claveIdempotenciaActual = null; // el intento terminó bien: el próximo cobro arranca uno nuevo
       cobroEnCurso = false;
       carrito.clear();
-      actualizarStockDeGrilla(items);
+      if (listado) listado.descontarStock(items);
       // Fase 5D: en vez de recargar solo tras 1.3s, se le da al cajero
       // una acción explícita ("Imprimir ticket"/"Nueva venta") y el
       // tiempo que necesite para elegirla antes de que la página se

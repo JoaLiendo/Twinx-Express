@@ -7,7 +7,7 @@
 // test_concurrencia_inventario.py, test_migracion_022.py); esto confirma que el mecanismo funciona
 // desde el navegador. El rol CASHIER (contar y no confirmar) se cubre en 13-inventario-cashier.spec.js.
 const { test, expect } = require('@playwright/test');
-const { loginViaUI, leerStockDeCard, registrarListenersDeErrores, PRODUCTO_1, PRODUCTO_2 } = require('./helpers');
+const { loginViaUI, leerStockDeLista, registrarListenersDeErrores, PRODUCTO_1, PRODUCTO_2 } = require('./helpers');
 
 /** Crea un inventario de selección manual con un solo producto y espera a estar en su detalle. */
 async function iniciarInventarioManual(page, nombreProducto) {
@@ -25,7 +25,7 @@ test('inventario: crear, contar a ciegas, confirmar y ver el stock ajustado', as
   const errores = registrarListenersDeErrores(page);
   page.on('dialog', (dialogo) => dialogo.accept());
   await loginViaUI(page, { irA: '/ventas' });
-  const stockAntes = await leerStockDeCard(page, PRODUCTO_2.nombre);
+  const stockAntes = await leerStockDeLista(page, PRODUCTO_2.nombre);
 
   await iniciarInventarioManual(page, PRODUCTO_2.nombre);
 
@@ -57,7 +57,7 @@ test('inventario: crear, contar a ciegas, confirmar y ver el stock ajustado', as
   await expect(page.locator('#form-confirmar-inventario')).toHaveCount(0);
   await expect(page.getByText('Confirmado').first()).toBeVisible();
   await page.goto('/ventas');
-  expect(await leerStockDeCard(page, PRODUCTO_2.nombre)).toBe(contado);
+  expect(await leerStockDeLista(page, PRODUCTO_2.nombre)).toBe(contado);
 
   errores.afirmarSinErrores();
 });
@@ -67,9 +67,9 @@ test('inventario: si el stock cambió después de contar, no se confirma y se pu
   page.on('dialog', (dialogo) => dialogo.accept());
   await loginViaUI(page, { irA: '/ventas' });
   const idProducto = Number(
-    await page.locator(`[data-producto-card][data-nombre="${PRODUCTO_1.nombre}"]`).getAttribute('data-id'),
+    await page.locator(`[data-producto-fila][data-nombre="${PRODUCTO_1.nombre}"]`).getAttribute('data-id'),
   );
-  const stockAntes = await leerStockDeCard(page, PRODUCTO_1.nombre);
+  const stockAntes = await leerStockDeLista(page, PRODUCTO_1.nombre);
 
   await iniciarInventarioManual(page, PRODUCTO_1.nombre);
   await page.goto('/inventario/conteo');
@@ -99,7 +99,7 @@ test('inventario: si el stock cambió después de contar, no se confirma y se pu
   await page.getByRole('button', { name: 'Cancelar inventario' }).click();
   await page.waitForURL(/\/inventario(\?.*)?$/);
   await page.goto('/ventas');
-  expect(await leerStockDeCard(page, PRODUCTO_1.nombre)).toBe(stockAntes - 1);
+  expect(await leerStockDeLista(page, PRODUCTO_1.nombre)).toBe(stockAntes - 1);
 
   errores.afirmarSinErrores();
 });

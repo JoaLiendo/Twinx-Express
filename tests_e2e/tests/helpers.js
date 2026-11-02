@@ -80,13 +80,20 @@ async function agregarPorCodigoBarras(page, codigoBarras) {
 }
 
 /**
- * Agrega un producto al carrito por el flujo real de selección manual:
- * click en su card de la grilla (`[data-producto-card]`). Se ubica por
- * `data-nombre`, un atributo funcional que el propio `pos.js` ya lee
- * (`tarjeta.dataset.nombre`) -- no una clase de Tailwind.
+ * Fila de un producto en la lista de selección manual del POS. Se ubica
+ * por `data-nombre`, un atributo funcional que lee `pos_listado.js` --
+ * no una clase de Tailwind.
  */
-async function agregarPorTarjeta(page, nombre) {
-  await page.locator(`[data-producto-card][data-nombre="${nombre}"]`).click();
+function filaDelListado(page, nombre) {
+  return page.locator(`[data-producto-fila][data-nombre="${nombre}"]`);
+}
+
+/**
+ * Agrega un producto al carrito por el flujo real de selección manual:
+ * botón "Agregar" de su fila en la lista.
+ */
+async function agregarDesdeLista(page, nombre) {
+  await filaDelListado(page, nombre).locator('[data-agregar]').click();
 }
 
 /** Fila del carrito que contiene `nombre` (hijo directo de #carrito-lista). */
@@ -95,13 +102,13 @@ function filaDelCarrito(page, nombre) {
 }
 
 /**
- * Lee el stock mostrado en la card de un producto (`data-stock`, el
- * mismo atributo que ya lee `pos.js` para validar cantidades) -- nunca
+ * Lee el stock de un producto en la lista del POS (`data-stock`, el
+ * mismo atributo que se usa para validar cantidades) -- nunca
  * se consulta la base de datos directamente desde el proceso de test
  * (evita agregar un lector de SQLite en Node solo para esto).
  */
-async function leerStockDeCard(page, nombre) {
-  const valor = await page.locator(`[data-producto-card][data-nombre="${nombre}"]`).getAttribute('data-stock');
+async function leerStockDeLista(page, nombre) {
+  const valor = await filaDelListado(page, nombre).getAttribute('data-stock');
   return Number(valor);
 }
 
@@ -197,9 +204,10 @@ module.exports = {
   loginViaUI,
   seleccionarMedioDePago,
   agregarPorCodigoBarras,
-  agregarPorTarjeta,
+  agregarDesdeLista,
+  filaDelListado,
   filaDelCarrito,
-  leerStockDeCard,
+  leerStockDeLista,
   registrarListenersDeErrores,
   realizarVentaSimple,
 };

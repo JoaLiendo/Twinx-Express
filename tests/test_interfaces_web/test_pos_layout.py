@@ -43,7 +43,7 @@ class TestGanchosExistentesDePosJs:
         html = _html_pos(base_datos_temporal)
 
         assert 'id="input-codigo-barras"' in html
-        assert 'data-producto-card' in html
+        assert 'data-producto-fila' in html
         assert 'id="carrito-lista"' in html
         assert 'id="carrito-vacio"' in html
         assert 'id="carrito-total"' in html

@@ -12,7 +12,7 @@ const {
   loginViaUI,
   agregarPorCodigoBarras,
   seleccionarMedioDePago,
-  leerStockDeCard,
+  leerStockDeLista,
   registrarListenersDeErrores,
   PRODUCTO_1,
 } = require('./helpers');
@@ -21,7 +21,7 @@ test('cobro real desde la UI: acciones post-venta, ticket persistido y stock des
   const errores = registrarListenersDeErrores(page);
   await loginViaUI(page);
 
-  const stockAntes = await leerStockDeCard(page, PRODUCTO_1.nombre);
+  const stockAntes = await leerStockDeLista(page, PRODUCTO_1.nombre);
 
   await agregarPorCodigoBarras(page, PRODUCTO_1.codigoBarras);
   await seleccionarMedioDePago(page, 'EFECTIVO');
@@ -69,7 +69,7 @@ test('cobro real desde la UI: acciones post-venta, ticket persistido y stock des
   // (server real, no un endpoint de test) y se compara contra el valor
   // leído al principio de este mismo test.
   await page.goto('/ventas');
-  const stockDespues = await leerStockDeCard(page, PRODUCTO_1.nombre);
+  const stockDespues = await leerStockDeLista(page, PRODUCTO_1.nombre);
   expect(stockDespues).toBe(stockAntes - 1);
 
   errores.afirmarSinErrores();
