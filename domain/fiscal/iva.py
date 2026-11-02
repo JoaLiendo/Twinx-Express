@@ -140,14 +140,18 @@ def _neto_contenido(bruto_centavos: int, tasa: Decimal) -> int:
     return int((Decimal(bruto_centavos) / (Decimal(1) + tasa)).quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
 
-def calcular_importes(lineas: list[LineaFiscal], clase: str) -> ImportesFiscales:
+def calcular_importes(
+    lineas: list[LineaFiscal], clase: str, *, receptor_consumidor_final: bool = True
+) -> ImportesFiscales:
     """Importes fiscales de las líneas para un comprobante de `clase` A, B o C.
 
     Clase C (emisor monotributista o exento): no discrimina IVA; el total va como neto y el tratamiento
     de IVA de los productos no interviene. Clases A y B: cada línea necesita su tratamiento de IVA.
 
-    En toda clase, cada producto debe estar confirmado sin otros impuestos nacionales indirectos
-    (NO_APLICA): Twinx no los calcula, así que nunca informa en `ImpTrib` ni como cero lo que no conoce.
+    Otros impuestos nacionales indirectos (Twinx no los calcula, así que nunca informa en `ImpTrib` ni como
+    cero lo que no conoce): en A, B y C a consumidor final cada producto debe estar en NO_APLICA; en C a otro
+    receptor solo bloquea REQUIERE_TRATAMIENTO (ver `otros_impuestos.a_exigir`). Por omisión se asume
+    consumidor final, la regla más estricta.
 
     Raises:
         FiscalizacionBloqueadaError: algún producto sin IVA (A/B), sin confirmar sus otros impuestos
@@ -161,7 +165,9 @@ def calcular_importes(lineas: list[LineaFiscal], clase: str) -> ImportesFiscales
 
     sin_iva = [] if clase == "C" else sorted({linea.descripcion for linea in lineas if linea.tratamiento is None})
     motivos_iva = [f"Clasificá el IVA de «{nombre}»." for nombre in sin_iva]
-    clasificaciones = [(linea.descripcion, linea.otros_impuestos) for linea in lineas]
+    clasificaciones = otros_impuestos.a_exigir(
+        ((linea.descripcion, linea.otros_impuestos) for linea in lineas), clase, receptor_consumidor_final
+    )
     motivos_otros = otros_impuestos.motivos_de_bloqueo(clasificaciones)
     if motivos_iva and motivos_otros:
         raise FiscalizacionBloqueadaError(

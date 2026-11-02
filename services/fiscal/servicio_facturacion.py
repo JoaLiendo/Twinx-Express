@@ -4,7 +4,7 @@ No existe una transacción distribuida SQLite + ARCA: el orden de los pasos es l
 
 1. Snapshot y validación (receptor, clase, IVA, otros impuestos nacionales indirectos, tablas ARCA) sin
    escribir nada: si falta un dato, no se crea ningún comprobante y la venta sigue "registrada". Un
-   PENDIENTE se revalida (otros impuestos) antes de tocar ARCA.
+   PENDIENTE se revalida (otros impuestos, con el mismo alcance por clase y receptor) antes de tocar ARCA.
 2. Alta PENDIENTE. Un índice único deja un solo comprobante principal vivo por venta (doble POST).
 3. Bajo un candado por secuencia (punto de venta + tipo), y si no hay otro comprobante en vuelo en ella:
    `FECompUltimoAutorizado` → número = último de ARCA + 1. SQLite nunca decide el número.
@@ -146,7 +146,7 @@ def preparar_principal(perfil: PerfilFiscal, venta_id: int, usuario_id: int | No
     receptor = resolver_receptor(cliente, venta.total_centavos, hoy)
     clase = reglas.resolver_clase(perfil.condicion_iva, receptor.condicion_iva, perfil.habilitacion_clase_a)
     tipo = reglas.tipo_comprobante(clase, tablas_arca.ROL_PRINCIPAL)
-    importes = calcular_importes(list(venta.lineas), clase)
+    importes = calcular_importes(list(venta.lineas), clase, receptor_consumidor_final=receptor.es_consumidor_final)
     if importes.total_centavos != venta.total_centavos:
         raise FiscalizacionBloqueadaError("Los importes fiscales no reconcilian con el total de la venta.")
     servicio_parametros.validar_codigos(
@@ -314,24 +314,35 @@ def emitir(comprobante_id: int, usuario_id: int | None) -> ComprobanteFiscal:
 
 def _exigir_otros_impuestos_conocidos(comprobante: ComprobanteFiscal) -> None:
     """Revalida una factura PENDIENTE antes de cualquier llamada a ARCA (no se pide número ni CAE ni se abre
-    un intento): la clasificación ACTUAL de cada producto debe seguir en NO_APLICA (el dueño pudo cambiarla
-    después de preparar el comprobante) y su snapshot debe tenerla registrada (una factura preparada antes
-    de V1.16-H no la tiene: se descarta y se vuelve a fiscalizar). Las notas de crédito replican su factura.
+    un intento), con el mismo alcance que al prepararla (clase y receptor del snapshot): la clasificación
+    ACTUAL de cada producto debe seguir permitiendo fiscalizar (el dueño pudo cambiarla después de preparar
+    el comprobante) y, donde rige la transparencia, su snapshot debe tenerla registrada (una factura
+    preparada antes de V1.16-H no la tiene: se descarta y se vuelve a fiscalizar). Las notas de crédito
+    replican su factura.
 
     Raises:
         FiscalizacionBloqueadaError: con el motivo por producto; el comprobante sigue PENDIENTE.
     """
     if comprobante.rol != tablas_arca.ROL_PRINCIPAL:
         return
+    consumidor_final = comprobante.receptor.es_consumidor_final
     with obtener_conexion() as conexion:
         actuales = repositorio_fiscal.otros_impuestos_de_productos_en_conexion(
             conexion, [linea.producto_id for linea in comprobante.lineas if linea.producto_id is not None]
         )
     otros_impuestos.exigir_conocidos(
-        (linea.descripcion, actuales.get(linea.producto_id, otros_impuestos.SIN_CLASIFICAR))
-        for linea in comprobante.lineas
+        otros_impuestos.a_exigir(
+            (
+                (linea.descripcion, actuales.get(linea.producto_id, otros_impuestos.SIN_CLASIFICAR))
+                for linea in comprobante.lineas
+            ),
+            comprobante.clase,
+            consumidor_final,
+        )
     )
-    if any(linea.otros_impuestos != otros_impuestos.NO_APLICA for linea in comprobante.lineas):
+    if otros_impuestos.aplica_transparencia(comprobante.clase, consumidor_final) and any(
+        linea.otros_impuestos != otros_impuestos.NO_APLICA for linea in comprobante.lineas
+    ):
         raise FiscalizacionBloqueadaError(
             "Esta factura pendiente se preparó sin confirmar los otros impuestos nacionales indirectos de sus"
             " productos: descartala y volvé a fiscalizar la venta."

@@ -896,8 +896,10 @@ b) CONFIGURACION (la hace el dueño o el soporte tecnico)
      especial" si los tiene (impuestos internos, etc.): KioscoApp todavia
      no los calcula y no lo factura. Solo "No aplica" permite facturar
      (en la factura B sale "Otros Impuestos Nacionales Indirectos:
-     $ 0,00"); "Sin clasificar" tambien bloquea la factura. La venta
-     siempre queda registrada.
+     $ 0,00"); "Sin clasificar" tambien bloquea la factura A, la B y
+     la C a consumidor final (una factura C a un cliente inscripto,
+     monotributista o exento no lo exige). La venta siempre queda
+     registrada.
    KioscoApp arranca en HOMOLOGACION (pruebas, sin validez fiscal).
    Pasar a PRODUCCION lo hace solo el soporte tecnico, con KioscoApp
    cerrado:

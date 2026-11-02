@@ -146,6 +146,8 @@ Fuera de alcance: actualización por Internet, integración con APIs de nube, ro
 - **V1.16-H** (045): «Otros Impuestos Nacionales Indirectos» (RG 5614/2024) con clasificación explícita por
   producto (sin clasificar / no aplica / requiere tratamiento especial); solo «no aplica» fiscaliza y aporta
   $ 0,00; los otros dos bloquean antes de ARCA. Históricos sin clasificar; snapshots autorizados intactos.
+  Alcance corregido en la 046: la transparencia depende del receptor (consumidor final), no de la letra; una
+  factura C a otro receptor solo se bloquea por «requiere tratamiento especial».
 
 Fuera de alcance: WSMTXCA, notas de débito, NC parciales/devoluciones parciales, clase A con leyenda, otras
 monedas, exportación, multi-sucursal, cálculo de impuestos internos/específicos y tributos en `Tributos`

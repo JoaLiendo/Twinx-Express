@@ -3,12 +3,22 @@
 El Régimen de Transparencia Fiscal al Consumidor (Ley 27.743, RG ARCA/AFIP 5614/2024) exige mostrar, junto
 al IVA Contenido, el importe de los otros impuestos nacionales indirectos que inciden en el precio. Twinx
 no calcula ninguno de esos impuestos (internos, específicos por unidad, etc.): por eso no afirma un valor
-que no conoce. Cada producto queda en uno de tres estados, y solo uno permite fiscalizar:
+que no conoce. Cada producto queda en uno de tres estados:
 
-- SIN_CLASIFICAR: nadie lo revisó (todo producto histórico nace así). Bloquea la fiscalización.
+- SIN_CLASIFICAR: nadie lo revisó (todo producto histórico nace así). Bloquea donde rige la transparencia.
 - NO_APLICA: el dueño confirmó que no lleva otros impuestos nacionales indirectos. Aporta $ 0,00.
-- REQUIERE_TRATAMIENTO: está alcanzado por un impuesto que Twinx todavía no sabe calcular. Bloquea la
-  fiscalización: nunca se lo reemplaza por cero.
+- REQUIERE_TRATAMIENTO: está alcanzado por un impuesto que Twinx todavía no sabe calcular. Bloquea siempre:
+  nunca se lo reemplaza por cero.
+
+Dos causas de bloqueo distintas (ver `a_exigir`):
+
+A. Transparencia: la RG 5614/2024 exige el importe «de tratarse de las operaciones detalladas en el
+   artículo 99 de la Ley 27.743», o sea operaciones con consumidores finales: la letra del comprobante no
+   alcanza. Clases A y B conservan la regla de V1.16-H (todo producto confirmado); la clase C la aplica solo
+   si el receptor es consumidor final, porque un emisor C factura también a inscriptos, monotributistas y
+   exentos.
+B. Cálculo: un producto REQUIERE_TRATAMIENTO lleva un tributo que Twinx no calcula, así que no puede afirmar
+   que `ImpTrib` sea 0 ni que el total sea todo neto. Bloquea con cualquier receptor.
 """
 
 from collections.abc import Iterable
@@ -37,6 +47,24 @@ def validar_clasificacion(valor: str) -> str:
     if valor not in CLASIFICACIONES:
         raise DatosInvalidosError(f"Clasificación de otros impuestos nacionales indirectos inválida: {valor!r}.")
     return valor
+
+
+def aplica_transparencia(clase: str, receptor_consumidor_final: bool) -> bool:
+    """`True` si el comprobante debe conocer los otros impuestos nacionales indirectos de todos sus productos
+    por el régimen de transparencia (causa A del docstring del módulo)."""
+    return clase != "C" or receptor_consumidor_final
+
+
+def a_exigir(
+    productos: Iterable[tuple[str, str]], clase: str, receptor_consumidor_final: bool
+) -> list[tuple[str, str]]:
+    """Los productos (`(nombre, clasificación)`) que deben estar resueltos para fiscalizar: todos si rige la
+    transparencia; si no, solo los REQUIERE_TRATAMIENTO (causa B). Fuera de la transparencia SIN_CLASIFICAR no
+    bloquea: ninguna otra obligación exige ese importe y Twinx informa `ImpTrib` 0 sin `Tributos`."""
+    productos = list(productos)
+    if aplica_transparencia(clase, receptor_consumidor_final):
+        return productos
+    return [(nombre, clasificacion) for nombre, clasificacion in productos if clasificacion == REQUIERE_TRATAMIENTO]
 
 
 def motivos_de_bloqueo(productos: Iterable[tuple[str, str]]) -> list[str]:

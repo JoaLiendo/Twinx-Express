@@ -787,11 +787,15 @@ aunque ARCA no responda, pero solo es factura cuando ARCA devolvió el CAE (o se
 - **Otros Impuestos Nacionales Indirectos** (045): Twinx no calcula impuestos internos, específicos ni
   similares, así que nunca supone cero. El OWNER clasifica cada producto (Fiscal → productos, o el alta/edición
   del producto) como «No aplica» (confirmado sin esos impuestos: aporta $ 0,00), «Requiere tratamiento
-  especial» o lo deja «Sin clasificar» (todo producto histórico queda así). Solo «No aplica» permite
-  fiscalizar, en toda clase (A, B o C, CAE o CAEA): los otros dos bloquean antes de llamar a ARCA (sin
-  número, sin intento, sin `FECAESolicitar`; la venta queda registrada) y un PENDIENTE se revalida antes de
-  reintentarse. `ImpTrib` va en 0 sin array `Tributos`. La clasificación queda congelada en las líneas del
-  snapshot y la base rechaza una factura con líneas sin confirmar. La factura B muestra «IVA Contenido» y
+  especial» o lo deja «Sin clasificar» (todo producto histórico queda así). Dos causas de bloqueo, ambas
+  antes de llamar a ARCA (sin número, sin intento, sin `FECAESolicitar`; la venta queda registrada), en CAE y
+  CAEA, y un PENDIENTE se revalida con el mismo alcance antes de reintentarse: (A) transparencia, que la RG
+  5614 exige para las operaciones del art. 99 de la Ley 27.743 (consumidores finales), no por la letra: en
+  A, B y C a consumidor final solo «No aplica» fiscaliza; una C a inscripto, monotributista o exento no
+  exige la clasificación (046); (B) cálculo: «Requiere tratamiento especial» bloquea con cualquier receptor,
+  porque Twinx no sabe calcular ese tributo (`ImpTrib`, total). `ImpTrib` va en 0 sin array `Tributos`. La
+  clasificación queda congelada en las líneas del snapshot y la base rechaza una factura alcanzada por la
+  transparencia con líneas sin confirmar. La factura B muestra «IVA Contenido» y
   «Otros Impuestos Nacionales Indirectos: $ 0,00» (A4, 80 mm y PDF); las autorizadas antes de V1.16-H no se
   modifican ni se les agrega esa línea.
 - **Comprobante**: la clase la deciden las condiciones de emisor y receptor (nunca el cajero). Receptor desde

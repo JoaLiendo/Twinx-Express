@@ -103,7 +103,7 @@ def nuevo_comprobante_para_venta(venta_id: int, clase: str = "B", receptor: Snap
         venta = repositorio_fiscal.venta_para_fiscalizar_en_conexion(conexion, venta_id)
         emisor = (repositorio_fiscal.obtener_perfil_en_conexion(conexion) or perfil()).snapshot(3)
     receptor = receptor or resolver_receptor(None, venta.total_centavos, date.today())
-    importes = calcular_importes(list(venta.lineas), clase)
+    importes = calcular_importes(list(venta.lineas), clase, receptor_consumidor_final=receptor.es_consumidor_final)
     rol = extra.pop("rol", tablas_arca.ROL_PRINCIPAL)
     tipo = tablas_arca.TIPO_POR_CLASE_Y_ROL[(clase, rol)]
     datos = dict(
