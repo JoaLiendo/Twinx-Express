@@ -796,8 +796,10 @@ aunque ARCA no responda, pero solo es factura cuando ARCA devolvió el CAE (o se
   porque Twinx no sabe calcular ese tributo (`ImpTrib`, total). `ImpTrib` va en 0 sin array `Tributos`. La
   clasificación queda congelada en las líneas del snapshot y la base rechaza una factura alcanzada por la
   transparencia con líneas sin confirmar. La factura B muestra «IVA Contenido» y
-  «Otros Impuestos Nacionales Indirectos: $ 0,00» (A4, 80 mm y PDF); las autorizadas antes de V1.16-H no se
-  modifican ni se les agrega esa línea.
+  «Otros Impuestos Nacionales Indirectos: $ 0,00» (A4, 80 mm y PDF); la factura C a consumidor final
+  (monotributista o exento) muestra solo «Otros Impuestos Nacionales Indirectos: $ 0,00» (la RG 5614 lo
+  exige en las clases A, B, C y E de las operaciones del art. 99; la discriminación del IVA es del emisor
+  responsable inscripto). Las autorizadas antes de V1.16-H no se modifican ni se les agrega esa línea.
 - **Comprobante**: la clase la deciden las condiciones de emisor y receptor (nunca el cajero). Receptor desde
   el cliente V1.14 (persona/empresa no decide la condición); sin cliente, consumidor final anónimo solo
   debajo del umbral vigente. Snapshot inmutable de emisor, receptor, líneas e importes.

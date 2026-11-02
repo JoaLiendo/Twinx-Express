@@ -5,6 +5,13 @@ Incluye solo datos fiscales del snapshot (nunca datos actuales del cliente o del
 logos ni leyendas que sugieran una certificación de ARCA. Factura B a consumidor final: régimen de
 Transparencia Fiscal al Consumidor (Ley 27.743, RG ARCA 5614/2024) con el IVA Contenido y los Otros
 Impuestos Nacionales Indirectos ($ 0,00: solo se emite si todos los productos están confirmados sin ellos).
+
+Factura C a consumidor final (emisor monotributista o exento): solo los Otros Impuestos Nacionales
+Indirectos. La RG 5614 exige ese importe en los comprobantes clase A, B, C o E de las operaciones del
+art. 99 de la Ley 27.743 (Anexo II RG 1415, Apartado A, Título III, inciso f), mientras que la
+discriminación del IVA (Título IV, inciso a) obliga solo al emisor responsable inscripto: Twinx no afirma
+un IVA Contenido para quien no liquida IVA. La exclusión del Monotributo que citan fuentes secundarias no
+surge de la ley ni de la RG, así que no se aplica; si ARCA la confirma, el dato mostrado sigue siendo cierto.
 """
 
 from dataclasses import dataclass
@@ -126,6 +133,10 @@ def armar(comprobante: ComprobanteFiscal, asociado: ComprobanteFiscal | None = N
             transparencia.append((otros_impuestos.ETIQUETA_DOCUMENTO, _pesos(otros)))
         if receptor.es_consumidor_final:
             leyendas.append("A CONSUMIDOR FINAL")
+    elif comprobante.clase == "C" and receptor.es_consumidor_final:
+        otros = otros_impuestos.importe_centavos(linea.otros_impuestos for linea in comprobante.lineas)
+        if otros is not None:
+            transparencia.append((otros_impuestos.ETIQUETA_DOCUMENTO, _pesos(otros)))
 
     codigo = "CAEA" if comprobante.modalidad == MODALIDAD_CAEA else "CAE"
     autorizacion = [

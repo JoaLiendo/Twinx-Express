@@ -354,11 +354,22 @@ class TestAlcanceFacturaC:
         assert servicio_facturacion.comprobantes_de_venta(venta.id) == []
         _afirmar_nada_enviado(monotributo, venta.id)
 
-    def test_c_a_consumidor_final_no_aplica_permite(self, monotributo, owner):
+    @pytest.mark.parametrize("condicion_emisor", ["MONOTRIBUTO", "EXENTO"])
+    def test_c_a_consumidor_final_no_aplica_permite_y_muestra_otros_impuestos(
+        self, caja_abierta, arca_falso, owner, condicion_emisor
+    ):
+        """Test 3 y 10: el documento (A4, 80 mm y PDF) muestra los Otros Impuestos Nacionales Indirectos y no
+        afirma un IVA Contenido (la discriminación del IVA es del emisor responsable inscripto)."""
+        uf.guardar_perfil_validado(condicion_emisor)
+        servicio_parametros.refrescar(arca_falso)
         _, venta = self._venta_c(NO_APLICA, a_inscripto=False)
         comprobante = servicio_facturacion.fiscalizar_venta(venta.id, owner)
         assert (comprobante.estado, comprobante.clase, comprobante.receptor.condicion_iva_receptor_id) == ("AUTORIZADO", "C", 5)
         assert [linea.otros_impuestos for linea in comprobante.lineas] == [NO_APLICA]
+        documento = armar(comprobante)
+        assert documento.transparencia == [("Otros Impuestos Nacionales Indirectos", "$ 0,00")]
+        pdf = documentos.pdf(documento)
+        assert b"Otros Impuestos Nacionales Indirectos: $ 0,00" in pdf and b"IVA Contenido" not in pdf
 
     def test_c_a_inscripto_sin_clasificar_no_se_bloquea_por_transparencia(self, monotributo, owner):
         """Test 4: el snapshot no inventa NO_APLICA, ImpTrib 0 sin tributos y el documento no afirma transparencia."""
