@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, Response
 
 from domain.ajuste_stock import MOTIVOS_MANUALES_PERMITIDOS
 from domain.categoria import CategoriaEnArbol
+from domain.fiscal import otros_impuestos
 from domain.movimiento_stock import etiqueta_de_tipo
 from domain.dinero import texto_a_centavos
 from domain.usuario import Usuario
@@ -42,6 +43,7 @@ from services import (
     servicio_reclamos_proveedor,
     servicio_stock,
 )
+from services.fiscal import servicio_perfil
 
 router = APIRouter()
 
@@ -231,6 +233,10 @@ def _contexto_formulario_producto(request: Request, producto=None) -> dict:
         "categorias": categorias,
         "etiquetas": servicio_etiquetas.listar(),
         "etiquetas_del_producto": set(servicio_etiquetas.ids_de_producto(producto.id)) if producto else set(),
+        "opciones_otros_impuestos": otros_impuestos.CLASIFICACIONES,
+        "otros_impuestos_actual": (
+            servicio_perfil.obtener_otros_impuestos(producto.id) if producto else otros_impuestos.SIN_CLASIFICAR
+        ),
     }
 
 
@@ -251,8 +257,10 @@ async def crear_producto(
     unidad_medida: str = Form("UNIDAD"),
     etiqueta_id: list[int] = Form([]),
     imagen: UploadFile | None = File(None),
+    otros_impuestos_clasificacion: str = Form(otros_impuestos.SIN_CLASIFICAR, alias="otros_impuestos"),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
+    otros_impuestos.validar_clasificacion(otros_impuestos_clasificacion)
     producto = servicio_stock.registrar_producto(
         codigo_barras=codigo_barras,
         nombre=nombre,
@@ -265,6 +273,7 @@ async def crear_producto(
         usuario_id=usuario_actual.id,
         etiqueta_ids=etiqueta_id,
     )
+    servicio_perfil.clasificar_otros_impuestos({producto.id: otros_impuestos_clasificacion}, usuario_actual.id)
 
     # El producto ya se creó y tiene id antes de tocar la imagen (ver
     # auditoría de Fase 3D): si la imagen falla, el producto igual queda
@@ -364,8 +373,11 @@ async def editar_producto(
     etiqueta_id: list[int] = Form([]),
     quitar_imagen: bool = Form(False),
     imagen: UploadFile | None = File(None),
+    otros_impuestos_clasificacion: str | None = Form(None, alias="otros_impuestos"),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
+    if otros_impuestos_clasificacion is not None:
+        otros_impuestos.validar_clasificacion(otros_impuestos_clasificacion)
     # El formulario de edición siempre muestra todas las etiquetas: lo no marcado se quita.
     producto = servicio_stock.actualizar_producto(
         producto_id=producto_id,
@@ -379,6 +391,8 @@ async def editar_producto(
         usuario_id=usuario_actual.id,
         etiqueta_ids=etiqueta_id,
     )
+    if otros_impuestos_clasificacion is not None:
+        servicio_perfil.clasificar_otros_impuestos({producto_id: otros_impuestos_clasificacion}, usuario_actual.id)
 
     # Una imagen nueva tiene prioridad sobre el checkbox de "quitar" (si
     # subieron una, evidentemente quieren que el producto tenga imagen).

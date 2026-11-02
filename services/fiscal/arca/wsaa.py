@@ -4,12 +4,14 @@
   pedido (`wsfe`). Las horas van con zona horaria y un margen de ±10 minutos contra relojes desfasados.
 - CMS SignedData con el contenido adjunto (no detached), SHA-256, firmado con el certificado del
   ambiente; viaja en base64 en `loginCms/in0`.
-- El TA dura horas (lo fija WSAA): se reutiliza hasta pocos minutos antes de vencer.
+- El TA dura actualmente 12 horas (lo fija WSAA y debe usarse mientras siga vigente): se reutiliza hasta
+  pocos minutos antes de vencer.
 
-Caché: primero en memoria. Además, cifrada con DPAPI junto a la clave del ambiente (fuera de `data/` y de
-todo backup), porque WSAA no entrega un TA nuevo mientras el anterior siga vigente
-(`coe.alreadyAuthenticated`): sin esa copia, un reinicio dejaría a Twinx sin poder fiscalizar hasta
-que venza. Token y Sign nunca se loguean, auditan, muestran ni guardan en SQLite.
+Caché: primero en memoria. Además, una cache cifrada del TA vigente (DPAPI, junto a la clave del ambiente,
+fuera de `data/` y de todo backup) para reutilizarlo durante su período de validez y sobrevivir reinicios:
+WSAA puede rechazar una nueva solicitud mientras ya exista uno válido (`coe.alreadyAuthenticated`), y sin
+esa copia un reinicio podría dejar a Twinx sin poder fiscalizar hasta que venza. Token y Sign nunca se
+loguean, auditan, muestran ni guardan en SQLite.
 """
 
 import base64

@@ -15,7 +15,7 @@ máximo, medio centavo por alícuota.
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
-from domain.fiscal import tablas_arca
+from domain.fiscal import otros_impuestos, tablas_arca
 from excepciones import DatosInvalidosError, FiscalizacionBloqueadaError
 
 GRAVADO = "GRAVADO"
@@ -73,7 +73,10 @@ OPCIONES_TRATAMIENTO = tuple(
 
 @dataclass(frozen=True)
 class LineaFiscal:
-    """Una línea de la venta tal como entra al comprobante (snapshot: nombre y precio congelados)."""
+    """Una línea de la venta tal como entra al comprobante (snapshot: nombre y precio congelados).
+
+    `otros_impuestos`: clasificación del producto respecto de los otros impuestos nacionales indirectos
+    (ver `otros_impuestos`). Por defecto SIN_CLASIFICAR: lo que nadie confirmó, bloquea."""
 
     producto_id: int | None
     codigo: str
@@ -82,8 +85,10 @@ class LineaFiscal:
     precio_unitario_centavos: int
     subtotal_centavos: int
     tratamiento: TratamientoIva | None
+    otros_impuestos: str = otros_impuestos.SIN_CLASIFICAR
 
     def __post_init__(self) -> None:
+        otros_impuestos.validar_clasificacion(self.otros_impuestos)
         if self.cantidad <= 0 or self.precio_unitario_centavos < 0:
             raise DatosInvalidosError("Línea fiscal con cantidad o precio inválidos.")
         if self.subtotal_centavos != self.precio_unitario_centavos * self.cantidad:
@@ -139,25 +144,34 @@ def calcular_importes(lineas: list[LineaFiscal], clase: str) -> ImportesFiscales
     """Importes fiscales de las líneas para un comprobante de `clase` A, B o C.
 
     Clase C (emisor monotributista o exento): no discrimina IVA; el total va como neto y el tratamiento
-    de los productos no interviene. Clases A y B: cada línea necesita su tratamiento de IVA.
+    de IVA de los productos no interviene. Clases A y B: cada línea necesita su tratamiento de IVA.
+
+    En toda clase, cada producto debe estar confirmado sin otros impuestos nacionales indirectos
+    (NO_APLICA): Twinx no los calcula, así que nunca informa en `ImpTrib` ni como cero lo que no conoce.
 
     Raises:
-        FiscalizacionBloqueadaError: si en A/B algún producto está sin clasificar (los nombra a todos).
+        FiscalizacionBloqueadaError: algún producto sin IVA (A/B), sin confirmar sus otros impuestos
+            nacionales indirectos o que requiere un tratamiento especial (los nombra a todos).
     """
     if not lineas:
         raise DatosInvalidosError("Un comprobante fiscal necesita al menos una línea.")
+    if clase not in ("A", "B", "C"):
+        raise DatosInvalidosError(f"Clase de comprobante inválida: {clase!r}.")
     total = sum(linea.subtotal_centavos for linea in lineas)
+
+    sin_iva = [] if clase == "C" else sorted({linea.descripcion for linea in lineas if linea.tratamiento is None})
+    motivos_iva = [f"Clasificá el IVA de «{nombre}»." for nombre in sin_iva]
+    clasificaciones = [(linea.descripcion, linea.otros_impuestos) for linea in lineas]
+    motivos_otros = otros_impuestos.motivos_de_bloqueo(clasificaciones)
+    if motivos_iva and motivos_otros:
+        raise FiscalizacionBloqueadaError(
+            "Hay productos con datos fiscales pendientes: completalos antes de fiscalizar.", motivos_iva + motivos_otros
+        )
+    if motivos_iva:
+        raise FiscalizacionBloqueadaError("Hay productos sin tratamiento de IVA: clasificalos antes de fiscalizar.", motivos_iva)
+    otros_impuestos.exigir_conocidos(clasificaciones)
     if clase == "C":
         return ImportesFiscales(total, 0, total, 0, 0, 0)
-    if clase not in ("A", "B"):
-        raise DatosInvalidosError(f"Clase de comprobante inválida: {clase!r}.")
-
-    sin_clasificar = sorted({linea.descripcion for linea in lineas if linea.tratamiento is None})
-    if sin_clasificar:
-        raise FiscalizacionBloqueadaError(
-            "Hay productos sin tratamiento de IVA: clasificalos antes de fiscalizar.",
-            [f"Clasificá el IVA de «{nombre}»." for nombre in sin_clasificar],
-        )
 
     bruto_por_alicuota: dict[int, int] = {}
     exento = no_gravado = 0

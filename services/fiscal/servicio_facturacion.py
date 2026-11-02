@@ -2,8 +2,9 @@
 
 No existe una transacción distribuida SQLite + ARCA: el orden de los pasos es la garantía.
 
-1. Snapshot y validación (receptor, clase, IVA, tablas ARCA) sin escribir nada: si falta un dato, no se
-   crea ningún comprobante y la venta sigue "registrada".
+1. Snapshot y validación (receptor, clase, IVA, otros impuestos nacionales indirectos, tablas ARCA) sin
+   escribir nada: si falta un dato, no se crea ningún comprobante y la venta sigue "registrada". Un
+   PENDIENTE se revalida (otros impuestos) antes de tocar ARCA.
 2. Alta PENDIENTE. Un índice único deja un solo comprobante principal vivo por venta (doble POST).
 3. Bajo un candado por secuencia (punto de venta + tipo), y si no hay otro comprobante en vuelo en ella:
    `FECompUltimoAutorizado` → número = último de ARCA + 1. SQLite nunca decide el número.
@@ -38,7 +39,7 @@ from domain.auditoria import (
 )
 from domain.dinero import centavos_a_texto
 from domain.fiscal import comprobante as estados
-from domain.fiscal import reglas, tablas_arca
+from domain.fiscal import otros_impuestos, reglas, tablas_arca
 from domain.fiscal.comprobante import ComprobanteFiscal, calcular_contenido_hash, resolver_receptor
 from domain.fiscal.emisor import PerfilFiscal
 from domain.fiscal.iva import calcular_importes
@@ -278,6 +279,8 @@ def _detalle_error(error: Exception) -> dict:
 def emitir(comprobante_id: int, usuario_id: int | None) -> ComprobanteFiscal:
     """Envía un comprobante PENDIENTE a ARCA (ver el orden en el docstring del módulo)."""
     comprobante = _obtener(comprobante_id)
+    if comprobante.estado == estados.PENDIENTE:
+        _exigir_otros_impuestos_conocidos(comprobante)
     perfil = perfil_listo()
     if comprobante.ambiente != perfil.ambiente:
         raise OperacionFiscalInvalidaError("El comprobante es de otro ambiente fiscal: descartalo y fiscalizá de nuevo.")
@@ -307,6 +310,32 @@ def emitir(comprobante_id: int, usuario_id: int | None) -> ComprobanteFiscal:
             logger.warning("Secuencia %s: ARCA informa %s y Twinx registró hasta %s (hay emisiones externas)",
                            _clave_secuencia(comprobante)[2:], ultimo, ultimo_local)
         return _enviar(comprobante, ultimo + 1, gateway, usuario_id)
+
+
+def _exigir_otros_impuestos_conocidos(comprobante: ComprobanteFiscal) -> None:
+    """Revalida una factura PENDIENTE antes de cualquier llamada a ARCA (no se pide número ni CAE ni se abre
+    un intento): la clasificación ACTUAL de cada producto debe seguir en NO_APLICA (el dueño pudo cambiarla
+    después de preparar el comprobante) y su snapshot debe tenerla registrada (una factura preparada antes
+    de V1.16-H no la tiene: se descarta y se vuelve a fiscalizar). Las notas de crédito replican su factura.
+
+    Raises:
+        FiscalizacionBloqueadaError: con el motivo por producto; el comprobante sigue PENDIENTE.
+    """
+    if comprobante.rol != tablas_arca.ROL_PRINCIPAL:
+        return
+    with obtener_conexion() as conexion:
+        actuales = repositorio_fiscal.otros_impuestos_de_productos_en_conexion(
+            conexion, [linea.producto_id for linea in comprobante.lineas if linea.producto_id is not None]
+        )
+    otros_impuestos.exigir_conocidos(
+        (linea.descripcion, actuales.get(linea.producto_id, otros_impuestos.SIN_CLASIFICAR))
+        for linea in comprobante.lineas
+    )
+    if any(linea.otros_impuestos != otros_impuestos.NO_APLICA for linea in comprobante.lineas):
+        raise FiscalizacionBloqueadaError(
+            "Esta factura pendiente se preparó sin confirmar los otros impuestos nacionales indirectos de sus"
+            " productos: descartala y volvé a fiscalizar la venta."
+        )
 
 
 def _resolver_en_vuelo_de_la_secuencia(comprobante: ComprobanteFiscal, gateway: GatewayARCA) -> None:

@@ -1,4 +1,5 @@
-"""Perfil fiscal del emisor y tratamiento de IVA de los productos (V1.16-A). Solo OWNER."""
+"""Perfil fiscal del emisor, tratamiento de IVA de los productos (V1.16-A) y su clasificación de otros
+impuestos nacionales indirectos (V1.16-H). Solo OWNER."""
 
 import logging
 
@@ -7,7 +8,12 @@ from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import fiscal as repositorio_fiscal
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
-from domain.auditoria import ACCION_CONFIGURACION_FISCAL_CAMBIADA, ACCION_PRODUCTO_IVA_CLASIFICADO
+from domain.auditoria import (
+    ACCION_CONFIGURACION_FISCAL_CAMBIADA,
+    ACCION_PRODUCTO_IVA_CLASIFICADO,
+    ACCION_PRODUCTO_OTROS_IMPUESTOS_CLASIFICADO,
+)
+from domain.fiscal import otros_impuestos
 from domain.fiscal.emisor import PerfilFiscal
 from domain.fiscal.iva import TratamientoIva
 from domain.usuario import exigir_rol
@@ -96,6 +102,50 @@ def clasificar_productos(tratamientos: dict[int, TratamientoIva], usuario_id: in
     if cambiados:
         logger.info("Tratamiento de IVA asignado a %s producto(s)", cambiados)
     return cambiados
+
+
+def clasificar_otros_impuestos(clasificaciones: dict[int, str], usuario_id: int) -> int:
+    """Asigna a cada producto su clasificación de otros impuestos nacionales indirectos (en una transacción)
+    y devuelve cuántos cambiaron. Es una afirmación fiscal del OWNER: Twinx nunca la supone.
+
+    Raises:
+        PermisoDenegadoError: si no lo hace un OWNER activo.
+        DatosInvalidosError: clasificación desconocida.
+        ProductoNoEncontradoError: si algún producto no existe.
+    """
+    cambiados = 0
+    with obtener_conexion(inmediata=True) as conexion:
+        exigir_rol(repositorio_usuarios.obtener_por_id_en_conexion(conexion, usuario_id), _SOLO_OWNER)
+        for producto_id, clasificacion in clasificaciones.items():
+            otros_impuestos.validar_clasificacion(clasificacion)
+            producto = repositorio_productos.obtener_por_id_en_conexion_incluyendo_inactivos(conexion, producto_id)
+            if producto is None:
+                raise ProductoNoEncontradoError(f"No existe un producto con id {producto_id}.")
+            anterior = repositorio_fiscal.obtener_otros_impuestos_en_conexion(conexion, producto_id)
+            if anterior == clasificacion:
+                continue
+            repositorio_fiscal.guardar_otros_impuestos_en_conexion(conexion, producto_id, clasificacion, usuario_id)
+            repositorio_auditoria.registrar_en_conexion(
+                conexion,
+                usuario_id,
+                ACCION_PRODUCTO_OTROS_IMPUESTOS_CLASIFICADO,
+                "PRODUCTO",
+                producto_id,
+                f"«{producto.nombre}», otros impuestos nacionales indirectos: "
+                f"{otros_impuestos.CLASIFICACIONES[anterior]} -> {otros_impuestos.CLASIFICACIONES[clasificacion]}",
+            )
+            cambiados += 1
+    if cambiados:
+        logger.info("Otros impuestos nacionales indirectos clasificados en %s producto(s)", cambiados)
+    return cambiados
+
+
+def obtener_otros_impuestos(producto_id: int) -> str:
+    return repositorio_fiscal.obtener_otros_impuestos(producto_id)
+
+
+def contar_otros_impuestos_pendientes() -> dict[str, int]:
+    return repositorio_fiscal.contar_productos_activos_otros_impuestos_pendientes()
 
 
 def obtener_tratamiento(producto_id: int) -> TratamientoIva | None:

@@ -1,0 +1,14 @@
+{# V1.16-H: clasificación de otros impuestos nacionales indirectos. `otros_impuestos_actual` y
+   `opciones_otros_impuestos` los arma `rutas.productos._contexto_formulario_producto`. #}
+<div class="rounded-xl border border-slate-200 p-4 space-y-2 dark:border-slate-800">
+  <label for="otros_impuestos" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Otros impuestos nacionales indirectos</label>
+  <select id="otros_impuestos" name="otros_impuestos"
+          class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900
+                 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+                 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+    {% for valor, etiqueta in opciones_otros_impuestos.items() %}
+      <option value="{{ valor }}" {{ 'selected' if valor == otros_impuestos_actual else '' }}>{{ etiqueta }}</option>
+    {% endfor %}
+  </select>
+  {% include "fiscal/_ayuda_otros_impuestos.html" %}
+</div>

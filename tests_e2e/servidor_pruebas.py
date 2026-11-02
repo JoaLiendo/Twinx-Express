@@ -282,15 +282,17 @@ PRODUCTOS_FISCALES = (
     ("7790000000501", "Factura E2E", 12100, None),
     ("7790000000502", "Rechazo Fiscal E2E", 777, "rechazar"),
     ("7790000000503", "Incierto Fiscal E2E", 888, "incierto"),
+    ("7790000000504", "Tratamiento Especial E2E", 999, None),
 )
 
 
 def _preparar_fiscal(ruta_db: Path) -> None:
     """V1.16: facturación contra un ARCA FALSO determinista (`tests/fake_arca.py`), con los secretos fiscales
     dentro del directorio temporal de la corrida y el acceso a ARCA producción bloqueado. Deja un certificado
-    de prueba (autofirmado, sin valor) en una ruta fija para que el test lo suba por la interfaz, y tres
-    productos exclusivos de los flujos fiscales: uno normal, uno que el ARCA falso rechaza y uno cuya
-    respuesta se pierde (resultado incierto)."""
+    de prueba (autofirmado, sin valor) en una ruta fija para que el test lo suba por la interfaz, y cuatro
+    productos exclusivos de los flujos fiscales: uno normal, uno que el ARCA falso rechaza, uno cuya
+    respuesta se pierde (resultado incierto) y uno que el test marca con otros impuestos nacionales
+    indirectos que requieren tratamiento especial (V1.16-H: bloquea antes de ARCA)."""
     import os
 
     import config

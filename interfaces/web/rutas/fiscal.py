@@ -2,15 +2,15 @@
 
 Cliente delgado: cero SQL, cero SOAP, cero reglas fiscales. Permisos:
 - OWNER y CASHIER: fiscalizar una venta, ver e imprimir un comprobante AUTORIZADO.
-- Solo OWNER: panel, perfil del emisor, puntos de venta, certificados, IVA de productos, conciliar y
-  descartar. Ningún formulario permite elegir el número, el CAE ni el ambiente (producción se habilita
+- Solo OWNER: panel, perfil del emisor, puntos de venta, certificados, IVA y otros impuestos nacionales
+  indirectos de productos, conciliar y descartar. Ningún formulario permite elegir el número, el CAE ni el ambiente (producción se habilita
   únicamente por consola del técnico).
 """
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import Response
 
-from domain.fiscal import reglas
+from domain.fiscal import otros_impuestos, reglas
 from domain.fiscal.comprobante import AMBIENTES, ComprobanteFiscal
 from domain.fiscal.documento import armar
 from domain.fiscal.emisor import PerfilFiscal
@@ -292,28 +292,49 @@ def productos_iva(request: Request, q: str = "", todos: str = ""):
         **contexto_base(request),
         "productos": servicio_perfil.listar_productos(not todos, q),
         "opciones": OPCIONES_TRATAMIENTO,
+        "opciones_otros": otros_impuestos.CLASIFICACIONES,
         "q": q,
         "todos": bool(todos),
         "sin_clasificar": servicio_perfil.contar_sin_clasificar(),
+        "otros_pendientes": servicio_perfil.contar_otros_impuestos_pendientes(),
     }
     return templates.TemplateResponse(request, "fiscal/productos.html", contexto)
 
 
-@router.post("/fiscal/productos", dependencies=[_SOLO_OWNER])
-async def clasificar_productos(request: Request, usuario: Usuario = Depends(obtener_usuario_actual)):
-    """Cada campo `iva_<id>` con valor elegido clasifica ese producto; los vacíos no se tocan."""
-    formulario = await request.form()
-    tratamientos = {}
+def _campos_por_producto(formulario, prefijo: str) -> dict[int, str]:
+    """`<prefijo><id>` con valor elegido; los vacíos ("sin cambios") no se tocan."""
+    campos = {}
     for nombre, valor in formulario.items():
-        if not nombre.startswith("iva_") or not str(valor).strip():
+        if not nombre.startswith(prefijo) or not str(valor).strip():
             continue
-        identificador = nombre.removeprefix("iva_")
+        identificador = nombre.removeprefix(prefijo)
         if not identificador.isdigit():
             raise DatosInvalidosError("Producto inválido.")
-        tratamientos[int(identificador)] = TratamientoIva.desde_texto(str(valor))
-    cambiados = servicio_perfil.clasificar_productos(tratamientos, usuario.id)
+        campos[int(identificador)] = str(valor).strip()
+    return campos
+
+
+@router.post("/fiscal/productos", dependencies=[_SOLO_OWNER])
+async def clasificar_productos(request: Request, usuario: Usuario = Depends(obtener_usuario_actual)):
+    """`iva_<id>` clasifica el IVA y `otros_<id>` los otros impuestos nacionales indirectos de ese producto."""
+    formulario = await request.form()
+    tratamientos = {
+        producto_id: TratamientoIva.desde_texto(valor)
+        for producto_id, valor in _campos_por_producto(formulario, "iva_").items()
+    }
+    clasificaciones_otros = _campos_por_producto(formulario, "otros_")
+    for valor in clasificaciones_otros.values():
+        otros_impuestos.validar_clasificacion(valor)  # todo se valida antes de guardar cualquiera de las dos
+    cambiados_iva = servicio_perfil.clasificar_productos(tratamientos, usuario.id) if tratamientos else 0
+    cambiados_otros = (
+        servicio_perfil.clasificar_otros_impuestos(clasificaciones_otros, usuario.id) if clasificaciones_otros else 0
+    )
     volver = "/fiscal/productos" + ("?todos=1" if formulario.get("todos") else "")
-    return redireccionar_con_mensaje(volver, "success", f"Tratamiento de IVA guardado para {cambiados} producto(s).")
+    return redireccionar_con_mensaje(
+        volver, "success",
+        f"Clasificación guardada: IVA en {cambiados_iva} producto(s), otros impuestos nacionales indirectos en"
+        f" {cambiados_otros} producto(s).",
+    )
 
 
 def contexto_fiscal_de_venta(venta_id: int, usuario: Usuario | None) -> dict:

@@ -143,9 +143,13 @@ Fuera de alcance: actualización por Internet, integración con APIs de nube, ro
   autorizada; la venta fiscalizada no se anula localmente.
 - **V1.16-G** (044): CAEA real (solicitar/consultar, emisión solo si el CAE no se envió, informe posterior,
   sin movimiento, alertas persistentes).
+- **V1.16-H** (045): «Otros Impuestos Nacionales Indirectos» (RG 5614/2024) con clasificación explícita por
+  producto (sin clasificar / no aplica / requiere tratamiento especial); solo «no aplica» fiscaliza y aporta
+  $ 0,00; los otros dos bloquean antes de ARCA. Históricos sin clasificar; snapshots autorizados intactos.
 
 Fuera de alcance: WSMTXCA, notas de débito, NC parciales/devoluciones parciales, clase A con leyenda, otras
-monedas, exportación, multi-sucursal, «Otros Impuestos Nacionales Indirectos» discriminados. Para declararla
+monedas, exportación, multi-sucursal, cálculo de impuestos internos/específicos y tributos en `Tributos`
+(los productos alcanzados se bloquean, nunca se facturan con cero). Para declararla
 lista para producción falta el smoke real contra ARCA homologación con un certificado de homologación.
 
 ## V1.17 — Analítica

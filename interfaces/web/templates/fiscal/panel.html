@@ -44,6 +44,12 @@
         <dt class="{{ etiqueta }}">Productos activos sin IVA clasificado</dt>
         <dd class="mt-1 font-medium"><a class="text-primary hover:text-primary-hover" href="/fiscal/productos">{{ panel.productos_sin_clasificar }}</a></dd>
       </div>
+      <div>
+        <dt class="{{ etiqueta }}">Otros impuestos nacionales indirectos</dt>
+        <dd class="mt-1 font-medium" id="fiscal-otros-impuestos">
+          <a class="text-primary hover:text-primary-hover" href="/fiscal/productos">{{ panel.otros_impuestos_pendientes['SIN_CLASIFICAR'] }} sin clasificar · {{ panel.otros_impuestos_pendientes['REQUIERE_TRATAMIENTO'] }} con tratamiento especial</a>
+        </dd>
+      </div>
     </dl>
     <p class="mt-3 text-sm {{ 'text-success' if panel.listo else 'text-warning' }}" id="fiscal-listo">
       {{ 'La fiscalización está activa: el POS fiscaliza cada venta al confirmarla.' if panel.listo else 'La fiscalización no está activa (falta perfil validado o certificado vigente).' }}

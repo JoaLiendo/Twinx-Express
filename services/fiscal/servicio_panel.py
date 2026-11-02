@@ -23,6 +23,7 @@ class EstadoPanel:
     autorizados_recientes: list[ComprobanteFiscal]
     errores_recientes: list
     productos_sin_clasificar: int
+    otros_impuestos_pendientes: dict[str, int]
     tablas: list
     caea: dict
     avisos: list[str] = field(default_factory=list)
@@ -86,6 +87,7 @@ def estado() -> EstadoPanel:
         autorizados_recientes=repositorio_fiscal.listar_por_estados(tuple(estados.ESTADOS_AUTORIZADOS), 10),
         errores_recientes=repositorio_fiscal.listar_errores_recientes(10),
         productos_sin_clasificar=repositorio_fiscal.contar_productos_activos_sin_clasificar(),
+        otros_impuestos_pendientes=repositorio_fiscal.contar_productos_activos_otros_impuestos_pendientes(),
         tablas=servicio_parametros.tablas(perfil.ambiente) if perfil else [],
         caea=caea,
         avisos=avisos(perfil, certificados, conteos, caea),

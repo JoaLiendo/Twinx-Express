@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 
 from domain.cliente import Cliente
-from domain.fiscal import reglas, tablas_arca
+from domain.fiscal import otros_impuestos, reglas, tablas_arca
 from domain.fiscal.comprobante import resolver_receptor
 from domain.fiscal.emisor import PerfilFiscal
 from domain.fiscal.iva import ImportesFiscales, LineaFiscal, TratamientoIva, calcular_importes
@@ -21,8 +21,11 @@ HOY = date(2026, 11, 1)
 UMBRAL = 1_000_000_000
 
 
-def linea(precio: int, cantidad: int = 1, tratamiento: TratamientoIva | None = IVA_21, nombre: str = "Prod") -> LineaFiscal:
-    return LineaFiscal(1, "779", nombre, cantidad, precio, precio * cantidad, tratamiento)
+def linea(
+    precio: int, cantidad: int = 1, tratamiento: TratamientoIva | None = IVA_21, nombre: str = "Prod",
+    otros: str = otros_impuestos.NO_APLICA,
+) -> LineaFiscal:
+    return LineaFiscal(1, "779", nombre, cantidad, precio, precio * cantidad, tratamiento, otros)
 
 
 class TestTratamiento:

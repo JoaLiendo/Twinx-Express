@@ -890,6 +890,14 @@ b) CONFIGURACION (la hace el dueño o el soporte tecnico)
    - IVA de productos: indicar si cada producto es gravado (y su
      alicuota), exento o no gravado. KioscoApp no supone ninguna: un
      producto sin clasificar no permite emitir factura A o B.
+   - Otros impuestos nacionales indirectos (misma pantalla, o al crear
+     o editar el producto): "No aplica" si confirmaste que el producto
+     no tiene impuestos adicionales al IVA; "Requiere tratamiento
+     especial" si los tiene (impuestos internos, etc.): KioscoApp todavia
+     no los calcula y no lo factura. Solo "No aplica" permite facturar
+     (en la factura B sale "Otros Impuestos Nacionales Indirectos:
+     $ 0,00"); "Sin clasificar" tambien bloquea la factura. La venta
+     siempre queda registrada.
    KioscoApp arranca en HOMOLOGACION (pruebas, sin validez fiscal).
    Pasar a PRODUCCION lo hace solo el soporte tecnico, con KioscoApp
    cerrado:
@@ -915,7 +923,8 @@ d) CANCELAR UNA VENTA FACTURADA
    anulada y el stock vuelve. La factura original no se modifica.
 
 e) AL ACTUALIZAR DESDE LA VERSION 1.15
-   KioscoApp crea un backup y aplica 4 migraciones nuevas (41 a 44).
-   Nada de lo anterior cambia y ningun producto recibe IVA solo. La
+   KioscoApp crea un backup y aplica 5 migraciones nuevas (41 a 45).
+   Nada de lo anterior cambia y ningun producto recibe IVA ni
+   clasificacion de otros impuestos solo (quedan "sin clasificar"). La
    facturacion queda apagada hasta configurarla. Si algo sale mal,
    segui el punto 7.

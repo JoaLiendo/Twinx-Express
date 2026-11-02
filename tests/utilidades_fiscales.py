@@ -6,6 +6,7 @@ from db.repositorios import usuarios as repositorio_usuarios
 from domain.fiscal import tablas_arca
 from domain.fiscal.comprobante import SnapshotReceptor, calcular_contenido_hash, resolver_receptor
 from domain.fiscal.emisor import PerfilFiscal
+from domain.fiscal.otros_impuestos import NO_APLICA
 from domain.fiscal.iva import TratamientoIva, calcular_importes
 from domain.usuario import Usuario
 from domain.venta import ItemVenta
@@ -63,12 +64,21 @@ def guardar_perfil_validado(condicion: str = "RESPONSABLE_INSCRIPTO", punto_vent
 _codigos = iter(range(7790000000001, 7790000099999))
 
 
-def producto(precio_centavos: int = 12100, tratamiento: TratamientoIva | None = None, stock: int = 1000, nombre: str | None = None):
+def producto(
+    precio_centavos: int = 12100,
+    tratamiento: TratamientoIva | None = None,
+    stock: int = 1000,
+    nombre: str | None = None,
+    otros_impuestos: str = NO_APLICA,
+):
+    """Producto real. Por defecto confirmado sin otros impuestos nacionales indirectos (NO_APLICA), que es
+    lo que exige toda factura; `otros_impuestos=SIN_CLASIFICAR` simula un producto sin revisar."""
     codigo = str(next(_codigos))
     creado = servicio_stock.registrar_producto(codigo, nombre or f"Producto {codigo[-4:]}", 100, precio_centavos, stock_actual=stock)
-    if tratamiento is not None:
-        with obtener_conexion() as conexion:
+    with obtener_conexion() as conexion:
+        if tratamiento is not None:
             repositorio_fiscal.guardar_tratamiento_en_conexion(conexion, creado.id, tratamiento, None)
+        repositorio_fiscal.guardar_otros_impuestos_en_conexion(conexion, creado.id, otros_impuestos, None)
     return creado
 
 

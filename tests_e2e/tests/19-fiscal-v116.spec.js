@@ -11,6 +11,7 @@ const CERTIFICADOS = path.join('tests_e2e', '.tmp', 'certificados_fiscales');
 const FACTURA = { codigo: '7790000000501', nombre: 'Factura E2E' };
 const RECHAZO = { codigo: '7790000000502', nombre: 'Rechazo Fiscal E2E' };
 const INCIERTO = { codigo: '7790000000503', nombre: 'Incierto Fiscal E2E' };
+const ESPECIAL = { codigo: '7790000000504', nombre: 'Tratamiento Especial E2E' };
 
 async function vender(page, codigo) {
   await agregarPorCodigoBarras(page, codigo);
@@ -54,10 +55,16 @@ test.describe.serial('V1.16 facturación fiscal', () => {
     await expect(page.locator('body')).not.toContainText('PRIVATE KEY');
 
     await page.goto('/fiscal/productos');
-    for (const producto of [FACTURA, RECHAZO, INCIERTO]) {
+    await expect(page.locator('[data-ayuda-otros-impuestos]')).toContainText('Requiere tratamiento especial');
+    for (const producto of [FACTURA, RECHAZO, INCIERTO, ESPECIAL]) {
       await page.getByLabel(`Tratamiento de ${producto.nombre}`).selectOption('GRAVADO:5');
     }
+    for (const producto of [FACTURA, RECHAZO, INCIERTO]) {
+      await page.getByLabel(`Otros impuestos de ${producto.nombre}`).selectOption('NO_APLICA');
+    }
+    await page.getByLabel(`Otros impuestos de ${ESPECIAL.nombre}`).selectOption('REQUIERE_TRATAMIENTO');
     await page.getByRole('button', { name: 'Guardar clasificación' }).click();
+    await expect(page.locator('#otros-requiere-tratamiento')).toHaveText('1');
     await page.goto('/fiscal');
     await expect(page.locator('#fiscal-listo')).toContainText('activa: el POS fiscaliza');
     errores.afirmarSinErrores();
@@ -79,12 +86,24 @@ test.describe.serial('V1.16 facturación fiscal', () => {
 
     await page.goto(`/fiscal/comprobantes/${fiscal.comprobante_id}`);
     await expect(page.locator('#comprobante-transparencia')).toContainText('IVA Contenido');
+    await expect(page.locator('#comprobante-transparencia')).toContainText('Otros Impuestos Nacionales Indirectos: $ 0,00');
     const pdf = await page.request.get(`/fiscal/comprobantes/${fiscal.comprobante_id}/pdf`);
     expect(pdf.headers()['content-type']).toBe('application/pdf');
     expect((await pdf.body()).subarray(0, 8).toString()).toBe('%PDF-1.4');
 
     await page.goto(`/ventas/${ventaId}/ticket`);
     await expect(page.locator('#ticket-no-fiscal')).toContainText('NO VÁLIDO COMO FACTURA');
+  });
+
+  test('producto con tratamiento especial: la venta queda registrada y no se fiscaliza', async ({ page }) => {
+    await loginViaUI(page);
+    const { ventaId, fiscal } = await vender(page, ESPECIAL.codigo);
+    expect(fiscal.codigo).toBe('FISCALIZACION_BLOQUEADA');
+    await expect(page.locator('[data-fiscal-estado]')).toContainText('faltan datos fiscales');
+    await expect(page.locator('[data-fiscal-motivos]')).toContainText('requiere tratamiento de impuestos nacionales indirectos todavía no configurado');
+    await expect(page.locator('[data-fiscal-imprimir]')).toBeHidden();
+    await page.goto(`/ventas/${ventaId}`);
+    await expect(page.locator('[data-comprobante-fiscal]')).toHaveCount(0);
   });
 
   test('rechazo de ARCA: la venta queda registrada, sin CAE ni factura', async ({ page }) => {
@@ -136,7 +155,7 @@ test.describe.serial('V1.16 facturación fiscal', () => {
 
 test('panel fiscal sin desborde horizontal @responsive', async ({ page }) => {
   await loginViaUI(page, { irA: '/fiscal' });
-  for (const ruta of ['/fiscal', '/fiscal/configuracion', '/fiscal/certificados']) {
+  for (const ruta of ['/fiscal', '/fiscal/configuracion', '/fiscal/certificados', '/fiscal/productos', '/productos/nuevo']) {
     await page.goto(ruta);
     const desborda = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
     expect(desborda, ruta).toBe(false);

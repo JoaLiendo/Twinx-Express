@@ -3,13 +3,14 @@ el PDF (los tres se arman desde `DocumentoFiscal`, así no pueden contradecirse)
 
 Incluye solo datos fiscales del snapshot (nunca datos actuales del cliente o del producto) y no agrega
 logos ni leyendas que sugieran una certificación de ARCA. Factura B a consumidor final: régimen de
-Transparencia Fiscal al Consumidor (Ley 27.743, RG ARCA 5614/2024) con el IVA contenido.
+Transparencia Fiscal al Consumidor (Ley 27.743, RG ARCA 5614/2024) con el IVA Contenido y los Otros
+Impuestos Nacionales Indirectos ($ 0,00: solo se emite si todos los productos están confirmados sin ellos).
 """
 
 from dataclasses import dataclass
 
 from domain.dinero import centavos_a_texto_localizado
-from domain.fiscal import tablas_arca
+from domain.fiscal import otros_impuestos, tablas_arca
 from domain.fiscal.comprobante import MODALIDAD_CAEA, ComprobanteFiscal
 from domain.fiscal.qr import url_qr
 from excepciones import OperacionFiscalInvalidaError
@@ -118,6 +119,11 @@ def armar(comprobante: ComprobanteFiscal, asociado: ComprobanteFiscal | None = N
     transparencia: list[tuple[str, str]] = []
     if comprobante.clase == "B":
         transparencia.append(("IVA Contenido", _pesos(importes.iva_centavos)))
+        # Del snapshot de las líneas, nunca de la clasificación actual del producto. Un comprobante anterior
+        # a V1.16-H no registró ese dato: no se le agrega un valor que nadie confirmó al emitirlo.
+        otros = otros_impuestos.importe_centavos(linea.otros_impuestos for linea in comprobante.lineas)
+        if otros is not None:
+            transparencia.append((otros_impuestos.ETIQUETA_DOCUMENTO, _pesos(otros)))
         if receptor.es_consumidor_final:
             leyendas.append("A CONSUMIDOR FINAL")
 

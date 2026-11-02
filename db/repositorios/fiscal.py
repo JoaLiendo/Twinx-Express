@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from db.conexion import obtener_conexion
 from domain.fiscal.comprobante import ComprobanteFiscal, SnapshotEmisor, SnapshotReceptor
+from domain.fiscal import otros_impuestos
 from domain.fiscal.emisor import PerfilFiscal
 from domain.fiscal.iva import AlicuotaFiscal, ImportesFiscales, LineaFiscal, TratamientoIva
 
@@ -154,10 +155,16 @@ class ProductoConTratamiento:
     activo: bool
     precio_venta_centavos: int
     tratamiento: TratamientoIva | None
+    otros_impuestos: str
 
 
 def _tratamiento_de_fila(tratamiento: str | None, alicuota: int | None) -> TratamientoIva | None:
     return TratamientoIva(tratamiento, alicuota) if tratamiento is not None else None
+
+
+def _otros_impuestos_de_fila(clasificacion: str | None) -> str:
+    """La ausencia de dato (producto sin fila o línea anterior a la migración 045) es SIN_CLASIFICAR."""
+    return clasificacion if clasificacion is not None else otros_impuestos.SIN_CLASIFICAR
 
 
 def obtener_tratamiento_en_conexion(conexion: sqlite3.Connection, producto_id: int) -> TratamientoIva | None:
@@ -187,12 +194,48 @@ def guardar_tratamiento_en_conexion(
     )
 
 
+def obtener_otros_impuestos_en_conexion(conexion: sqlite3.Connection, producto_id: int) -> str:
+    fila = conexion.execute(
+        "SELECT clasificacion FROM productos_otros_impuestos WHERE producto_id = ?", (producto_id,)
+    ).fetchone()
+    return _otros_impuestos_de_fila(fila["clasificacion"] if fila is not None else None)
+
+
+def obtener_otros_impuestos(producto_id: int) -> str:
+    with obtener_conexion() as conexion:
+        return obtener_otros_impuestos_en_conexion(conexion, producto_id)
+
+
+def guardar_otros_impuestos_en_conexion(
+    conexion: sqlite3.Connection, producto_id: int, clasificacion: str, usuario_id: int | None
+) -> None:
+    """SIN_CLASIFICAR borra la fila (la ausencia es SIN_CLASIFICAR); el cambio queda en la auditoría."""
+    if clasificacion == otros_impuestos.SIN_CLASIFICAR:
+        conexion.execute("DELETE FROM productos_otros_impuestos WHERE producto_id = ?", (producto_id,))
+        return
+    conexion.execute(
+        """
+        INSERT INTO productos_otros_impuestos (producto_id, clasificacion, usuario_id)
+        VALUES (?, ?, ?)
+        ON CONFLICT(producto_id) DO UPDATE SET clasificacion = excluded.clasificacion,
+            usuario_id = excluded.usuario_id, fecha_actualizacion = datetime('now', 'localtime')
+        """,
+        (producto_id, clasificacion, usuario_id),
+    )
+
+
+def otros_impuestos_de_productos_en_conexion(conexion: sqlite3.Connection, producto_ids: list[int]) -> dict[int, str]:
+    """Clasificación vigente de cada producto pedido (SIN_CLASIFICAR si no tiene)."""
+    return {producto_id: obtener_otros_impuestos_en_conexion(conexion, producto_id) for producto_id in producto_ids}
+
+
 def listar_productos_con_tratamiento(solo_sin_clasificar: bool, texto: str, limite: int) -> list[ProductoConTratamiento]:
-    """Productos (activos primero, por nombre) con su tratamiento de IVA, filtrables por nombre o código."""
+    """Productos (activos primero, por nombre) con su tratamiento de IVA y su clasificación de otros impuestos
+    nacionales indirectos, filtrables por nombre o código. `solo_sin_clasificar`: les falta alguna de las dos."""
     condiciones = ["1 = 1"]
     parametros: list = []
     if solo_sin_clasificar:
-        condiciones.append("pf.producto_id IS NULL")
+        condiciones.append("(pf.producto_id IS NULL OR poi.producto_id IS NULL)")
     if texto:
         condiciones.append("(p.nombre LIKE ? ESCAPE '\\' OR p.codigo_barras = ?)")
         patron = "%" + texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
@@ -202,8 +245,10 @@ def listar_productos_con_tratamiento(solo_sin_clasificar: bool, texto: str, limi
         filas = conexion.execute(
             f"""
             SELECT p.id, p.codigo_barras, p.nombre, p.activo, p.precio_venta_centavos,
-                   pf.tratamiento_iva, pf.alicuota_iva_id
-            FROM productos p LEFT JOIN productos_fiscal pf ON pf.producto_id = p.id
+                   pf.tratamiento_iva, pf.alicuota_iva_id, poi.clasificacion AS otros_impuestos
+            FROM productos p
+            LEFT JOIN productos_fiscal pf ON pf.producto_id = p.id
+            LEFT JOIN productos_otros_impuestos poi ON poi.producto_id = p.id
             WHERE {' AND '.join(condiciones)}
             ORDER BY p.activo DESC, p.nombre COLLATE NOCASE, p.id
             LIMIT ?
@@ -218,6 +263,7 @@ def listar_productos_con_tratamiento(solo_sin_clasificar: bool, texto: str, limi
             activo=bool(fila["activo"]),
             precio_venta_centavos=fila["precio_venta_centavos"],
             tratamiento=_tratamiento_de_fila(fila["tratamiento_iva"], fila["alicuota_iva_id"]),
+            otros_impuestos=_otros_impuestos_de_fila(fila["otros_impuestos"]),
         )
         for fila in filas
     ]
@@ -229,6 +275,20 @@ def contar_productos_activos_sin_clasificar() -> int:
             "SELECT COUNT(*) FROM productos p LEFT JOIN productos_fiscal pf ON pf.producto_id = p.id"
             " WHERE p.activo = 1 AND pf.producto_id IS NULL"
         ).fetchone()[0]
+
+
+def contar_productos_activos_otros_impuestos_pendientes() -> dict[str, int]:
+    """Productos activos que bloquean la fiscalización por otros impuestos nacionales indirectos."""
+    with obtener_conexion() as conexion:
+        fila = conexion.execute(
+            "SELECT SUM(poi.producto_id IS NULL) AS sin_clasificar,"
+            "       SUM(poi.clasificacion = 'REQUIERE_TRATAMIENTO') AS requiere_tratamiento"
+            " FROM productos p LEFT JOIN productos_otros_impuestos poi ON poi.producto_id = p.id WHERE p.activo = 1"
+        ).fetchone()
+    return {
+        otros_impuestos.SIN_CLASIFICAR: fila["sin_clasificar"] or 0,
+        otros_impuestos.REQUIERE_TRATAMIENTO: fila["requiere_tratamiento"] or 0,
+    }
 
 
 # --- Venta a fiscalizar -------------------------------------------------------------------------------
@@ -254,10 +314,11 @@ def venta_para_fiscalizar_en_conexion(conexion: sqlite3.Connection, venta_id: in
     filas = conexion.execute(
         """
         SELECT d.producto_id, p.codigo_barras, p.nombre, d.cantidad, d.precio_unitario_centavos, d.subtotal_centavos,
-               pf.tratamiento_iva, pf.alicuota_iva_id
+               pf.tratamiento_iva, pf.alicuota_iva_id, poi.clasificacion AS otros_impuestos
         FROM detalle_venta d
         JOIN productos p ON p.id = d.producto_id
         LEFT JOIN productos_fiscal pf ON pf.producto_id = d.producto_id
+        LEFT JOIN productos_otros_impuestos poi ON poi.producto_id = d.producto_id
         WHERE d.venta_id = ?
         ORDER BY d.id
         """,
@@ -272,6 +333,7 @@ def venta_para_fiscalizar_en_conexion(conexion: sqlite3.Connection, venta_id: in
             precio_unitario_centavos=fila["precio_unitario_centavos"],
             subtotal_centavos=fila["subtotal_centavos"],
             tratamiento=_tratamiento_de_fila(fila["tratamiento_iva"], fila["alicuota_iva_id"]),
+            otros_impuestos=_otros_impuestos_de_fila(fila["otros_impuestos"]),
         )
         for fila in filas
     )
@@ -379,8 +441,8 @@ def insertar_comprobante_en_conexion(conexion: sqlite3.Connection, nuevo: NuevoC
             """
             INSERT INTO comprobante_fiscal_lineas
                 (comprobante_id, orden, producto_id, codigo, descripcion, cantidad, precio_unitario_centavos,
-                 subtotal_centavos, tratamiento_iva, alicuota_iva_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 subtotal_centavos, tratamiento_iva, alicuota_iva_id, otros_impuestos_nacionales)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 comprobante_id,
@@ -393,6 +455,8 @@ def insertar_comprobante_en_conexion(conexion: sqlite3.Connection, nuevo: NuevoC
                 linea.subtotal_centavos,
                 tratamiento.tratamiento if tratamiento else None,
                 tratamiento.alicuota_iva_id if tratamiento else None,
+                # SIN_CLASIFICAR no se persiste (NULL); cualquier otro valor que no sea NO_APLICA lo rechaza la base.
+                None if linea.otros_impuestos == otros_impuestos.SIN_CLASIFICAR else linea.otros_impuestos,
             ),
         )
     for alicuota in importes.alicuotas:
@@ -422,6 +486,7 @@ def _fila_a_comprobante(conexion: sqlite3.Connection, fila: sqlite3.Row) -> Comp
             precio_unitario_centavos=linea["precio_unitario_centavos"],
             subtotal_centavos=linea["subtotal_centavos"],
             tratamiento=_tratamiento_de_fila(linea["tratamiento_iva"], linea["alicuota_iva_id"]),
+            otros_impuestos=_otros_impuestos_de_fila(linea["otros_impuestos_nacionales"]),
         )
         for linea in conexion.execute(
             "SELECT * FROM comprobante_fiscal_lineas WHERE comprobante_id = ? ORDER BY orden", (fila["id"],)

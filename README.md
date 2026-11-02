@@ -755,7 +755,7 @@ actualizar, el OWNER puede configurar el segundo destino de backups en Backup.
 
 ## Facturación fiscal ARCA (V1.16)
 
-Cuatro migraciones nuevas (041–044; 44 en total) y dos dependencias de runtime: `cryptography` (firma CMS
+Cinco migraciones nuevas (041–045; 45 en total) y dos dependencias de runtime: `cryptography` (firma CMS
 del TRA de WSAA y certificados X.509, con su propio OpenSSL) y `segno` (QR, Python puro). Sin Chromium ni
 OpenSSL externo. **Venta interna ≠ comprobante fiscal ≠ autorización ARCA**: una venta se registra igual
 aunque ARCA no responda, pero solo es factura cuando ARCA devolvió el CAE (o se emitió bajo un CAEA vigente).
@@ -766,7 +766,8 @@ aunque ARCA no responda, pero solo es factura cuando ARCA devolvió el CAE (o se
   determinista (`tests/fake_arca.py`), que no forma parte del ejecutable.
 - **Fuentes**: WSDL vigente de WSFEv1 (homologación, 01/11/2026), especificación oficial del QR (verificada con
   su vector de prueba), RG 5700/2025 (identificar al consumidor final desde $10.000.000), RG 5762/2025 (la ex
-  clase M es clase A con leyenda: Twinx la bloquea), RG 5614/2024 (IVA contenido en factura B) y RG 5782
+  clase M es clase A con leyenda: Twinx la bloquea), RG 5614/2024 (IVA Contenido y Otros Impuestos Nacionales
+  Indirectos en factura B) y RG 5782
   (CAEA como primera contingencia). Las tablas de ARCA no se copian al código: se cachean desde `FEParam*`.
 - **Emisor** (041): CUIT, razón social, condición IVA, domicilio, IIBB, inicio de actividades y punto de
   venta, que **ARCA confirma** (`FEParamGetPtosVenta`). Nace en **homologación**; producción solo se habilita
@@ -776,11 +777,23 @@ aunque ARCA no responda, pero solo es factura cuando ARCA devolvió el CAE (o se
   ambiente, su vigencia y el CUIT. La clave privada y el Ticket de Acceso viven en
   `%LOCALAPPDATA%\KioscoApp\fiscal_privado\` (hermano de `data\`, **fuera de todo backup**) cifrados con
   DPAPI del usuario de Windows; la contraseña de la clave no se guarda. Nada de eso llega a SQLite, logs,
-  auditoría ni HTML. El TA se reutiliza (memoria + copia DPAPI): WSAA no entrega otro mientras siga vigente.
+  auditoría ni HTML. El TA (hoy válido 12 horas) se reutiliza desde memoria y desde una cache cifrada del TA
+  vigente para reutilizarlo durante su período de validez y sobrevivir reinicios (WSAA puede rechazar una
+  nueva solicitud mientras ya exista uno válido).
 - **IVA**: cada producto queda SIN CLASIFICAR hasta que el OWNER le asigna gravado (con su alícuota ARCA),
   exento o no gravado (Fiscal → IVA de productos); nada histórico se clasifica solo. Los precios siguen siendo
   finales: neto e IVA se derivan con `Decimal` por alícuota (redondeo mitad arriba del neto, IVA = bruto −
   neto) y se reconcilian al centavo contra el total; un producto sin clasificar bloquea A/B (C no lo necesita).
+- **Otros Impuestos Nacionales Indirectos** (045): Twinx no calcula impuestos internos, específicos ni
+  similares, así que nunca supone cero. El OWNER clasifica cada producto (Fiscal → productos, o el alta/edición
+  del producto) como «No aplica» (confirmado sin esos impuestos: aporta $ 0,00), «Requiere tratamiento
+  especial» o lo deja «Sin clasificar» (todo producto histórico queda así). Solo «No aplica» permite
+  fiscalizar, en toda clase (A, B o C, CAE o CAEA): los otros dos bloquean antes de llamar a ARCA (sin
+  número, sin intento, sin `FECAESolicitar`; la venta queda registrada) y un PENDIENTE se revalida antes de
+  reintentarse. `ImpTrib` va en 0 sin array `Tributos`. La clasificación queda congelada en las líneas del
+  snapshot y la base rechaza una factura con líneas sin confirmar. La factura B muestra «IVA Contenido» y
+  «Otros Impuestos Nacionales Indirectos: $ 0,00» (A4, 80 mm y PDF); las autorizadas antes de V1.16-H no se
+  modifican ni se les agrega esa línea.
 - **Comprobante**: la clase la deciden las condiciones de emisor y receptor (nunca el cajero). Receptor desde
   el cliente V1.14 (persona/empresa no decide la condición); sin cliente, consumidor final anónimo solo
   debajo del umbral vigente. Snapshot inmutable de emisor, receptor, líneas e importes.
@@ -802,9 +815,10 @@ aunque ARCA no responda, pero solo es factura cuando ARCA devolvió el CAE (o se
 - **Permisos**: el CASHIER fiscaliza e imprime; panel, emisor, certificados, IVA, conciliación, NC y CAEA son
   del OWNER. Ningún formulario permite elegir número, CAE ni ambiente.
 
-**Actualizar desde V1.15.** Backup previo automático y migraciones 041–044: ventas, stock, caja, clientes y
-saldos no cambian, ningún producto recibe IVA ni ninguna venta un comprobante. La facturación queda inactiva
-hasta configurar el emisor, validar el punto de venta, cargar el certificado y clasificar los productos. El
+**Actualizar desde V1.15.** Backup previo automático y migraciones 041–045: ventas, stock, caja, clientes y
+saldos no cambian, ningún producto recibe IVA ni clasificación de otros impuestos y ninguna venta un
+comprobante. La facturación queda inactiva hasta configurar el emisor, validar el punto de venta, cargar el
+certificado y clasificar los productos (IVA y otros impuestos nacionales indirectos). El
 rollback a V1.15 restaura el backup previo (V1.15 rechaza abrir una base con migraciones que no conoce).
 
 ## Estado actual
