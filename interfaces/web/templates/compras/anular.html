@@ -50,6 +50,22 @@
                          focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                   placeholder="Opcional, salvo para motivo &quot;OTRO&quot;"></textarea>
       </div>
+      {% if compra.origen_pago == 'CAJA_ACTUAL' %}
+      <fieldset id="reintegro-caja">
+        <legend class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Esta compra se pagó con efectivo de la caja. ¿El efectivo vuelve a la caja?</legend>
+        <div class="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <label class="inline-flex items-center gap-2">
+            <input type="radio" name="reintegro_a_caja" value="SI" required class="text-primary focus:ring-primary" />
+            Sí: se registra un ingreso de ${{ compra.total_centavos | dinero_ar }} en la caja abierta
+          </label>
+          <label class="inline-flex items-center gap-2">
+            <input type="radio" name="reintegro_a_caja" value="NO" required class="text-primary focus:ring-primary" />
+            No: la caja queda como está
+          </label>
+        </div>
+        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">El egreso original no se borra: queda en la sesión de caja en que salió el efectivo.</p>
+      </fieldset>
+      {% endif %}
       <div class="flex items-center gap-3 pt-2">
         <button type="submit" class="rounded-lg bg-error hover:bg-error/90 transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">Anular compra</button>
         <a href="/compras/{{ compra.id }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>

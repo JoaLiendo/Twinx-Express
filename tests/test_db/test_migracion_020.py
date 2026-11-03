@@ -432,6 +432,8 @@ def test_migracion_desde_base_completamente_vacia_aplica_todo(tmp_path, monkeypa
             " AND name NOT LIKE 'trg_comprobante%' AND name NOT LIKE 'trg_perfil_fiscal_%' AND name NOT LIKE 'trg_habilitaciones_%'"
             " AND name NOT LIKE 'trg_intentos_fiscales_%' AND name NOT LIKE 'trg_cancelaciones_fiscales_%' AND name NOT LIKE 'trg_caea_%'"
             " AND name <> 'trg_ventas_fiscalizada_no_anulable'"
+            # V1.16 RC4 (047): origen del pago de compras.
+            " AND name NOT LIKE 'trg_compras_%'"
         ).fetchall()
         assert len(triggers_019_020) == 20
     finally:

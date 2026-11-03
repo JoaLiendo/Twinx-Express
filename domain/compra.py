@@ -28,6 +28,43 @@ def validar_condicion_pago(condicion_pago: str) -> None:
         )
 
 
+# --- Origen del pago de una compra al contado (RC4, migración 047) --------------------------------
+
+ORIGEN_CAJA_ACTUAL = "CAJA_ACTUAL"
+ORIGEN_FUERA_DE_CAJA = "FUERA_DE_CAJA"
+ORIGENES_PAGO_VALIDOS = frozenset({ORIGEN_CAJA_ACTUAL, ORIGEN_FUERA_DE_CAJA})
+
+
+def validar_origen_pago(condicion_pago: str, origen_pago: str | None, total_centavos: int) -> str | None:
+    """Origen de pago a persistir. Una compra CONTADO tiene que decir explícitamente de dónde salió la
+    plata (no toda compra al contado sale de la caja: transferencia, cuenta bancaria, dinero personal);
+    una a crédito no tiene origen, porque su pago se registra después como pago al proveedor."""
+    if condicion_pago == "CREDITO":
+        if origen_pago:
+            raise DatosInvalidosError("Una compra a crédito no se paga ahora: no indiques cómo se pagó.")
+        return None
+    if not origen_pago:
+        raise DatosInvalidosError("Indicá cómo se pagó esta compra: con efectivo de la caja actual o fuera de la caja.")
+    if origen_pago not in ORIGENES_PAGO_VALIDOS:
+        raise DatosInvalidosError(f"Origen de pago inválido: {origen_pago!r}.")
+    if origen_pago == ORIGEN_CAJA_ACTUAL and total_centavos <= 0:
+        raise DatosInvalidosError("Una compra sin importe no saca efectivo de la caja: elegí \"Fuera de la caja\".")
+    return origen_pago
+
+
+def validar_reintegro_a_caja(origen_pago: str | None, reintegro_a_caja: bool | None) -> bool:
+    """Al anular una compra pagada con la caja, el OWNER tiene que decir si el efectivo vuelve a la caja:
+    no se asume (puede haber sido un error de carga, una devolución con reembolso, o una devolución que
+    el proveedor todavía no reembolsó). Las demás compras nunca tocaron la caja."""
+    if origen_pago != ORIGEN_CAJA_ACTUAL:
+        if reintegro_a_caja:
+            raise DatosInvalidosError("Esta compra no se pagó con efectivo de la caja: no hay nada que reintegrar.")
+        return False
+    if reintegro_a_caja is None:
+        raise DatosInvalidosError("Indicá si el efectivo de esta compra vuelve a la caja al anularla.")
+    return reintegro_a_caja
+
+
 _FECHA_VENCIMIENTO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", re.ASCII)
 _MENSAJE_FORMATO_VENCIMIENTO = "La fecha de vencimiento debe tener el formato AAAA-MM-DD y ser una fecha real."
 
@@ -179,6 +216,9 @@ class Compra:
     costo_trazable: bool = False
     condicion_pago: str = "CONTADO"
     fecha_vencimiento: str | None = None
+    origen_pago: str | None = None
+    caja_movimiento_id: int | None = None
+    caja_movimiento_reintegro_id: int | None = None
 
 
 @dataclass
@@ -218,6 +258,8 @@ class ResumenCompra:
     fecha_anulacion: str | None = None
     condicion_pago: str = "CONTADO"
     fecha_vencimiento: str | None = None
+    origen_pago: str | None = None
+    caja_movimiento_reintegro_id: int | None = None
 
 
 @dataclass(frozen=True)

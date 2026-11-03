@@ -149,7 +149,7 @@ class TestCompra:
         proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, stock_actual=5)
         formulario = {
-            "proveedor_id": str(proveedor.id),
+            "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id),
             "observaciones": "",
             "producto_id": str(producto.id),
             "cantidad": "10",

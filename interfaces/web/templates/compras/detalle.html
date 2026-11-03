@@ -37,6 +37,16 @@
         <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Condición de pago</p>
         <p class="mt-1 font-medium text-slate-900 dark:text-slate-100">{{ ui.badge('A crédito', 'info') if compra.condicion_pago == 'CREDITO' else 'Contado' }}</p>
       </div>
+      {% if compra.condicion_pago == 'CONTADO' %}
+      <div>
+        <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Cómo se pagó</p>
+        <p id="compra-origen-pago" class="mt-1 font-medium text-slate-900 dark:text-slate-100">
+          {%- if compra.origen_pago == 'CAJA_ACTUAL' -%}Con efectivo de la caja{% if compra.caja_movimiento_reintegro_id %} (reintegrado al anular){% endif %}
+          {%- elif compra.origen_pago == 'FUERA_DE_CAJA' -%}Fuera de la caja
+          {%- else -%}Sin dato (compra anterior a V1.16){%- endif -%}
+        </p>
+      </div>
+      {% endif %}
       {% if compra.condicion_pago == 'CREDITO' %}
       <div>
         <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Vencimiento</p>

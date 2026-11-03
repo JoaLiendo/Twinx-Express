@@ -108,6 +108,23 @@
               <option value="CREDITO">Crédito</option>
             </select>
           </div>
+          <fieldset id="origen-pago" class="sm:col-span-2">
+            <legend class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">¿Cómo se pagó esta compra?</legend>
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-6 text-sm text-slate-700 dark:text-slate-300">
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" name="origen_pago" value="CAJA_ACTUAL" required class="text-primary focus:ring-primary" />
+                Con efectivo de la caja actual
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" name="origen_pago" value="FUERA_DE_CAJA" required class="text-primary focus:ring-primary" />
+                Fuera de la caja
+              </label>
+            </div>
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Con efectivo de la caja se registra un egreso en la caja abierta. Fuera de la caja (transferencia,
+              cuenta bancaria, dinero propio) no cambia el efectivo esperado. En una compra a crédito no se elige.
+            </p>
+          </fieldset>
           <div>
             <label for="fecha-vencimiento" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Fecha de vencimiento <span class="font-normal text-slate-400">(opcional, solo a crédito)</span></label>
             <input type="date" name="fecha_vencimiento" id="fecha-vencimiento"
@@ -173,11 +190,17 @@
   (function () {
     const condicion = document.querySelector('select[name="condicion_pago"]');
     const vencimiento = document.getElementById('fecha-vencimiento');
+    const origenes = document.querySelectorAll('input[name="origen_pago"]');
     if (!condicion || !vencimiento) return;
     function sincronizar() {
       const credito = condicion.value === 'CREDITO';
       vencimiento.disabled = !credito;
       if (!credito) vencimiento.value = '';
+      // RC4: el origen del pago solo existe al contado (deshabilitado no se envía ni es obligatorio).
+      origenes.forEach(function (opcion) {
+        opcion.disabled = credito;
+        if (credito) opcion.checked = false;
+      });
     }
     condicion.addEventListener('change', sincronizar);
     sincronizar();

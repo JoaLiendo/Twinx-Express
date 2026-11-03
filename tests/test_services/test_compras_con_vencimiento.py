@@ -99,7 +99,7 @@ def test_formulario_web_simple_y_con_varias_fechas(e):
     _, cookies = usuario_logueado("OWNER", "duenio2")
     otro = servicio_stock.registrar_producto("2", "Leche", 100, 250)
     respuesta = solicitud("POST", "/compras/nueva", cookies=cookies, formulario={
-        "proveedor_id": str(e.prov.id), "producto_id": [str(e.p.id), str(otro.id)], "cantidad": ["10", "3"],
+        "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(e.prov.id), "producto_id": [str(e.p.id), str(otro.id)], "cantidad": ["10", "3"],
         "costo_unitario": ["1.20", "1.00"], "vencimiento_producto": [f"6@{FUTURO_1};4@{FUTURO_2}", FUTURO_1],
         "clave_idempotencia": "k-web",
     })
@@ -114,7 +114,7 @@ def test_formulario_web_simple_y_con_varias_fechas(e):
 def test_formulario_web_sin_el_campo_nuevo_sigue_funcionando(e):
     _, cookies = usuario_logueado("OWNER", "duenio2")
     solicitud("POST", "/compras/nueva", cookies=cookies, formulario={
-        "proveedor_id": str(e.prov.id), "producto_id": str(e.p.id), "cantidad": "2", "costo_unitario": "1",
+        "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(e.prov.id), "producto_id": str(e.p.id), "cantidad": "2", "costo_unitario": "1",
     })
     assert _partidas(e.p) == [(2, None, 100)]
 
@@ -122,7 +122,7 @@ def test_formulario_web_sin_el_campo_nuevo_sigue_funcionando(e):
 def test_formulario_web_con_vencimientos_desalineados_no_registra(e):
     _, cookies = usuario_logueado("OWNER", "duenio2")
     respuesta = solicitud("POST", "/compras/nueva", cookies=cookies, formulario={
-        "proveedor_id": str(e.prov.id), "producto_id": str(e.p.id), "cantidad": "2", "costo_unitario": "1",
+        "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(e.prov.id), "producto_id": str(e.p.id), "cantidad": "2", "costo_unitario": "1",
         "vencimiento_producto": ["", ""],
     })
     assert "tipo=error" in (respuesta.header("location") or "")

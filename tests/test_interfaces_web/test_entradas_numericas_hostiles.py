@@ -108,7 +108,7 @@ CASOS = [
         "compra",
         "POST",
         "/compras/nueva",
-        {"proveedor_id": "{prov}", "observaciones": "", "producto_id": "{pid}", "cantidad": "1", "costo_unitario": "1.00", "clave_idempotencia": "k-compra"},
+        {"origen_pago": "FUERA_DE_CAJA", "proveedor_id": "{prov}", "observaciones": "", "producto_id": "{pid}", "cantidad": "1", "costo_unitario": "1.00", "clave_idempotencia": "k-compra"},
         {"costo_unitario": "monto", "cantidad": "entero", "proveedor_id": "entero", "producto_id": "entero"},
     ),
     (

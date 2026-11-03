@@ -30,7 +30,7 @@ from domain.reportes_operativos import ComprasDeProveedor
 
 _COLUMNAS_COMPRA = (
     "id, proveedor_id, usuario_id, fecha, observaciones, total_centavos, estado, costo_trazable, condicion_pago, "
-    "fecha_vencimiento"
+    "fecha_vencimiento, origen_pago, caja_movimiento_id, caja_movimiento_reintegro_id"
 )
 _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centavos, subtotal_centavos"
 
@@ -45,6 +45,7 @@ _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centav
 _CONSULTA_RESUMEN_BASE = """
     SELECT
         c.id, c.fecha, c.observaciones, c.total_centavos, c.condicion_pago, c.fecha_vencimiento,
+        c.origen_pago, c.caja_movimiento_reintegro_id,
         c.estado, c.motivo_anulacion, c.observaciones_anulacion, c.fecha_anulacion,
         p.nombre AS proveedor_nombre,
         u.nombre_completo AS usuario_nombre_completo,
@@ -71,6 +72,8 @@ def _fila_a_resumen(fila: sqlite3.Row) -> ResumenCompra:
         fecha_anulacion=fila["fecha_anulacion"],
         condicion_pago=fila["condicion_pago"],
         fecha_vencimiento=fila["fecha_vencimiento"],
+        origen_pago=fila["origen_pago"],
+        caja_movimiento_reintegro_id=fila["caja_movimiento_reintegro_id"],
     )
 
 
@@ -99,6 +102,9 @@ def _fila_a_compra(fila: sqlite3.Row) -> Compra:
         costo_trazable=bool(fila["costo_trazable"]),
         condicion_pago=fila["condicion_pago"],
         fecha_vencimiento=fila["fecha_vencimiento"],
+        origen_pago=fila["origen_pago"],
+        caja_movimiento_id=fila["caja_movimiento_id"],
+        caja_movimiento_reintegro_id=fila["caja_movimiento_reintegro_id"],
     )
 
 
@@ -153,6 +159,8 @@ def registrar_compra_con_detalle(
     condicion_pago: str = "CONTADO",
     fecha: str | None = None,
     fecha_vencimiento: str | None = None,
+    origen_pago: str | None = None,
+    caja_movimiento_id: int | None = None,
 ) -> Compra:
     """Inserta la compra y su detalle dentro de la conexión recibida.
 
@@ -175,18 +183,21 @@ def registrar_compra_con_detalle(
     `fecha` (ver `obtener_fecha_hora_actual_en_conexion`) y `fecha_vencimiento` ya vienen validados por el
     servicio (`domain.compra.validar_fecha_vencimiento`); el CHECK del esquema es solo la última defensa.
     Sin `fecha` rige el `DEFAULT` de la columna.
+
+    `origen_pago` / `caja_movimiento_id` (RC4, migración 047): el egreso de una compra pagada con la caja
+    ya fue creado en esta misma transacción por el servicio; los triggers exigen su coherencia.
     """
     fila_compra = conexion.execute(
         f"""
         INSERT INTO compras
             (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia, costo_trazable,
-             condicion_pago, fecha_vencimiento, fecha)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now', 'localtime')))
+             condicion_pago, fecha_vencimiento, fecha, origen_pago, caja_movimiento_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now', 'localtime')), ?, ?)
         RETURNING {_COLUMNAS_COMPRA}
         """,
         (
             proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia,
-            int(eventos_costo is not None), condicion_pago, fecha_vencimiento, fecha,
+            int(eventos_costo is not None), condicion_pago, fecha_vencimiento, fecha, origen_pago, caja_movimiento_id,
         ),
     ).fetchone()
 
@@ -274,6 +285,14 @@ def anular_compra_en_conexion(
         (motivo, observaciones, usuario_id, compra_id),
     )
     return cursor.rowcount == 1
+
+
+def registrar_reintegro_en_conexion(conexion: sqlite3.Connection, compra_id: int, caja_movimiento_id: int) -> None:
+    """Vincula el INGRESO de caja que devolvió el efectivo de una compra anulada (una sola vez: trigger
+    `trg_compras_reintegro_unico`). Parte de la transacción de la anulación."""
+    conexion.execute(
+        "UPDATE compras SET caja_movimiento_reintegro_id = ? WHERE id = ?", (caja_movimiento_id, compra_id)
+    )
 
 
 def actualizar_vencimiento_en_conexion(

@@ -270,10 +270,13 @@ def test_la_migracion_queda_registrada_una_sola_vez(previa):
 
 def test_la_columna_es_text_null_sin_default_y_va_al_final(migrada):
     columnas = migrada.con.execute("PRAGMA table_info(compras)").fetchall()
-    ultima = columnas[-1]
-    assert ultima[1] == "fecha_vencimiento"
-    assert (ultima[2], ultima[3], ultima[4], ultima[5]) == ("TEXT", 0, None, 0)
-    assert [c[1] for c in columnas][:-1] == [c.strip() for c in COLUMNAS_COMPRAS_PREVIAS.split(",")]
+    nombres = [c[1] for c in columnas]
+    posicion = nombres.index("fecha_vencimiento")
+    columna = columnas[posicion]
+    assert (columna[2], columna[3], columna[4], columna[5]) == ("TEXT", 0, None, 0)
+    # Va justo después de las previas; lo que sigue es de migraciones posteriores (047: origen del pago).
+    assert nombres[:posicion] == [c.strip() for c in COLUMNAS_COMPRAS_PREVIAS.split(",")]
+    assert nombres[posicion + 1 :] == ["origen_pago", "caja_movimiento_id", "caja_movimiento_reintegro_id"]
 
 
 def test_no_se_agrega_ningun_indice_sobre_fecha_vencimiento(migrada):

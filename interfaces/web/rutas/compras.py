@@ -128,6 +128,7 @@ def crear_compra(
     condicion_pago: str = Form("CONTADO"),
     fecha_vencimiento: str = Form(""),
     vencimiento_producto: list[str] = Form([]),
+    origen_pago: str = Form(""),
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
     # `vencimiento_producto` (V1.12-B) va alineado con las líneas; un formulario anterior que no lo envía
@@ -148,6 +149,8 @@ def crear_compra(
         clave_idempotencia=clave_idempotencia or None,
         condicion_pago=condicion_pago,
         fecha_vencimiento=fecha_vencimiento or None,
+        # RC4: al contado se exige la elección del formulario ("" se rechaza); a crédito no aplica.
+        origen_pago=origen_pago if condicion_pago == "CONTADO" else None,
     )
     return redireccionar_con_mensaje(
         f"/compras/{compra.id}", "success", f"Compra #{compra.id} registrada correctamente."
@@ -237,8 +240,10 @@ def accion_anular_compra(
     compra_id: int,
     motivo: str = Form(...),
     observaciones: str = Form(""),
+    reintegro_a_caja: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     """Quién anula es siempre el usuario autenticado, nunca un dato del formulario."""
-    servicio_compras.anular_compra(compra_id, motivo, observaciones, usuario_actual.id)
+    reintegro = {"SI": True, "NO": False}.get(reintegro_a_caja)
+    servicio_compras.anular_compra(compra_id, motivo, observaciones, usuario_actual.id, reintegro_a_caja=reintegro)
     return redireccionar_con_mensaje(f"/compras/{compra_id}", "success", "Compra anulada correctamente.")

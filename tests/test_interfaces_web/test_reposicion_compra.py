@@ -186,7 +186,7 @@ class TestCompraFinalPorElFlujoExistente:
         clave = re.search(r'name="clave_idempotencia" value="([^"]+)"', html).group(1)
         formulario = {
             "clave_idempotencia": clave,
-            "proveedor_id": str(e.a.id),
+            "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(e.a.id),
             "observaciones": "",
             "producto_id": [str(e.p[n].id) for n in cantidades],
             "cantidad": [str(c) for c in cantidades.values()],

@@ -17,6 +17,7 @@ from math import ceil
 
 from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
+from db.repositorios import caja as repositorio_caja
 from db.repositorios import compras as repositorio_compras
 from db.repositorios import movimientos_proveedor as repositorio_movimientos_proveedor
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
@@ -24,7 +25,10 @@ from db.repositorios import productos as repositorio_productos
 from db.repositorios import proveedores as repositorio_proveedores
 from db.repositorios import historial_precios as repositorio_historial_precios
 from db.repositorios import partidas as repositorio_partidas
+from domain.caja import MovimientoCaja
 from domain.compra import (
+    ORIGEN_CAJA_ACTUAL,
+    ORIGEN_FUERA_DE_CAJA,
     Compra,
     CompraDeProducto,
     DecisionCosto,
@@ -38,6 +42,8 @@ from domain.compra import (
     validar_condicion_pago,
     validar_fecha_vencimiento,
     validar_motivo_anulacion_compra,
+    validar_origen_pago,
+    validar_reintegro_a_caja,
     validar_vencimientos_de_producto,
 )
 from domain.auditoria import LONGITUD_MAXIMA_RESUMEN
@@ -47,6 +53,7 @@ from domain.partida import ORIGEN_COMPRA
 from domain.producto import Producto
 from excepciones import (
     MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS,
+    CajaCerradaError,
     ClaveIdempotenciaReutilizadaError,
     CompraConPagosPosterioresError,
     CompraNoEncontradaError,
@@ -71,6 +78,7 @@ def registrar_compra(
     clave_idempotencia: str | None = None,
     condicion_pago: str = "CONTADO",
     fecha_vencimiento: str | None = None,
+    origen_pago: str | None = None,
 ) -> Compra:
     """Registra un ingreso de mercadería con sus líneas de detalle,
     incrementa el stock de cada producto y actualiza su costo vigente.
@@ -108,10 +116,17 @@ def registrar_compra(
             anterior al día de la compra ni existir en una compra al contado. Es informativa: no cambia
             el total, el cargo ni ningún saldo. Se compara contra la fecha que queda persistida (leída
             una vez dentro de la transacción), no contra otro reloj.
+        origen_pago: (RC4) solo para CONTADO: 'CAJA_ACTUAL' (exige caja abierta y crea, en la misma
+            transacción, un EGRESO de caja vinculado a la compra) o 'FUERA_DE_CAJA' (no toca la caja).
+            Queda siempre persistido. `None` es el valor por defecto de la API ('FUERA_DE_CAJA', lo que
+            hacían las versiones anteriores); el formulario web nunca lo usa: manda la opción elegida o
+            `""`, que se rechaza para que nadie registre una compra al contado sin decir cómo se pagó.
 
     Raises:
-        DatosInvalidosError: si `items` está vacío, `condicion_pago` no es 'CONTADO' ni 'CREDITO', o el
-            vencimiento es inválido (ver `domain.compra.validar_fecha_vencimiento`).
+        DatosInvalidosError: si `items` está vacío, `condicion_pago` no es 'CONTADO' ni 'CREDITO', el
+            vencimiento es inválido (ver `domain.compra.validar_fecha_vencimiento`) o el origen del pago
+            falta o no corresponde (ver `domain.compra.validar_origen_pago`).
+        CajaCerradaError: si se pagó con la caja actual y no hay una caja abierta.
         ProveedorNoEncontradoError: si `proveedor_id` no corresponde a
             ningún proveedor activo.
         ProductoNoEncontradoError: si algún `producto_id` no corresponde
@@ -122,6 +137,11 @@ def registrar_compra(
     if not items:
         raise DatosInvalidosError("Una compra debe tener al menos un ítem.")
     validar_condicion_pago(condicion_pago)
+    if origen_pago is None and condicion_pago == "CONTADO":
+        origen_pago = ORIGEN_FUERA_DE_CAJA
+    origen_pago = validar_origen_pago(
+        condicion_pago, origen_pago, sum(item.cantidad * item.costo_unitario_centavos for item in items)
+    )
 
     # `inmediata=True`: mismo motivo que en `servicio_ventas.registrar_venta`
     # (ver auditoría de concurrencia, Stage D) -- esta transacción lee el
@@ -148,13 +168,21 @@ def registrar_compra(
                 ingresos = repositorio_partidas.ingresos_por_producto_de_compra_en_conexion(conexion, existente.id)
                 if (
                     existente.proveedor_id, existente.observaciones, existente.condicion_pago,
-                    existente.fecha_vencimiento, lineas_originales, ingresos or vencimientos_pedidos,
+                    existente.fecha_vencimiento, existente.origen_pago, lineas_originales,
+                    ingresos or vencimientos_pedidos,
                 ) != (
-                    proveedor_id, observaciones, condicion_pago, fecha_vencimiento, lineas_pedidas,
+                    proveedor_id, observaciones, condicion_pago, fecha_vencimiento, origen_pago, lineas_pedidas,
                     vencimientos_pedidos,
                 ):
                     raise ClaveIdempotenciaReutilizadaError(MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS)
                 return existente
+
+        # Después del reintento idempotente (que devuelve la compra aunque la caja ya se haya cerrado).
+        if origen_pago == ORIGEN_CAJA_ACTUAL and repositorio_caja.obtener_sesion_abierta_en_conexion(conexion) is None:
+            raise CajaCerradaError(
+                "No hay una caja abierta: abrí la caja para pagar esta compra con su efectivo, "
+                "o registrala como pagada fuera de la caja."
+            )
 
         fecha_compra = repositorio_compras.obtener_fecha_hora_actual_en_conexion(conexion)
         validar_fecha_vencimiento(condicion_pago, fecha_compra, fecha_vencimiento)
@@ -199,6 +227,22 @@ def registrar_compra(
                 eventos_costo[producto.id] = evento_id
             repositorio_producto_proveedor.asegurar_vinculo_en_conexion(conexion, producto.id, proveedor_id)
 
+        # Pagada con la caja: el egreso nace en la MISMA transacción que la compra (si algo falla, no queda
+        # ni uno ni otro) y la compra lo referencia; un reintento idempotente nunca llega hasta acá.
+        caja_movimiento_id = None
+        if origen_pago == ORIGEN_CAJA_ACTUAL:
+            egreso = repositorio_caja.registrar_movimiento_en_conexion(
+                conexion,
+                MovimientoCaja(
+                    tipo="EGRESO",
+                    monto_centavos=total_centavos,
+                    descripcion=f"Compra al contado a {proveedor.nombre}"[:250],
+                    origen="PAGO_PROVEEDOR",
+                ),
+                usuario_id=usuario_id,
+            )
+            caja_movimiento_id = egreso.id
+
         compra = repositorio_compras.registrar_compra_con_detalle(
             conexion,
             proveedor_id,
@@ -211,6 +255,8 @@ def registrar_compra(
             condicion_pago=condicion_pago,
             fecha=fecha_compra,
             fecha_vencimiento=fecha_vencimiento,
+            origen_pago=origen_pago,
+            caja_movimiento_id=caja_movimiento_id,
         )
 
         # V1.12: cada línea ingresa como una partida por vencimiento de producto, con el costo real de la compra.
@@ -233,9 +279,12 @@ def registrar_compra(
                 conexion, proveedor_id, compra.id, total_centavos, usuario_id
             )
 
-        sufijo_condicion = ""
         if condicion_pago == "CREDITO":
             sufijo_condicion = f" (crédito, vence {fecha_vencimiento})" if fecha_vencimiento else " (crédito)"
+        elif origen_pago == ORIGEN_CAJA_ACTUAL:
+            sufijo_condicion = f" (contado, con efectivo de la caja: egreso #{caja_movimiento_id})"
+        else:
+            sufijo_condicion = " (contado, pagada fuera de la caja)"
         repositorio_auditoria.registrar_en_conexion(
             conexion,
             usuario_id,
@@ -254,13 +303,19 @@ def registrar_compra(
 
 
 def _resumen_de_anulacion(
-    compra_id: int, motivo: str, unidades: dict[int, int], decisiones: list[DecisionCosto], es_credito: bool = False
+    compra_id: int,
+    motivo: str,
+    unidades: dict[int, int],
+    decisiones: list[DecisionCosto],
+    es_credito: bool = False,
+    caja: str | None = None,
 ) -> str:
     """Resumen de auditoría de una anulación, compactado si excede el límite de la auditoría.
 
     `es_credito` (V1.9-B) agrega que la deuda del proveedor fue revertida -- solo si la compra
-    generó un `CARGO_COMPRA`; no se agrega una fila de auditoría aparte para eso."""
-    sufijo_credito = " Deuda revertida." if es_credito else ""
+    generó un `CARGO_COMPRA`; no se agrega una fila de auditoría aparte para eso. `caja` (RC4) dice qué
+    se hizo con el efectivo de una compra pagada con la caja."""
+    sufijo_credito = (" Deuda revertida." if es_credito else "") + (f" Caja: {caja}." if caja else "")
     detalle = " | ".join(
         f"p{d.producto_id}:-{unidades[d.producto_id]} "
         + ("RESTAURADO" if d.restaurar_a_centavos is not None else f"CONSERVADO:{d.causa}")
@@ -276,7 +331,13 @@ def _resumen_de_anulacion(
     )
 
 
-def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuario_id: int) -> Compra:
+def anular_compra(
+    compra_id: int,
+    motivo: str,
+    observaciones: str | None,
+    usuario_id: int,
+    reintegro_a_caja: bool | None = None,
+) -> Compra:
     """Anula una compra `ACTIVA`: descuenta el stock de cada línea, restaura el costo solo si se demuestra
     que es reversible y marca la compra `ANULADA`, todo en una única transacción `BEGIN IMMEDIATE`.
 
@@ -293,6 +354,12 @@ def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuari
     diseño de V1.9). Si no hay ningún pago posterior, se crea una `REVERSA_COMPRA` por el total, en
     la misma transacción que revierte stock y costo.
 
+    Compra pagada con la caja (RC4): su egreso nunca se borra ni se edita (es lo que pasó en esa sesión). El
+    OWNER indica en `reintegro_a_caja` si el efectivo vuelve: `True` crea un INGRESO vinculado en la caja
+    abierta ahora (exige una), en esta misma transacción; `False` deja la caja como está (error de carga
+    ya corregido en el arqueo, o devolución que el proveedor todavía no reembolsó). No se asume ninguna de
+    las dos. Las demás compras no aceptan reintegro.
+
     Raises:
         CompraNoEncontradaError: si la compra no existe.
         CompraYaAnuladaError: si ya estaba anulada (no se toca stock, costo ni auditoría de nuevo).
@@ -300,6 +367,9 @@ def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuari
         StockInsuficienteError: si el stock actual de algún producto no alcanza.
         CompraConPagosPosterioresError: si es a crédito y el proveedor ya tiene un pago posterior
             al cargo de esta compra (no se modifica nada: ni stock, ni costo, ni el libro).
+        DatosInvalidosError: si falta indicar el reintegro de una compra pagada con la caja, o se pide
+            reintegrar una que no salió de la caja.
+        CajaCerradaError: si se pide reintegrar el efectivo y no hay una caja abierta.
     """
     observaciones = (observaciones or "").strip() or None
     with obtener_conexion(inmediata=True) as conexion:
@@ -309,6 +379,11 @@ def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuari
         if compra.estado != "ACTIVA":
             raise CompraYaAnuladaError(f"La compra {compra_id} ya fue anulada anteriormente.")
         validar_motivo_anulacion_compra(motivo, observaciones)
+        reintegra = validar_reintegro_a_caja(compra.origen_pago, reintegro_a_caja)
+        if reintegra and repositorio_caja.obtener_sesion_abierta_en_conexion(conexion) is None:
+            raise CajaCerradaError(
+                "No hay una caja abierta para recibir el efectivo de vuelta: abrí la caja o anulá sin reintegro."
+            )
 
         cargo_id = None
         if compra.condicion_pago == "CREDITO":
@@ -383,6 +458,22 @@ def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuari
                 conexion, compra.proveedor_id, compra_id, compra.total_centavos, usuario_id
             )
 
+        caja = None
+        if compra.origen_pago == ORIGEN_CAJA_ACTUAL:
+            caja = "sin reintegro a caja"
+            if reintegra:
+                ingreso = repositorio_caja.registrar_movimiento_en_conexion(
+                    conexion,
+                    MovimientoCaja(
+                        tipo="INGRESO",
+                        monto_centavos=compra.total_centavos,
+                        descripcion=f"Reintegro por anulación de la compra #{compra_id}",
+                    ),
+                    usuario_id=usuario_id,
+                )
+                repositorio_compras.registrar_reintegro_en_conexion(conexion, compra_id, ingreso.id)
+                caja = f"reintegro a caja: ingreso #{ingreso.id}"
+
         repositorio_auditoria.registrar_en_conexion(
             conexion,
             usuario_id,
@@ -391,7 +482,7 @@ def anular_compra(compra_id: int, motivo: str, observaciones: str | None, usuari
             compra_id,
             _resumen_de_anulacion(
                 compra_id, motivo, {li.producto_id: li.cantidad for li in lineas}, decisiones,
-                es_credito=cargo_id is not None,
+                es_credito=cargo_id is not None, caja=caja,
             ),
         )
         anulada = repositorio_compras.obtener_por_id_en_conexion(conexion, compra_id)

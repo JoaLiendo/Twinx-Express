@@ -66,6 +66,8 @@ test('reposición: imprimir y pasar a compra un grupo, y confirmar registra la c
   await page.locator('[data-grupo-reposicion]', { hasText: PROVEEDOR }).locator('[data-cantidad]').fill('10');
   await page.locator('[data-grupo-reposicion]', { hasText: PROVEEDOR }).locator('[data-accion="comprar"]').click();
   await page.waitForURL(/\/reposicion\/comprar/);
+  // RC4: al contado hay que decir cómo se pagó (sin opción preseleccionada).
+  await page.getByLabel('Fuera de la caja').check();
   await page.getByRole('button', { name: 'Registrar compra' }).click();
   await page.waitForURL(/\/compras\/\d+$/);
   await page.goto('/ventas');

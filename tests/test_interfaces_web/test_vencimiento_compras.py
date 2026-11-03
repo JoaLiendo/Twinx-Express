@@ -37,7 +37,7 @@ def _comprar(e, condicion="CREDITO", vencimiento=None):
 
 def _alta(e, cookies=None, **extra):
     formulario = {
-        "proveedor_id": str(e.prov.id), "producto_id": str(e.p.id), "cantidad": "2", "costo_unitario": "1.50",
+        "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(e.prov.id), "producto_id": str(e.p.id), "cantidad": "2", "costo_unitario": "1.50",
         "clave_idempotencia": "clave-web-1", "condicion_pago": "CREDITO", **extra,
     }
     return solicitud("POST", "/compras/nueva", cookies=cookies or e.co, formulario=formulario)

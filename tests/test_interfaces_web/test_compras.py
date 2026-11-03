@@ -245,7 +245,7 @@ class TestFormularioYAlta:
             "/compras/nueva",
             cookies=cookies,
             formulario={
-                "proveedor_id": str(proveedor.id),
+                "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id),
                 "observaciones": "Entrega parcial",
                 "producto_id": [str(producto.id)],
                 "cantidad": ["10"],
@@ -271,7 +271,7 @@ class TestFormularioYAlta:
             "/compras/nueva",
             cookies=cookies,
             formulario={
-                "proveedor_id": str(proveedor.id),
+                "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id),
                 "observaciones": "",
                 "producto_id": [str(producto_1.id), str(producto_2.id)],
                 "cantidad": ["10", "3"],
@@ -293,7 +293,7 @@ class TestFormularioYAlta:
             "/compras/nueva",
             cookies=cookies,
             formulario={
-                "proveedor_id": str(proveedor.id),
+                "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id),
                 "observaciones": "",
                 "producto_id": [str(producto.id), str(producto.id)],
                 "cantidad": ["5", "3"],
@@ -313,7 +313,7 @@ class TestFormularioYAlta:
             "/compras/nueva",
             cookies=cookies,
             formulario={
-                "proveedor_id": "9999",
+                "origen_pago": "FUERA_DE_CAJA", "proveedor_id": "9999",
                 "observaciones": "",
                 "producto_id": [str(producto.id)],
                 "cantidad": ["1"],
@@ -333,7 +333,7 @@ class TestFormularioYAlta:
             "/compras/nueva",
             cookies=cookies,
             formulario={
-                "proveedor_id": str(proveedor.id),
+                "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id),
                 "observaciones": "",
                 "producto_id": ["9999"],
                 "cantidad": ["1"],
@@ -353,7 +353,7 @@ class TestFormularioYAlta:
             "/compras/nueva",
             cookies=cookies,
             formulario={
-                "proveedor_id": str(proveedor.id),
+                "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id),
                 "observaciones": "",
                 "producto_id": [str(producto.id)],
                 "cantidad": ["0"],
@@ -373,7 +373,7 @@ class TestFormularioYAlta:
             "/compras/nueva",
             cookies=cookies,
             formulario={
-                "proveedor_id": str(proveedor.id),
+                "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id),
                 "observaciones": "",
                 "producto_id": [str(producto.id)],
                 "cantidad": ["1"],
@@ -392,7 +392,7 @@ class TestFormularioYAlta:
             "POST",
             "/compras/nueva",
             cookies=cookies,
-            formulario={"proveedor_id": str(proveedor.id), "observaciones": ""},
+            formulario={"origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id), "observaciones": ""},
         )
 
         assert respuesta.status == 422  # FastAPI: faltan los campos requeridos producto_id/cantidad/costo_unitario
@@ -484,7 +484,7 @@ class TestCondicionDePago:
         respuesta = solicitud(
             "POST", "/compras/nueva", cookies=cookies,
             formulario={
-                "proveedor_id": str(proveedor.id), "producto_id": [str(producto.id)],
+                "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id), "producto_id": [str(producto.id)],
                 "cantidad": ["5"], "costo_unitario": ["120.00"], "condicion_pago": "CONTADO",
             },
         )
@@ -500,7 +500,7 @@ class TestCondicionDePago:
         respuesta = solicitud(
             "POST", "/compras/nueva", cookies=cookies,
             formulario={
-                "proveedor_id": str(proveedor.id), "producto_id": [str(producto.id)],
+                "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id), "producto_id": [str(producto.id)],
                 "cantidad": ["5"], "costo_unitario": ["120.00"], "condicion_pago": "CREDITO",
             },
         )
@@ -523,7 +523,7 @@ class TestCondicionDePago:
         solicitud(
             "POST", "/compras/nueva", cookies=cookies,
             formulario={
-                "proveedor_id": str(proveedor.id), "producto_id": [str(producto.id)],
+                "origen_pago": "FUERA_DE_CAJA", "proveedor_id": str(proveedor.id), "producto_id": [str(producto.id)],
                 "cantidad": ["1"], "costo_unitario": ["10.00"],
             },
         )
