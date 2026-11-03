@@ -24,6 +24,7 @@ inventadas acá):
 
 from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
+from db.repositorios import sesiones as repositorio_sesiones
 from db.repositorios import usuarios as repositorio_usuarios
 from domain.usuario import Usuario
 from excepciones import CredencialesInvalidasError, UltimoOwnerActivoError, UsuarioNoEncontradoError
@@ -206,19 +207,31 @@ def desactivar(usuario_id: int, actor_id: int | None = None) -> Usuario:
 def resetear_password(usuario_id: int, password_nueva: str, actor_id: int | None = None) -> Usuario:
     """Fija una contraseña nueva para otro usuario, sin verificar la
     anterior (acción de un OWNER sobre un tercero). La autorización de
-    que quien llama sea OWNER se aplica en la capa web, no acá."""
+    que quien llama sea OWNER se aplica en la capa web, no acá.
+
+    RC4: en la misma transacción se cierran TODAS las sesiones abiertas de
+    ese usuario (si la contraseña se reseteó porque alguien la conocía, una
+    sesión ya abierta no puede seguir valiendo hasta que expire)."""
     password_hash = servicio_auth.hashear_password(password_nueva)  # costoso: antes de tomar el lock
     with obtener_conexion(inmediata=True) as conexion:
         _obtener_o_fallar_en_conexion(conexion, usuario_id)
         reseteado = repositorio_usuarios.actualizar_password_en_conexion(conexion, usuario_id, password_hash)
+        cerradas = repositorio_sesiones.eliminar_de_usuario_en_conexion(conexion, usuario_id)
         # Solo se audita QUE se reseteó, nunca la contraseña ni su hash.
-        _auditar(conexion, actor_id, "USUARIO_PASSWORD_RESETEADA", usuario_id, reseteado.nombre_usuario)
+        _auditar(
+            conexion, actor_id, "USUARIO_PASSWORD_RESETEADA", usuario_id,
+            f"{reseteado.nombre_usuario}: {cerradas} sesión(es) cerrada(s)",
+        )
     return reseteado
 
 
 def cambiar_password_propia(usuario_id: int, password_actual: str, password_nueva: str) -> Usuario:
     """Cambia la propia contraseña de un usuario autenticado, verificando
     primero la contraseña actual.
+
+    RC4: en la misma transacción se cierran todas las sesiones del usuario
+    (incluida la actual: la interfaz pide volver a iniciar sesión) y queda
+    auditado el cambio, sin la contraseña ni su hash.
 
     Raises:
         CredencialesInvalidasError: si `password_actual` no coincide
@@ -228,4 +241,11 @@ def cambiar_password_propia(usuario_id: int, password_actual: str, password_nuev
     if not servicio_auth.verificar_password(password_actual, usuario_actual.password_hash):
         raise CredencialesInvalidasError("La contraseña actual es incorrecta.")
     password_hash = servicio_auth.hashear_password(password_nueva)
-    return repositorio_usuarios.actualizar_password(usuario_id, password_hash)
+    with obtener_conexion(inmediata=True) as conexion:
+        actualizado = repositorio_usuarios.actualizar_password_en_conexion(conexion, usuario_id, password_hash)
+        cerradas = repositorio_sesiones.eliminar_de_usuario_en_conexion(conexion, usuario_id)
+        _auditar(
+            conexion, usuario_id, "USUARIO_PASSWORD_CAMBIADA", usuario_id,
+            f"{actualizado.nombre_usuario}: {cerradas} sesión(es) cerrada(s)",
+        )
+    return actualizado

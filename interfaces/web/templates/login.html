@@ -66,6 +66,11 @@
     </div>
 
     <div class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      {% if aviso and not error %}
+        <div id="mensaje-aviso" class="mb-5 rounded-lg bg-success/10 border border-success/20 text-success text-sm font-medium px-3.5 py-2.5">
+          {{ aviso }}
+        </div>
+      {% endif %}
       {% if error %}
         <div id="mensaje-error" class="mb-5 rounded-lg bg-error/10 border border-error/20 text-error text-sm font-medium px-3.5 py-2.5">
           {{ error }}

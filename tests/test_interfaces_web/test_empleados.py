@@ -245,6 +245,7 @@ class TestResetearPassword:
     def test_owner_puede_resetear_password_de_otro_usuario(self, base_datos_temporal):
         cookies = _cookies_owner()
         cajero = servicio_usuarios.crear_usuario("carlos", "Carlos Cajero", "clave-correcta-123", "CASHIER")
+        sesion_del_cajero = servicio_auth.iniciar_sesion("carlos", "clave-correcta-123").token
 
         respuesta = solicitud(
             "POST",
@@ -255,6 +256,9 @@ class TestResetearPassword:
 
         assert respuesta.status == 303
         assert "tipo=success" in respuesta.header("location")
+        # RC4: la sesión que el cajero ya tenía abierta deja de valer; la del OWNER sigue.
+        assert solicitud("GET", "/", cookies={NOMBRE_COOKIE_SESION: sesion_del_cajero}).status == 303
+        assert solicitud("GET", "/", cookies=cookies).status == 200
         assert servicio_auth.iniciar_sesion("carlos", "clave-nueva-456") is not None
 
     def test_cashier_recibe_403_al_intentar_resetear(self, base_datos_temporal):
@@ -283,8 +287,10 @@ class TestCambiarPasswordPropia:
             formulario={"password_actual": "clave-correcta-123", "password_nueva": "clave-nueva-456"},
         )
 
+        # RC4: todas las sesiones se cierran (incluida esta) y se pide un login nuevo con aviso fijo.
         assert respuesta.status == 303
-        assert "tipo=success" in respuesta.header("location")
+        assert respuesta.header("location") == "/login?motivo=password_cambiada"
+        assert solicitud("GET", "/", cookies={NOMBRE_COOKIE_SESION: token}).status == 303
         assert servicio_auth.iniciar_sesion("carlos", "clave-nueva-456") is not None
 
     def test_owner_puede_cambiar_su_propia_password(self, base_datos_temporal):
@@ -298,6 +304,10 @@ class TestCambiarPasswordPropia:
         )
 
         assert respuesta.status == 303
+        # El login muestra un aviso fijo por código; nunca refleja texto de la URL.
+        aviso = solicitud("GET", "/login?motivo=password_cambiada").texto
+        assert 'id="mensaje-aviso"' in aviso and "contraseña nueva" in aviso
+        assert 'id="mensaje-aviso"' not in solicitud("GET", "/login?motivo=<script>").texto
         assert servicio_auth.iniciar_sesion("ana", "clave-nueva-456") is not None
 
     def test_password_actual_incorrecta_se_muestra_como_error(self, base_datos_temporal):

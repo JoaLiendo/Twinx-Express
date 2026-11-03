@@ -41,12 +41,14 @@ def _next_seguro(valor: str | None) -> str:
 
 
 @router.get("/login")
-def formulario_login(request: Request, next: str = "/"):
+def formulario_login(request: Request, next: str = "/", motivo: str = ""):
     if obtener_usuario_actual(request) is not None:
         return RedirectResponse("/", status_code=303)
     if not servicio_usuarios.hay_algun_owner_activo():
         return RedirectResponse("/configuracion-inicial", status_code=303)
-    return templates.TemplateResponse(request, "login.html", {"next": _next_seguro(next)})
+    # Aviso fijo por código (nunca un texto tomado de la URL): RC4, tras cambiar la propia contraseña.
+    aviso = "Tu contraseña se actualizó. Iniciá sesión con la contraseña nueva." if motivo == "password_cambiada" else None
+    return templates.TemplateResponse(request, "login.html", {"next": _next_seguro(next), "aviso": aviso})
 
 
 @router.post("/login")

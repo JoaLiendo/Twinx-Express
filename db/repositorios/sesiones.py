@@ -50,6 +50,12 @@ def obtener_por_token(token: str) -> Sesion | None:
     return _fila_a_sesion(fila) if fila is not None else None
 
 
+def eliminar_de_usuario_en_conexion(conexion: sqlite3.Connection, usuario_id: int) -> int:
+    """Borra todas las sesiones de un usuario dentro de la transacción de quien invoca (cambio o reseteo
+    de contraseña) y devuelve cuántas había."""
+    return conexion.execute("DELETE FROM sesiones WHERE usuario_id = ?", (usuario_id,)).rowcount
+
+
 def eliminar_por_token(token: str) -> None:
     """Borra una sesión por su token. No falla si el token no existe
     (logout repetido, o limpieza de una sesión ya vencida, deben ser

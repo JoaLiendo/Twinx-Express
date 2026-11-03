@@ -20,8 +20,9 @@ Dos routers separados a propósito:
 """
 
 from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import RedirectResponse
 
-from interfaces.web.auth import obtener_usuario_actual, requiere_rol
+from interfaces.web.auth import NOMBRE_COOKIE_SESION, obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
 from services import servicio_usuarios
@@ -125,7 +126,8 @@ def cambiar_password_propia(
     password_nueva: str = Form(...),
     usuario_actual=Depends(obtener_usuario_actual),
 ):
+    # RC4: el servicio ya cerró todas las sesiones (incluida esta): se pide un login nuevo.
     servicio_usuarios.cambiar_password_propia(usuario_actual.id, password_actual, password_nueva)
-    return redireccionar_con_mensaje(
-        "/mi-cuenta/password", "success", "Tu contraseña se actualizó correctamente."
-    )
+    respuesta = RedirectResponse("/login?motivo=password_cambiada", status_code=303)
+    respuesta.delete_cookie(NOMBRE_COOKIE_SESION, path="/")
+    return respuesta
