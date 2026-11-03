@@ -9,6 +9,13 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from domain.fiscal.historia import (
+    ESTADOS_CONOCIDOS_POR_ARCA,
+    CaeaOtorgado,
+    ComprobanteConocido,
+    HistoriaFiscal,
+    InformeSinMovimiento,
+)
 from excepciones import ErrorBaseDatos
 
 
@@ -100,3 +107,56 @@ def verificar_archivo(ruta: Path) -> VerificacionSQLite:
     finally:
         conexion.close()
     return VerificacionSQLite(integridad, errores_fk, migraciones)
+
+
+def _tablas(conexion: sqlite3.Connection) -> set[str]:
+    return {fila[0] for fila in conexion.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+
+
+def leer_historia_fiscal(ruta: Path) -> HistoriaFiscal:
+    """Historia fiscal conocida o potencialmente conocida por ARCA de un archivo SQLite aislado (solo
+    lectura). Una base anterior a la facturación (sin las tablas de las migraciones 041/044) no tiene
+    historia.
+
+    Raises:
+        ErrorBaseDatos: si el archivo no existe o no se puede leer.
+    """
+    if not ruta.is_file():
+        raise ErrorBaseDatos(f"No existe el archivo de base de datos: {ruta.name}")
+    marcadores = ", ".join("?" for _ in ESTADOS_CONOCIDOS_POR_ARCA)
+    try:
+        conexion = sqlite3.connect(f"{ruta.resolve().as_uri()}?mode=ro", uri=True)
+    except sqlite3.Error as error:
+        raise ErrorBaseDatos(f"No se pudo abrir la base de datos: {error}") from error
+    try:
+        tablas = _tablas(conexion)
+        comprobantes: tuple[ComprobanteConocido, ...] = ()
+        caeas: frozenset[CaeaOtorgado] = frozenset()
+        informes: frozenset[InformeSinMovimiento] = frozenset()
+        if "comprobantes_fiscales" in tablas:
+            comprobantes = tuple(
+                ComprobanteConocido(*fila)
+                for fila in conexion.execute(
+                    "SELECT ambiente, cuit_emisor, punto_venta, tipo_comprobante, numero, estado, codigo_autorizacion"
+                    f" FROM comprobantes_fiscales WHERE estado IN ({marcadores}) ORDER BY id",
+                    tuple(sorted(ESTADOS_CONOCIDOS_POR_ARCA)),
+                )
+            )
+        if "caea_autorizaciones" in tablas:
+            caeas = frozenset(
+                CaeaOtorgado(*fila)
+                for fila in conexion.execute("SELECT ambiente, cuit, codigo, periodo, orden FROM caea_autorizaciones")
+            )
+        if "caea_sin_movimiento" in tablas:
+            informes = frozenset(
+                InformeSinMovimiento(*fila)
+                for fila in conexion.execute(
+                    "SELECT c.ambiente, c.codigo, s.punto_venta FROM caea_sin_movimiento s"
+                    " JOIN caea_autorizaciones c ON c.id = s.caea_id WHERE s.resultado = 'A'"
+                )
+            )
+    except sqlite3.DatabaseError as error:
+        raise ErrorBaseDatos(f"No se pudo leer la historia fiscal de la base: {error}") from error
+    finally:
+        conexion.close()
+    return HistoriaFiscal(comprobantes, caeas, informes)

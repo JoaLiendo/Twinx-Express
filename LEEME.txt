@@ -131,6 +131,19 @@ Tene en cuenta:
   - No modifiques ni reemplaces a mano el archivo kiosco.db: usa
     siempre Restaurar_backup.bat.
 
+Restore y facturacion ARCA:
+
+  Volver a un backup NO borra lo que ARCA ya sabe. Por eso, si los datos
+  actuales tienen comprobantes fiscales que el backup no tiene
+  (autorizados con CAE, con resultado incierto, enviados sin respuesta,
+  CAEA otorgados o comprobantes CAEA pendientes de informar), el restore
+  se BLOQUEA y no se toca nada. No se resuelve respondiendo "si": avisale
+  al soporte tecnico, que tiene que conciliar con ARCA antes de recuperar
+  datos. Lo mismo pasa al volver a una version anterior (punto 7), y
+  siempre que se quiera volver a una version sin facturacion (1.15 o
+  anterior) despues de haber emitido comprobantes.
+  Si la instalacion nunca emitio comprobantes, todo funciona como antes.
+
 Pasos:
 
   1. Cerra KioscoApp por completo (cerra la ventana negra). Si sigue

@@ -6,7 +6,11 @@ y `--rollback`, en `lanzador.py`): nunca corre dentro del servidor web en
 ejecución. Orden, pensado para que siempre quede un camino de vuelta:
 
 1. el ZIP se valida por completo (`formato_backup.validar_backup`) y su
-   esquema tiene que ser compatible con la versión que va a abrir la base;
+   esquema tiene que ser compatible con la versión que va a abrir la base, y
+   tiene que conservar toda la historia fiscal de la base actual (CAE,
+   INCIERTO, CAEA...): si no, se bloquea antes de tocar nada (RC4, ver
+   `domain.fiscal.historia`). Se compara contra la base real del ZIP, nunca
+   contra lo que declara su manifiesto;
 2. se protege el estado actual con un backup `SEGURIDAD` -- si la base
    actual está tan dañada que ni eso es posible, la carpeta `data/`
    reemplazada se conserva entera como evidencia en vez de borrarse;
@@ -25,15 +29,24 @@ from pathlib import Path
 
 import db.conexion as modulo_conexion
 from config import DIRECTORIO_DATA
-from db.archivo_sqlite import registrar_auditoria_en_archivo, verificar_archivo
+from db.archivo_sqlite import leer_historia_fiscal, registrar_auditoria_en_archivo, verificar_archivo
 from domain.auditoria import ACCION_RESTORE, normalizar
 from domain.backup import TIPO_SEGURIDAD
-from excepciones import BackupInvalidoError, ErrorBackup, ErrorBaseDatos, ErrorRestore
+from domain.fiscal.historia import describir, no_cubierta_por
+from excepciones import BackupInvalidoError, ErrorBackup, ErrorBaseDatos, ErrorRestore, RestoreConHistoriaFiscalError
 from services import servicio_backup
+from services.fiscal import credenciales
 from services.control_escrituras import ControlEscrituras
 from services.formato_backup import CARPETA_IMAGENES, NOMBRE_DB, InfoBackup, validar_backup
 
 logger = logging.getLogger(__name__)
+
+# Primera migración con facturación ARCA: un objetivo sin ella no puede conservar ningún comprobante.
+_MIGRACION_FISCAL = "041_modelo_fiscal.sql"
+_PROCEDIMIENTO_TECNICO = (
+    "No se restauró nada: los datos actuales quedaron intactos. Esto no se resuelve confirmando: "
+    'requiere un procedimiento técnico de conciliación con ARCA (ver LEEME.txt, "Restore y facturación ARCA").'
+)
 
 
 @dataclass(frozen=True)
@@ -69,6 +82,48 @@ def validar_y_extraer_backup(
     datos_extraidos = directorio_extraccion / "data"
     (datos_extraidos / CARPETA_IMAGENES).mkdir(exist_ok=True)
     return datos_extraidos, info
+
+
+def verificar_historia_fiscal(ruta_actual: Path, ruta_objetivo: Path, migraciones_objetivo: Iterable[str]) -> None:
+    """Exige que la base objetivo conserve toda la historia fiscal de la actual.
+
+    Si la base actual no se puede leer (dañada), solo se deja seguir cuando la instalación nunca tuvo
+    material fiscal: sin certificado no pudo pedirse ningún CAE ni CAEA, así que no hay nada que perder.
+
+    Raises:
+        RestoreConHistoriaFiscalError: si se perdería historia fiscal, o si no se puede descartar.
+    """
+    if not ruta_actual.is_file():
+        return
+    try:
+        actual = leer_historia_fiscal(ruta_actual)
+    except ErrorBaseDatos as error:
+        if not credenciales.hay_material_fiscal():
+            return
+        logger.error("Restore bloqueado: no se pudo leer la historia fiscal de la base actual: %s", error)
+        raise RestoreConHistoriaFiscalError(
+            "No se pudo leer la historia fiscal de la base actual y esta instalación tiene un certificado "
+            "fiscal cargado: podría haber comprobantes informados a ARCA que el backup no conserva. "
+            + _PROCEDIMIENTO_TECNICO
+        ) from error
+    if actual.vacia:
+        return
+    try:
+        objetivo = leer_historia_fiscal(ruta_objetivo)
+    except ErrorBaseDatos as error:
+        raise ErrorRestore(f"No se pudo leer la historia fiscal del backup: {error}") from error
+    faltante = no_cubierta_por(actual, objetivo)
+    if faltante.vacia:
+        return
+    sin_facturacion = _MIGRACION_FISCAL not in set(migraciones_objetivo)
+    logger.error("Restore bloqueado por historia fiscal ausente en el objetivo: %s", describir(faltante))
+    raise RestoreConHistoriaFiscalError(
+        "El backup seleccionado es anterior a comprobantes fiscales existentes. Restaurarlo podría perder "
+        "la historia local de comprobantes ya informados o potencialmente informados a ARCA. "
+        + ("Además, el destino es una versión sin facturación ARCA, que no puede conservarlos. " if sin_facturacion else "")
+        + f"La base actual tiene {describir(faltante)} que el backup no conserva. "
+        + _PROCEDIMIENTO_TECNICO
+    )
 
 
 def _proteger_estado_actual(directorio_data: Path, directorio_backups: Path) -> Path | None:
@@ -109,6 +164,7 @@ def restaurar_desde_backup(
 
     with tempfile.TemporaryDirectory(dir=directorio_padre, prefix=".kioscoapp_restore_tmp_") as tmp:
         datos_extraidos, info = validar_y_extraer_backup(ruta_zip, Path(tmp), migraciones_compatibles)
+        verificar_historia_fiscal(directorio_data / NOMBRE_DB, datos_extraidos / NOMBRE_DB, info.migraciones)
         seguridad = _proteger_estado_actual(directorio_data, directorio_backups)
 
         ruta_rollback = directorio_padre / f".kioscoapp_rollback_{secrets.token_hex(8)}"

@@ -62,6 +62,16 @@ def directorio_ambiente(ambiente: str) -> Path:
     return config.DIRECTORIO_SECRETOS_FISCALES / ambiente.lower()
 
 
+def hay_material_fiscal() -> bool:
+    """True si esta instalación tiene (o tuvo a medio cargar) un certificado o una clave en algún
+    ambiente: sin ese material no se puede pedir ningún CAE ni CAEA a ARCA."""
+    return any(
+        (directorio_ambiente(ambiente) / nombre).is_file()
+        for ambiente in AMBIENTES
+        for nombre in (NOMBRE_CERTIFICADO, NOMBRE_CLAVE)
+    )
+
+
 def _nombre(nombre: x509.Name, oid) -> str | None:
     atributos = nombre.get_attributes_for_oid(oid)
     return str(atributos[0].value) if atributos else None

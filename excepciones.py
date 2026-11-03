@@ -245,6 +245,12 @@ class ErrorRestore(ErrorAplicacion):
     validaciones representadas por esta excepción hayan pasado."""
 
 
+class RestoreConHistoriaFiscalError(ErrorRestore):
+    """La base actual tiene historia fiscal (CAE, INCIERTO, CAEA...) que la base objetivo del restore o
+    del rollback no conserva (ver `domain.fiscal.historia`). No se confirma con un "sí": requiere un
+    procedimiento técnico de conciliación con ARCA. Nada se modificó."""
+
+
 class VentaNoEncontradaError(ErrorAplicacion):
     """No existe una venta con el id solicitado (ver
     `services.servicio_ventas.anular_venta`)."""
