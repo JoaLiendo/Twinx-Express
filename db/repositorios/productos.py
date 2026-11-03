@@ -412,13 +412,12 @@ def listar_todos() -> list[Producto]:
 
 
 def listar_stock_critico() -> list[Producto]:
-    """Devuelve los productos activos con stock que llegó al mínimo o está por debajo (alertas).
-
-    Excluye el stock 0 (ver `Producto.tiene_stock_critico`)."""
+    """Devuelve los productos activos con mínimo configurado cuyo stock llegó a él o está por debajo,
+    incluidos los agotados (alertas, ver `Producto.tiene_stock_critico`). Primero los agotados."""
     consulta = f"""
         SELECT {_COLUMNAS} FROM productos
-        WHERE activo = 1 AND stock_actual > 0 AND stock_actual <= stock_minimo
-        ORDER BY nombre
+        WHERE activo = 1 AND stock_minimo > 0 AND stock_actual <= stock_minimo
+        ORDER BY stock_actual > 0, nombre
     """
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta).fetchall()
@@ -428,8 +427,8 @@ def listar_stock_critico() -> list[Producto]:
 def listar_para_reposicion() -> list[Producto]:
     """Productos activos con stock mínimo configurado (> 0) cuyo stock está
     **estrictamente por debajo** del mínimo, incluido el stock 0 (a diferencia de
-    `listar_stock_critico`, que es la alerta del dashboard y lo excluye). Un stock
-    exactamente igual al mínimo no entra; sin mínimo configurado tampoco.
+    `listar_stock_critico`, la alerta del dashboard, que también avisa en el mínimo
+    exacto). Un stock exactamente igual al mínimo no entra; sin mínimo configurado tampoco.
     Primero los más urgentes (menos stock), luego por nombre."""
     consulta = f"""
         SELECT {_COLUMNAS} FROM productos

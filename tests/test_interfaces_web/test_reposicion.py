@@ -63,12 +63,13 @@ class TestServicio:
 
         assert servicio_stock.listar_reposicion() == []
 
-    def test_la_alerta_del_dashboard_no_cambia_y_sigue_excluyendo_el_stock_cero(self, base_datos_temporal):
+    def test_la_alerta_del_dashboard_incluye_agotados_primero_y_el_minimo_exacto(self, base_datos_temporal):
+        # RC4: el agotado con mínimo es crítico (y va primero); reposición, en cambio, no pide el "justo".
         _p("1", "Sin stock", 0, 5)
         _p("2", "Por debajo", 2, 5)
         _p("3", "Justo", 5, 5)
 
-        assert [p.nombre for p in servicio_stock.listar_stock_critico()] == ["Justo", "Por debajo"]
+        assert [p.nombre for p in servicio_stock.listar_stock_critico()] == ["Sin stock", "Justo", "Por debajo"]
 
     def test_cantidad_sugerida_es_exactamente_minimo_menos_stock(self, base_datos_temporal):
         _p("1", "A", 2, 10)

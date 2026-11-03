@@ -21,7 +21,8 @@
       .trim();
   }
 
-  // Misma regla que `Producto.tiene_stock_critico`: el stock en 0 no es "bajo", es "sin stock".
+  // En el POS el stock en 0 se muestra siempre como "sin stock" (no se puede vender); "bajo" es el
+  // `Producto.tiene_stock_critico` que todavía tiene unidades (el agotado del dashboard es "sin stock" acá).
   function estadoDeStock(stock, stockMinimo) {
     if (stock <= 0) return 'sin_stock';
     if (stock <= stockMinimo) return 'bajo';

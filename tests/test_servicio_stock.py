@@ -1141,9 +1141,9 @@ class TestCalcularValorizacionInventario:
 
 @pytest.mark.parametrize(
     ("stock_actual", "stock_minimo", "esperado"),
-    [(0, 0, False), (0, 5, False), (3, 5, True), (5, 5, True), (10, 5, False)],
+    [(0, 0, False), (0, 5, True), (3, 5, True), (5, 5, True), (10, 5, False)],
 )
-def test_listar_stock_critico_aplica_stock_positivo_y_menor_o_igual_al_minimo(
+def test_listar_stock_critico_exige_minimo_y_stock_menor_o_igual_incluido_el_agotado(
     base_datos_temporal, stock_actual, stock_minimo, esperado
 ):
     servicio_stock.registrar_producto(

@@ -156,7 +156,7 @@
                   </div>
                 {% endif %}
                 <p class="sm:hidden mt-1.5">
-                  {% if mostrar_inactivos %}{{ ui.badge('Inactivo', 'neutral') }}{% elif producto.stock_actual == 0 %}{{ ui.badge('Sin stock', 'neutral') }}{% else %}{{ ui.badge('Crítico' if critico else 'OK', 'alerta' if critico else 'exito') }}{% endif %}
+                  {% if mostrar_inactivos %}{{ ui.badge('Inactivo', 'neutral') }}{% elif producto.esta_agotado %}{{ ui.badge('Agotado', 'alerta') }}{% elif producto.stock_actual == 0 %}{{ ui.badge('Sin stock', 'neutral') }}{% else %}{{ ui.badge('Crítico' if critico else 'OK', 'alerta' if critico else 'exito') }}{% endif %}
                 </p>
                 {% if es_owner %}<div class="md:hidden mt-2 [&>div]:justify-start">{{ acciones(producto) }}</div>{% endif %}
               </td>
@@ -178,7 +178,7 @@
                 {% if es_owner %}<span class="block text-xs text-slate-400 dark:text-slate-500 tabular-nums" title="Costo">costo ${{ producto.precio_costo_centavos | dinero_ar }}</span>{% endif %}
               </td>
               <td class="hidden sm:table-cell px-4 py-3">
-                {% if mostrar_inactivos %}{{ ui.badge('Inactivo', 'neutral') }}{% elif producto.stock_actual == 0 %}{{ ui.badge('Sin stock', 'neutral') }}{% else %}{{ ui.badge('Crítico' if critico else 'OK', 'alerta' if critico else 'exito') }}{% endif %}
+                {% if mostrar_inactivos %}{{ ui.badge('Inactivo', 'neutral') }}{% elif producto.esta_agotado %}{{ ui.badge('Agotado', 'alerta') }}{% elif producto.stock_actual == 0 %}{{ ui.badge('Sin stock', 'neutral') }}{% else %}{{ ui.badge('Crítico' if critico else 'OK', 'alerta' if critico else 'exito') }}{% endif %}
               </td>
               {% if es_owner %}
                 <td class="hidden md:table-cell px-4 py-3">{{ acciones(producto) }}</td>

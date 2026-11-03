@@ -6,9 +6,13 @@
 
 {% block content %}
 {% set es_owner = usuario_actual and usuario_actual.es_owner %}
+{% set agotados = productos_criticos | selectattr('esta_agotado') | list | length %}
+{% set stock_bajo = productos_criticos | length - agotados %}
 {% set clase_acceso = "group flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md hover:border-primary/40 transition dark:border-slate-800 dark:bg-slate-900 dark:hover:border-primary/40" %}
 {% set clase_icono = "flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 text-primary" %}
 <div class="max-w-6xl mx-auto space-y-6">
+
+  {% include "_alerta_backup.html" %}
 
   {% if alertas_fiscales %}
   <div id="dashboard-alertas-fiscales" class="rounded-2xl border border-error/30 bg-error/5 p-4 text-sm text-slate-800 dark:text-slate-100">
@@ -109,11 +113,11 @@
         </a>
       {% endif %}
       {% if productos_criticos %}
-        <a href="/productos?estado_stock=critico" class="flex items-center gap-2 rounded-lg bg-error/10 border border-error/20 text-error text-sm font-medium px-3.5 py-2.5 hover:bg-error/20 transition">
+        <a href="/productos?estado_stock=critico" id="alerta-stock-critico" class="flex items-center gap-2 rounded-lg bg-error/10 border border-error/20 text-error text-sm font-medium px-3.5 py-2.5 hover:bg-error/20 transition">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 shrink-0">
             <path d="M12 9v4m0 4h.01M10.3 3.86 1.82 18a1.8 1.8 0 0 0 1.54 2.7h17.28a1.8 1.8 0 0 0 1.54-2.7L13.7 3.86a1.8 1.8 0 0 0-3.4 0Z"/>
           </svg>
-          {{ productos_criticos|length }} producto{{ 's' if productos_criticos|length != 1 else '' }} con stock crítico. Ver detalle →
+          {% if agotados %}{{ agotados }} agotado{{ 's' if agotados != 1 else '' }}{% if stock_bajo %} y {% endif %}{% endif %}{% if stock_bajo %}{{ stock_bajo }} con stock bajo{% endif %}. Ver detalle →
         </a>
       {% endif %}
     </div>
@@ -134,7 +138,9 @@
       <p class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">
         {{ productos_criticos|length }} producto{{ 's' if productos_criticos|length != 1 else '' }}
       </p>
-      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400 group-hover:text-primary transition">Ver detalle →</p>
+      <p id="detalle-stock-critico" class="mt-1 text-sm text-slate-500 dark:text-slate-400 group-hover:text-primary transition">
+        {% if productos_criticos %}{{ agotados }} agotado{{ 's' if agotados != 1 else '' }} · {{ stock_bajo }} stock bajo · {% endif %}Ver detalle →
+      </p>
     </a>
     {% if es_owner %}
       <a href="/reportes" data-indicador="valorizacion" class="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-300 transition dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
@@ -143,7 +149,7 @@
         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ valorizacion.unidades_totales }} unidades · costo actual</p>
       </a>
       <a href="/reportes/perdidas" data-indicador="perdidas" class="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-300 transition dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
-        <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Pérdidas (últimos 7 días)</p>
+        <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Pérdidas (últimos 30 días)</p>
         <p class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">${{ perdidas.total.valor_conocido_centavos | dinero_ar }}</p>
         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
           {{ perdidas.total.cantidad }} unidad{{ 'es' if perdidas.total.cantidad != 1 else '' }}{% if perdidas.total.filas_costo_desconocido %} · {{ perdidas.total.filas_costo_desconocido }} sin costo histórico{% endif %}

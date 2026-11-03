@@ -64,9 +64,13 @@ class TestProducto:
         assert self._crear(stock_actual=1, stock_minimo=2).tiene_stock_critico
         assert not self._crear(stock_actual=3, stock_minimo=2).tiene_stock_critico
 
-    def test_stock_cero_nunca_es_critico(self):
-        assert not self._crear(stock_actual=0, stock_minimo=0).tiene_stock_critico
-        assert not self._crear(stock_actual=0, stock_minimo=5).tiene_stock_critico
+    def test_agotado_con_minimo_es_critico_y_sin_minimo_no_es_alerta(self):
+        # RC4: un producto que se quiere tener (mínimo > 0) y está en 0 es lo más urgente.
+        agotado = self._crear(stock_actual=0, stock_minimo=5)
+        assert agotado.tiene_stock_critico and agotado.esta_agotado
+        sin_minimo = self._crear(stock_actual=0, stock_minimo=0)
+        assert not sin_minimo.tiene_stock_critico and not sin_minimo.esta_agotado
+        assert not self._crear(stock_actual=2, stock_minimo=5).esta_agotado
 
     def test_tiene_stock_critico_para_los_casos_de_borde_del_minimo(self):
         assert self._crear(stock_actual=3, stock_minimo=5).tiene_stock_critico

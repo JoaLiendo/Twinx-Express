@@ -81,13 +81,19 @@ class Producto:
 
     @property
     def tiene_stock_critico(self) -> bool:
-        """True si hay stock pero llegó al mínimo o está por debajo.
+        """True si el producto tiene un stock mínimo configurado y su stock llegó a él o está por
+        debajo, incluido el agotado (RC4: un producto que se quiere tener y está en 0 es la alerta más
+        urgente, no "todo en orden").
 
-        Un producto sin stock (0) no es una alerta: todavía no se cargó
-        nada (ej. el catálogo inicial de distribución) o ya se agotó, y
-        ambos casos se resuelven comprando/ajustando, no con esta alerta.
+        Sin mínimo configurado no hay umbral: un producto en 0 sin mínimo (p. ej. el catálogo inicial
+        de distribución, todavía sin cargar) no es una alerta, aunque sean cientos.
         """
-        return 0 < self.stock_actual <= self.stock_minimo
+        return self.stock_minimo > 0 and self.stock_actual <= self.stock_minimo
+
+    @property
+    def esta_agotado(self) -> bool:
+        """Stock crítico en 0: se muestra distinto del "stock bajo"."""
+        return self.tiene_stock_critico and self.stock_actual == 0
 
     def actualizar_stock(self, nuevo_stock: int) -> None:
         """Cambia el stock actual, validando que no quede negativo."""
