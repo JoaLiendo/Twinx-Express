@@ -22,9 +22,14 @@ router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
 @router.get("/precios")
 def ver_precios(request: Request):
+    arbol = servicio_categorias.obtener_arbol()
     contexto = {
         **contexto_base(request),
-        "categorias": servicio_categorias.obtener_arbol().en_orden(solo_activas=True),
+        "categorias": arbol.en_orden(solo_activas=True),
+        # RC4: elegir una categoría con subcategorías actualiza toda la rama; el select lo avisa.
+        "con_subcategorias": {
+            o.categoria.id for o in arbol.en_orden() if len(arbol.ids_con_descendientes(o.categoria.id)) > 1
+        },
         "lotes": servicio_precios.listar_lotes_recientes(),
     }
     return templates.TemplateResponse(request, "precios.html", contexto)
@@ -45,6 +50,7 @@ def vista_previa(
         **contexto_base(request),
         "criterio": criterio,
         "alcance": alcance,
+        "descripcion_alcance": servicio_precios.describir_alcance(alcance),
         "propuestas": propuestas,
         "aplicables": sum(1 for p in propuestas if p.estado == ESTADO_OK),
         "clave_idempotencia": nueva_clave_idempotencia(),

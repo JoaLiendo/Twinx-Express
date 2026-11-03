@@ -32,6 +32,7 @@ from excepciones import (
     DatosInvalidosError,
     ProductoNoEncontradoError,
 )
+from services import servicio_categorias
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,23 @@ def _productos_del_alcance(alcance: str, conexion=None):
     return repositorio_productos.listar_activos_con_precio(
         categoria_id=categoria_del_alcance(alcance), conexion=conexion
     )
+
+
+def describir_alcance(alcance: str) -> str:
+    """Texto del alcance para la vista previa: una categoría con subcategorías lo dice explícitamente."""
+    alcance = validar_alcance(alcance)
+    if alcance == ALCANCE_TODOS:
+        return "Todos los productos"
+    if alcance == ALCANCE_SIN_CATEGORIA:
+        return "Productos sin categoría"
+    categoria_id = categoria_del_alcance(alcance)
+    arbol = servicio_categorias.obtener_arbol()
+    rama = arbol.ids_con_descendientes(categoria_id)
+    if not rama:
+        return "Categoría inexistente"
+    if len(rama) > 1:
+        return f"Categoría: {arbol.ruta(categoria_id)} (incluye subcategorías)"
+    return f"Categoría: {arbol.ruta(categoria_id)}"
 
 
 def listar_historial_de_producto(producto_id: int) -> list[CambioPrecio]:

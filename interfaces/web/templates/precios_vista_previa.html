@@ -13,6 +13,7 @@
     · {{ 'redondeo al peso' if criterio.redondeo == 'ENTERO' else 'sin redondeo' }}
     · <strong>{{ aplicables }}</strong> de {{ propuestas | length }} producto(s) se pueden actualizar.
   </p>
+  <p id="alcance-vista-previa" class="text-sm text-slate-600 dark:text-slate-400">Alcance: <strong>{{ descripcion_alcance }}</strong></p>
 
   {% if propuestas %}
     <form method="post" action="/precios/aplicar" class="space-y-5">

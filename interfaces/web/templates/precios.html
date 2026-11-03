@@ -47,7 +47,7 @@
             <option value="TODOS">Todos</option>
             <option value="SIN_CATEGORIA">Sin categoría</option>
             {% for opcion in categorias %}
-              <option value="CATEGORIA:{{ opcion.categoria.id }}">Categoría: {{ opcion.ruta }}</option>
+              <option value="CATEGORIA:{{ opcion.categoria.id }}">Categoría: {{ opcion.ruta }}{% if opcion.categoria.id in con_subcategorias %} (incluye subcategorías){% endif %}</option>
             {% endfor %}
           </select>
         </div>

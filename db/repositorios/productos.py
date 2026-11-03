@@ -315,18 +315,25 @@ def listar_activos_con_precio(
     conexion: sqlite3.Connection | None = None,
 ) -> list[Producto]:
     """Productos activos con precio de venta configurado (> 0), por nombre,
-    opcionalmente de una categoría o sin categoría. Base de la actualización
-    masiva de precios: un producto sin precio no entra. Con `conexion` la
-    lectura ocurre dentro de esa transacción (la confirmación de una
-    actualización masiva revalida el alcance bajo el mismo lock)."""
+    opcionalmente de una categoría -- con todas sus subcategorías, a cualquier
+    profundidad (RC4: misma semántica que el filtro del listado) -- o sin
+    categoría. Base de la actualización masiva de precios: un producto sin
+    precio no entra. Con `conexion` la lectura ocurre dentro de esa transacción
+    (la confirmación de una actualización masiva revalida el alcance, rama
+    incluida, bajo el mismo lock)."""
     condiciones = ["activo = 1", "precio_venta_centavos > 0"]
     parametros: list[int] = []
+    rama = ""
     if categoria_id is not None:
-        condiciones.append("categoria_id = ?")
+        rama = (
+            "WITH RECURSIVE rama(id) AS (SELECT ? UNION SELECT c.id FROM categorias c"
+            " JOIN rama r ON c.categoria_padre_id = r.id) "
+        )
+        condiciones.append("categoria_id IN (SELECT id FROM rama)")
         parametros.append(categoria_id)
     elif sin_categoria:
         condiciones.append("categoria_id IS NULL")
-    consulta = f"SELECT {_COLUMNAS} FROM productos WHERE {' AND '.join(condiciones)} ORDER BY nombre"
+    consulta = f"{rama}SELECT {_COLUMNAS} FROM productos WHERE {' AND '.join(condiciones)} ORDER BY nombre"
     if conexion is not None:
         return [_fila_a_producto(fila) for fila in conexion.execute(consulta, parametros).fetchall()]
     with obtener_conexion() as conexion_propia:

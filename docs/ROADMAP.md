@@ -27,8 +27,8 @@
   OWNER). Inventario por categoría (con o sin subcategorías). Dashboard con cuatro accesos (venta,
   consulta, mercadería o caja según rol, actividad); el CASHIER no recibe costos ni valorizaciones.
   Índice `ajustes_stock(fecha)` (migración 031). Kardex CSV con "Ajuste de inventario"/"Stock
-  inicial" en vez de códigos internos. La actualización masiva de precios por categoría sigue siendo
-  exacta (no incluye subcategorías).
+  inicial" en vez de códigos internos. La actualización masiva de precios por categoría era exacta
+  (no incluía subcategorías); desde V1.16 RC4 incluye toda la rama.
 
 ## V1.12 — Partidas, vencimientos y liquidación
 

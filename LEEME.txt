@@ -275,8 +275,10 @@ b) ACTUALIZACION MASIVA DE PRECIOS (menu Precios)
    Sube o baja el PRECIO DE VENTA de varios productos a la vez, en un
    porcentaje (hasta 1000 %) o en un monto fijo.
    1. Elegis el tipo, si aumenta o disminuye, el valor y a que productos
-      (todos, una categoria o los sin categoria). Por defecto NO se
-      redondea; si queres, podes elegir "Al peso mas cercano".
+      (todos, una categoria o los sin categoria). Una categoria incluye
+      todas sus subcategorias (desde la 1.16: el selector lo indica con
+      "incluye subcategorias"). Por defecto NO se redondea; si queres,
+      podes elegir "Al peso mas cercano".
    2. Ves una vista previa con el precio actual y el nuevo de cada
       producto. Los productos sin precio de venta no participan.
    3. Confirmas. Es todo o nada: si algun producto elegido no se puede
