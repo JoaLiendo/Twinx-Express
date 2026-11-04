@@ -81,6 +81,8 @@ test('V1.12-B: compra con varias fechas de vencimiento en una línea', async ({ 
   await filas.nth(1).locator('.varias-cantidad').fill('3');
   await filas.nth(1).locator('.varias-fecha').fill('2099-12-15');
   await expect(linea.locator('.linea-varias-resto')).toHaveText('1 sin vencimiento conocido.');
+  // RC4: al contado hay que decir cómo se pagó (sin opción preseleccionada).
+  await page.getByLabel('Fuera de la caja').check();
   await page.getByRole('button', { name: /Registrar/ }).click();
 
   await expect(page.locator('#toast-container')).toContainText('registrada correctamente');
