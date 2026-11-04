@@ -59,7 +59,7 @@ def _partidas(producto_id):
 class TestCostoDePerdidas:
     def test_con_varias_partidas_sin_elegir_el_costo_queda_desconocido(self, e):
         producto = servicio_stock.registrar_producto("1", "Yogur", 100, 300, stock_actual=2, usuario_id=e.owner.id)
-        servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(producto.id, 5, 140)])
+        servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(producto.id, 5, 140)], origen_pago="FUERA_DE_CAJA")
         rotura = servicio_stock.ajustar_stock(producto.id, -3, "ROTURA", e.owner.id)
         assert rotura.costo_unitario_centavos is None  # ni 140 (vigente) ni el de una partida supuesta
         assert [tuple(f) for f in consultar(e.ruta, "SELECT delta, criterio FROM movimientos_partida WHERE ajuste_id = ?",
@@ -94,7 +94,7 @@ class TestProductoInactivoConVencidos:
     @pytest.fixture
     def inactivo(self, e):
         producto = servicio_stock.registrar_producto("1", "Yogur", 100, 300, usuario_id=e.owner.id)
-        servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(producto.id, 5, 120, (PartidaIngreso(5, _dia(3)),))])
+        servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(producto.id, 5, 120, (PartidaIngreso(5, _dia(3)),))], origen_pago="FUERA_DE_CAJA")
         assert servicio_stock.eliminar_producto(producto.id, e.owner.id) is True  # tiene historial: baja lógica
         return producto
 
@@ -130,8 +130,8 @@ class TestVentasYAnulaciones:
     def yogur(self, e):
         """3 vencidas (costo 110), 4 vigentes con fecha (120), 2 heredadas (sin costo): FEFO = vigente, heredada, vencida."""
         producto = _heredado("1", 2, costo=100)
-        servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(producto.id, 3, 110, (PartidaIngreso(3, _dia(1)),))])
-        servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(producto.id, 4, 120, (PartidaIngreso(4, _dia(20)),))])
+        servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(producto.id, 3, 110, (PartidaIngreso(3, _dia(1)),))], origen_pago="FUERA_DE_CAJA")
+        servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(producto.id, 4, 120, (PartidaIngreso(4, _dia(20)),))], origen_pago="FUERA_DE_CAJA")
         vencida = next(p for p in servicio_partidas.listar_partidas(producto.id) if p.fecha_vencimiento == _dia(1))
         with obtener_conexion() as conexion:  # "pasa el tiempo": la de 1 día ya venció (saltando la guardia)
             trigger = conexion.execute(

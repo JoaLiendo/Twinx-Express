@@ -203,7 +203,7 @@ def test_los_escritores_reales_de_stock_incrementan_la_version(base_datos_tempor
     servicio_ventas.anular_venta(venta.id, "ERROR_CARGA", None, owner.id)
     assert version() == 2
     proveedor = servicio_proveedores.crear_proveedor("P")
-    servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 3, 10)])
+    servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 3, 10)], origen_pago="FUERA_DE_CAJA")
     assert version() == 3
     servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id)
     assert version() == 4

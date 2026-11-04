@@ -38,7 +38,7 @@ class TestListadoYDetalle:
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
 
-        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)])
+        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)], origen_pago="FUERA_DE_CAJA")
 
         respuesta = solicitud("GET", "/compras", cookies=cookies)
 
@@ -51,7 +51,8 @@ class TestListadoYDetalle:
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
 
         compra = servicio_compras.registrar_compra(
-            proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)], observaciones="Entrega parcial"
+            proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)], observaciones="Entrega parcial",
+            origen_pago="FUERA_DE_CAJA",
         )
 
         respuesta = solicitud("GET", f"/compras/{compra.id}", cookies=cookies)
@@ -77,7 +78,7 @@ class TestHistorial:
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
 
-        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)])
+        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)], origen_pago="FUERA_DE_CAJA")
 
         respuesta = solicitud("GET", "/compras", cookies=cookies)
 
@@ -91,8 +92,8 @@ class TestHistorial:
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
-        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
-        ultima = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
+        ultima = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
         respuesta = solicitud("GET", "/compras", cookies=cookies)
 
@@ -113,8 +114,8 @@ class TestFiltrosDeHistorial:
         proveedor_2 = servicio_proveedores.crear_proveedor("Mayorista Norte")
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
-        servicio_compras.registrar_compra(proveedor_1.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
-        servicio_compras.registrar_compra(proveedor_2.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        servicio_compras.registrar_compra(proveedor_1.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
+        servicio_compras.registrar_compra(proveedor_2.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
         respuesta = solicitud("GET", f"/compras?proveedor_id={proveedor_2.id}", cookies=cookies)
 
@@ -130,7 +131,7 @@ class TestFiltrosDeHistorial:
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
-        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
         hoy = compra.fecha[:10]
 
         respuesta = solicitud("GET", f"/compras?fecha_desde={hoy}&fecha_hasta={hoy}", cookies=cookies)
@@ -145,7 +146,7 @@ class TestFiltrosDeHistorial:
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
-        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
         respuesta = solicitud(
             "GET", f"/compras?proveedor_id={proveedor.id}&fecha_desde=2099-01-01", cookies=cookies
@@ -176,7 +177,7 @@ class TestDetalleEnriquecido:
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
 
-        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)])
+        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)], origen_pago="FUERA_DE_CAJA")
 
         respuesta = solicitud("GET", f"/compras/{compra.id}", cookies=cookies)
 
@@ -188,7 +189,7 @@ class TestDetalleEnriquecido:
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
-        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
         servicio_proveedores.eliminar_proveedor(proveedor.id)  # cae a baja lógica (tiene una compra)
 
         respuesta = solicitud("GET", f"/compras/{compra.id}", cookies=cookies)
@@ -200,7 +201,7 @@ class TestDetalleEnriquecido:
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
-        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
         servicio_stock.eliminar_producto(producto.id)  # cae a baja lógica (tiene una compra)
 
         respuesta = solicitud("GET", f"/compras/{compra.id}", cookies=cookies)
@@ -215,7 +216,7 @@ class TestInmutabilidad:
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
         usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
-        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
         for ruta in (f"/compras/{compra.id}/editar", f"/compras/{compra.id}/eliminar"):
             respuesta = solicitud("POST", ruta, cookies=cookies)
@@ -411,7 +412,8 @@ class TestPermisos:
             )
         ).id
         compra = servicio_compras.registrar_compra(
-            proveedor.id, owner_id, [ItemCompra(producto.id, 1, 100)]
+            proveedor.id, owner_id, [ItemCompra(producto.id, 1, 100)],
+            origen_pago="FUERA_DE_CAJA",
         )
         token = _crear_usuario_y_loguearse("CASHIER", "carlos")
         cookies = {NOMBRE_COOKIE_SESION: token}

@@ -39,6 +39,7 @@ def test_registrar_compra_simple(base_datos_temporal):
         usuario_id=usuario.id,
         items=[ItemCompra(producto.id, 10, 120)],
         observaciones="Entrega parcial",
+        origen_pago="FUERA_DE_CAJA",
     )
 
     assert compra.id is not None
@@ -65,6 +66,7 @@ def test_registrar_compra_con_multiples_productos(base_datos_temporal):
             ItemCompra(producto_1.id, 10, 120),
             ItemCompra(producto_2.id, 3, 280),
         ],
+        origen_pago="FUERA_DE_CAJA",
     )
 
     assert compra.total_centavos == 10 * 120 + 3 * 280
@@ -98,7 +100,8 @@ def test_dos_compras_concurrentes_del_mismo_producto_no_pierden_ningun_increment
     def comprar(nombre):
         barrera.wait()
         compra = servicio_compras.registrar_compra(
-            proveedor_id=proveedor.id, usuario_id=usuario.id, items=[ItemCompra(producto.id, 10, 120)]
+            proveedor_id=proveedor.id, usuario_id=usuario.id, items=[ItemCompra(producto.id, 10, 120)],
+            origen_pago="FUERA_DE_CAJA",
         )
         resultados[nombre] = compra.id
 
@@ -122,7 +125,7 @@ def test_registrar_compra_sin_items_falla(base_datos_temporal):
     usuario = _crear_usuario()
 
     with pytest.raises(DatosInvalidosError):
-        servicio_compras.registrar_compra(proveedor.id, usuario.id, items=[])
+        servicio_compras.registrar_compra(proveedor.id, usuario.id, items=[], origen_pago="FUERA_DE_CAJA")
 
 
 def test_registrar_compra_con_proveedor_inexistente_falla(base_datos_temporal):
@@ -130,7 +133,7 @@ def test_registrar_compra_con_proveedor_inexistente_falla(base_datos_temporal):
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
 
     with pytest.raises(ProveedorNoEncontradoError):
-        servicio_compras.registrar_compra(9999, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        servicio_compras.registrar_compra(9999, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
     assert repositorio_compras.listar_todas() == []
 
@@ -142,7 +145,7 @@ def test_registrar_compra_con_proveedor_inactivo_falla(base_datos_temporal):
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
 
     with pytest.raises(ProveedorNoEncontradoError):
-        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
     assert repositorio_compras.listar_todas() == []
 
@@ -157,6 +160,7 @@ def test_registrar_compra_con_producto_inexistente_falla_y_no_deja_nada(base_dat
             proveedor.id,
             usuario.id,
             [ItemCompra(producto_valido.id, 10, 120), ItemCompra(9999, 1, 50)],
+            origen_pago="FUERA_DE_CAJA",
         )
 
     assert repositorio_compras.listar_todas() == []
@@ -171,7 +175,7 @@ def test_registrar_compra_con_producto_inactivo_falla(base_datos_temporal):
     servicio_stock.eliminar_producto(producto.id)
 
     with pytest.raises(ProductoNoEncontradoError):
-        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
     assert repositorio_compras.listar_todas() == []
 
@@ -186,6 +190,7 @@ def test_registrar_compra_con_producto_duplicado_falla(base_datos_temporal):
             proveedor.id,
             usuario.id,
             [ItemCompra(producto.id, 5, 100), ItemCompra(producto.id, 3, 110)],
+            origen_pago="FUERA_DE_CAJA",
         )
 
     assert repositorio_compras.listar_todas() == []
@@ -228,6 +233,7 @@ def test_registrar_compra_falla_a_mitad_de_camino_no_deja_nada_persistido(base_d
             proveedor.id,
             usuario.id,
             [ItemCompra(producto_1.id, 10, 120), ItemCompra(producto_2.id, 3, 280)],
+            origen_pago="FUERA_DE_CAJA",
         )
 
     assert repositorio_compras.listar_todas() == []
@@ -244,8 +250,8 @@ def test_listar_compras(base_datos_temporal):
     usuario = _crear_usuario()
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
 
-    servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
-    servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 100)])
+    servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
+    servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 100)], origen_pago="FUERA_DE_CAJA")
 
     assert len(servicio_compras.listar_todas()) == 2
 
@@ -255,7 +261,7 @@ def test_obtener_compra_y_su_detalle(base_datos_temporal):
     usuario = _crear_usuario()
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
 
-    creada = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 150)])
+    creada = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 150)], origen_pago="FUERA_DE_CAJA")
 
     assert servicio_compras.obtener_por_id(creada.id).id == creada.id
     assert servicio_compras.obtener_por_id(9999) is None
@@ -267,7 +273,7 @@ def test_listar_pagina(base_datos_temporal):
     usuario = _crear_usuario()
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
 
-    creada = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 150)])
+    creada = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 150)], origen_pago="FUERA_DE_CAJA")
 
     pagina = servicio_compras.listar_pagina()
     resumenes = pagina.compras
@@ -285,7 +291,7 @@ def test_obtener_resumen_por_id(base_datos_temporal):
     usuario = _crear_usuario()
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
 
-    creada = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 150)])
+    creada = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 150)], origen_pago="FUERA_DE_CAJA")
 
     assert servicio_compras.obtener_resumen_por_id(creada.id).proveedor_nombre == "Distribuidora SA"
     assert servicio_compras.obtener_resumen_por_id(9999) is None
@@ -296,7 +302,7 @@ def test_listar_detalle_con_producto(base_datos_temporal):
     usuario = _crear_usuario()
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200, unidad_medida="UNIDAD")
 
-    creada = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 150)])
+    creada = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 2, 150)], origen_pago="FUERA_DE_CAJA")
 
     detalle = servicio_compras.listar_detalle_con_producto(creada.id)
     assert len(detalle) == 1
@@ -315,7 +321,8 @@ class TestCompraContadoYCredito:
 
         with pytest.raises(DatosInvalidosError):
             servicio_compras.registrar_compra(
-                proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], condicion_pago="FIADO"
+                proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], condicion_pago="FIADO",
+                origen_pago="FUERA_DE_CAJA",
             )
         assert repositorio_compras.listar_todas() == []
 
@@ -324,7 +331,7 @@ class TestCompraContadoYCredito:
         usuario = _crear_usuario()
         producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 200)
 
-        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)])
+        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
         assert compra.condicion_pago == "CONTADO"
         assert repositorio_movimientos_proveedor.obtener_saldo(proveedor.id) == 0
@@ -416,6 +423,7 @@ class TestCompraContadoYCredito:
         servicio_compras.registrar_compra(
             proveedor.id, usuario.id, [ItemCompra(producto.id, 10, 120)],
             condicion_pago="CONTADO", clave_idempotencia="clave-1",
+            origen_pago="FUERA_DE_CAJA",
         )
 
         with pytest.raises(ClaveIdempotenciaReutilizadaError):

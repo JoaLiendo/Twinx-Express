@@ -53,7 +53,7 @@ def e(base_datos_temporal):
     yogur = servicio_stock.registrar_producto("1", "Yogur", 100, 300)
     servicio_compras.registrar_compra(prov.id, owner.id, [ItemCompra(yogur.id, 10, 120, (
         PartidaIngreso(4, _dia(30)), PartidaIngreso(6, _dia(5)),
-    ))])
+    ))], origen_pago="FUERA_DE_CAJA")
     vencida, vigente = sorted(servicio_partidas.listar_partidas(yogur.id), key=lambda p: p.fecha_vencimiento)
     _vencer_partida(base_datos_temporal, vencida.id, _dia(-1))  # las 6 que vencían en 5 días ya vencieron
     yield type("E", (), {"ruta": base_datos_temporal, "owner": owner, "co": co, "cajero": cajero, "ca": ca,

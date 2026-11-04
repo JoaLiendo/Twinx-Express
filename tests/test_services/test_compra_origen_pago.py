@@ -90,15 +90,26 @@ def test_sin_indicar_como_se_pago_se_rechaza(escenario):
 def test_origen_invalido_o_en_compra_a_credito_se_rechaza(escenario):
     with pytest.raises(DatosInvalidosError):
         _comprar(escenario, "BOLSILLO")
-    with pytest.raises(DatosInvalidosError, match="crédito"):
-        _comprar(escenario, "CAJA_ACTUAL", condicion_pago="CREDITO")
+    for origen in ("CAJA_ACTUAL", "FUERA_DE_CAJA"):
+        with pytest.raises(DatosInvalidosError, match="crédito"):
+            _comprar(escenario, origen, condicion_pago="CREDITO")
+    assert _stock(escenario) == 5
     assert _comprar(escenario, None, condicion_pago="CREDITO").origen_pago is None
 
 
-def test_la_api_sin_origen_conserva_el_comportamiento_previo_pero_lo_persiste(escenario):
+def test_contado_con_origen_none_se_rechaza_en_el_servicio_sin_inferir_ninguno(escenario):
+    """Ningún caller interno puede registrar una compra al contado sin decir cómo se pagó: la API no
+    infiere 'FUERA_DE_CAJA' ni ningún otro origen."""
     movimientos = _movimientos_caja()
-    compra = _comprar(escenario, None)
-    assert compra.origen_pago == "FUERA_DE_CAJA" and _movimientos_caja() == movimientos
+    with pytest.raises(DatosInvalidosError, match="Indicá cómo se pagó"):
+        _comprar(escenario, None)
+    assert _stock(escenario) == 5 and _movimientos_caja() == movimientos
+    assert repositorio_compras.listar_todas() == []
+
+
+def test_contado_con_origen_explicito_se_registra(escenario):
+    assert _comprar(escenario, "FUERA_DE_CAJA").origen_pago == "FUERA_DE_CAJA"
+    assert _comprar(escenario, "CAJA_ACTUAL").origen_pago == "CAJA_ACTUAL"
 
 
 @pytest.mark.sin_caja_abierta

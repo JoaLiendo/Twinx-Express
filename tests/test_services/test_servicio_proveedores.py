@@ -176,7 +176,8 @@ def test_saldo_con_varios_cargos_se_acumula(base_datos_temporal):
         proveedor.id, usuario.id, [ItemCompra(producto.id, 5, 100)], condicion_pago="CREDITO"
     )
     servicio_compras.registrar_compra(
-        proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 100)], condicion_pago="CONTADO"
+        proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 100)], condicion_pago="CONTADO",
+        origen_pago="FUERA_DE_CAJA",
     )  # no debe sumar al saldo
 
     assert servicio_proveedores.obtener_ficha(proveedor.id).saldo_centavos == 1200 + 500

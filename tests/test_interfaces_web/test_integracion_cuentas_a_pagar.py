@@ -58,7 +58,7 @@ def _ficha(e, proveedor=None):
 
 
 def _contado(e, monto=5000):
-    return servicio_compras.registrar_compra(e.a.id, e.owner.id, [ItemCompra(e.p.id, 1, monto)], condicion_pago="CONTADO")
+    return servicio_compras.registrar_compra(e.a.id, e.owner.id, [ItemCompra(e.p.id, 1, monto)], condicion_pago="CONTADO", origen_pago="FUERA_DE_CAJA")
 
 
 class TestFichaResumen:

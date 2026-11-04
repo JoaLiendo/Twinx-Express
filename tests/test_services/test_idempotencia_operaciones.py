@@ -161,8 +161,8 @@ class TestCompra:
         proveedor, owner, producto = self._preparar()
         items = [ItemCompra(producto.id, 10, 120)]
 
-        primera = servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="cmp-1")
-        segunda = servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="cmp-1")
+        primera = servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="cmp-1", origen_pago="FUERA_DE_CAJA")
+        segunda = servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="cmp-1", origen_pago="FUERA_DE_CAJA")
 
         assert segunda.id == primera.id
         assert _contar("compras") == 1
@@ -176,7 +176,7 @@ class TestCompra:
 
         def comprar():
             barrera.wait()
-            servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="cmp-1")
+            servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="cmp-1", origen_pago="FUERA_DE_CAJA")
 
         hilos = [threading.Thread(target=comprar) for _ in range(2)]
         for hilo in hilos:
@@ -191,8 +191,8 @@ class TestCompra:
         proveedor, owner, producto = self._preparar()
         items = [ItemCompra(producto.id, 10, 120)]
 
-        servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="cmp-1")
-        servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="cmp-2")
+        servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="cmp-1", origen_pago="FUERA_DE_CAJA")
+        servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="cmp-2", origen_pago="FUERA_DE_CAJA")
 
         assert _contar("compras") == 2
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 25
@@ -202,10 +202,12 @@ class TestCompra:
 
         with pytest.raises(ProductoNoEncontradoError):
             servicio_compras.registrar_compra(
-                proveedor.id, owner.id, [ItemCompra(99999, 1, 100)], clave_idempotencia="cmp-1"
+                proveedor.id, owner.id, [ItemCompra(99999, 1, 100)], clave_idempotencia="cmp-1",
+                origen_pago="FUERA_DE_CAJA",
             )
         compra = servicio_compras.registrar_compra(
-            proveedor.id, owner.id, [ItemCompra(producto.id, 10, 120)], clave_idempotencia="cmp-1"
+            proveedor.id, owner.id, [ItemCompra(producto.id, 10, 120)], clave_idempotencia="cmp-1",
+            origen_pago="FUERA_DE_CAJA",
         )
 
         assert compra.id is not None

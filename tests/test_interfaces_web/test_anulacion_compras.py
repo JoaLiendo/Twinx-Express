@@ -15,7 +15,7 @@ def e(base_datos_temporal):
     _, cajera = usuario_logueado("CASHIER", "cajera")
     proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
     producto = servicio_stock.registrar_producto("7790000000001", "Alfajor", 100, 300, stock_actual=10)
-    compra = servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 5, 150)])
+    compra = servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 5, 150)], origen_pago="FUERA_DE_CAJA")
     return type(
         "E", (), {"ruta": base_datos_temporal, "owner": owner, "co": cookies, "cajera": cajera, "p": producto, "c": compra}
     )

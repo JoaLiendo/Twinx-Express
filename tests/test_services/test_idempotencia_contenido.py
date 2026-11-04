@@ -97,12 +97,14 @@ class TestCompraContenidoDistinto:
     def test_compra_con_otra_cantidad_y_la_misma_clave_se_rechaza(self, base_datos_temporal):
         proveedor, owner, producto = self._preparar()
         servicio_compras.registrar_compra(
-            proveedor.id, owner.id, [ItemCompra(producto.id, 10, 120)], clave_idempotencia="k"
+            proveedor.id, owner.id, [ItemCompra(producto.id, 10, 120)], clave_idempotencia="k",
+            origen_pago="FUERA_DE_CAJA",
         )
 
         with pytest.raises(ClaveIdempotenciaReutilizadaError):
             servicio_compras.registrar_compra(
-                proveedor.id, owner.id, [ItemCompra(producto.id, 99, 120)], clave_idempotencia="k"
+                proveedor.id, owner.id, [ItemCompra(producto.id, 99, 120)], clave_idempotencia="k",
+                origen_pago="FUERA_DE_CAJA",
             )
 
         assert servicio_stock.obtener_por_id(producto.id).stock_actual == 15
@@ -111,22 +113,25 @@ class TestCompraContenidoDistinto:
     def test_compra_con_otro_costo_y_la_misma_clave_se_rechaza(self, base_datos_temporal):
         proveedor, owner, producto = self._preparar()
         servicio_compras.registrar_compra(
-            proveedor.id, owner.id, [ItemCompra(producto.id, 10, 120)], clave_idempotencia="k"
+            proveedor.id, owner.id, [ItemCompra(producto.id, 10, 120)], clave_idempotencia="k",
+            origen_pago="FUERA_DE_CAJA",
         )
 
         with pytest.raises(ClaveIdempotenciaReutilizadaError):
             servicio_compras.registrar_compra(
-                proveedor.id, owner.id, [ItemCompra(producto.id, 10, 130)], clave_idempotencia="k"
+                proveedor.id, owner.id, [ItemCompra(producto.id, 10, 130)], clave_idempotencia="k",
+                origen_pago="FUERA_DE_CAJA",
             )
 
     def test_el_reintento_identico_con_items_en_otro_orden_es_el_mismo_pedido(self, base_datos_temporal):
         proveedor, owner, producto_1 = self._preparar()
         producto_2 = servicio_stock.registrar_producto("7790000000002", "Gaseosa", 300, 500, stock_actual=1)
         items = [ItemCompra(producto_1.id, 10, 120), ItemCompra(producto_2.id, 4, 350)]
-        original = servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="k")
+        original = servicio_compras.registrar_compra(proveedor.id, owner.id, items, clave_idempotencia="k", origen_pago="FUERA_DE_CAJA")
 
         reintento = servicio_compras.registrar_compra(
-            proveedor.id, owner.id, list(reversed(items)), clave_idempotencia="k"
+            proveedor.id, owner.id, list(reversed(items)), clave_idempotencia="k",
+            origen_pago="FUERA_DE_CAJA",
         )
 
         assert reintento.id == original.id

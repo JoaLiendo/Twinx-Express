@@ -60,7 +60,7 @@ def e(base_datos_temporal):
 
 
 def _comprar(e, producto, cantidad):
-    return servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(producto.id, cantidad, 100)])
+    return servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(producto.id, cantidad, 100)], origen_pago="FUERA_DE_CAJA")
 
 
 def _vender(e, producto, cantidad):

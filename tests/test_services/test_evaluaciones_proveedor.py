@@ -183,7 +183,7 @@ def test_se_audita_la_evaluacion(e):
 
 def test_comprarle_a_un_proveedor_de_una_estrella_no_se_bloquea_ni_cambia_su_calificacion(e):
     evaluar(e.prov.id, e.owner.id, 1, "pésimo")
-    compra = servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(crear_producto().id, 2, 100)])
+    compra = servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(crear_producto().id, 2, 100)], origen_pago="FUERA_DE_CAJA")
 
     assert compra.total_centavos == 200
     assert servicio_evaluaciones_proveedor.calificaciones_actuales() == {e.prov.id: 1}

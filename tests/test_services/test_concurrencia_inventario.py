@@ -85,7 +85,7 @@ def test_compra_y_confirmacion_simultaneas_nunca_sobrescriben_la_compra(e):
     proveedor = servicio_proveedores.crear_proveedor("P")
 
     (_, error_compra), (_, error_confirmacion) = _correr_en_paralelo(
-        lambda: servicio_compras.registrar_compra(proveedor.id, e.owner.id, [ItemCompra(e.producto.id, 5, 10)]),
+        lambda: servicio_compras.registrar_compra(proveedor.id, e.owner.id, [ItemCompra(e.producto.id, 5, 10)], origen_pago="FUERA_DE_CAJA"),
         lambda: servicio_inventario.confirmar_inventario(e.inventario.id, e.owner.id),
     )
 

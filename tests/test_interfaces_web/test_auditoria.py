@@ -181,7 +181,7 @@ class TestAjusteCompraAnulacion:
         proveedor = servicio_proveedores.crear_proveedor("Distribuidora SA")
         producto = _producto()
 
-        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 5, 120)])
+        compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 5, 120)], origen_pago="FUERA_DE_CAJA")
 
         (e,) = _entradas()
         assert (e["accion"], e["entidad"], e["entidad_id"]) == ("COMPRA_REGISTRADA", "COMPRA", compra.id)
@@ -193,12 +193,12 @@ class TestAjusteCompraAnulacion:
         producto = _producto()
 
         with pytest.raises(ProductoNoEncontradoError):
-            servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(99999, 1, 10)], clave_idempotencia="k")
+            servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(99999, 1, 10)], clave_idempotencia="k", origen_pago="FUERA_DE_CAJA")
         assert _entradas() == []
 
         items = [ItemCompra(producto.id, 5, 120)]
-        servicio_compras.registrar_compra(proveedor.id, usuario.id, items, clave_idempotencia="k")
-        servicio_compras.registrar_compra(proveedor.id, usuario.id, items, clave_idempotencia="k")
+        servicio_compras.registrar_compra(proveedor.id, usuario.id, items, clave_idempotencia="k", origen_pago="FUERA_DE_CAJA")
+        servicio_compras.registrar_compra(proveedor.id, usuario.id, items, clave_idempotencia="k", origen_pago="FUERA_DE_CAJA")
         assert _acciones() == ["COMPRA_REGISTRADA"]
 
     def test_anulacion_se_audita_con_el_motivo(self, base_datos_temporal):

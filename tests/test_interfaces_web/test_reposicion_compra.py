@@ -30,9 +30,9 @@ def e(base_datos_temporal):
         )
         for n in range(1, 6)
     }
-    servicio_compras.registrar_compra(a.id, owner.id, [ItemCompra(productos[1].id, 1, 1234)])
-    servicio_compras.registrar_compra(b.id, owner.id, [ItemCompra(productos[1].id, 1, 2000)])
-    servicio_compras.registrar_compra(b.id, owner.id, [ItemCompra(productos[3].id, 1, 700)])
+    servicio_compras.registrar_compra(a.id, owner.id, [ItemCompra(productos[1].id, 1, 1234)], origen_pago="FUERA_DE_CAJA")
+    servicio_compras.registrar_compra(b.id, owner.id, [ItemCompra(productos[1].id, 1, 2000)], origen_pago="FUERA_DE_CAJA")
+    servicio_compras.registrar_compra(b.id, owner.id, [ItemCompra(productos[3].id, 1, 700)], origen_pago="FUERA_DE_CAJA")
     servicio_proveedores.vincular_producto(a.id, productos[2].id, owner.id)
     return type(
         "E", (), {"ruta": base_datos_temporal, "co": cookies, "owner": owner, "a": a, "b": b, "p": productos}

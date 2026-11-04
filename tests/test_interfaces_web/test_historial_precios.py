@@ -142,7 +142,7 @@ class TestRegistroEnCompras:
     def test_una_compra_con_otro_costo_registra_el_cambio_de_costo(self, base_datos_temporal):
         proveedor, usuario, producto = self._preparar()
 
-        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 5, 130)])
+        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 5, 130)], origen_pago="FUERA_DE_CAJA")
 
         (fila,) = _filas()
         assert (fila["campo"], fila["precio_anterior_centavos"], fila["precio_nuevo_centavos"], fila["origen"]) == (
@@ -156,7 +156,7 @@ class TestRegistroEnCompras:
     def test_una_compra_al_mismo_costo_no_registra_nada(self, base_datos_temporal):
         proveedor, usuario, producto = self._preparar()
 
-        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 5, 100)])
+        servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 5, 100)], origen_pago="FUERA_DE_CAJA")
 
         assert _filas() == []
 
@@ -167,7 +167,8 @@ class TestRegistroEnCompras:
 
         with pytest.raises(ProductoNoEncontradoError):
             servicio_compras.registrar_compra(
-                proveedor.id, usuario.id, [ItemCompra(producto.id, 5, 130), ItemCompra(99999, 1, 10)]
+                proveedor.id, usuario.id, [ItemCompra(producto.id, 5, 130), ItemCompra(99999, 1, 10)],
+                origen_pago="FUERA_DE_CAJA",
             )
 
         assert _filas() == []

@@ -55,7 +55,7 @@ def _movimientos(e, columna, valor):
 
 
 def _comprar(e, cantidad, costo=120):
-    return servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.p.id, cantidad, costo)])
+    return servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.p.id, cantidad, costo)], origen_pago="FUERA_DE_CAJA")
 
 
 def _vender(e, cantidad, clave=None):
@@ -150,7 +150,7 @@ def test_anular_compra_descuenta_primero_su_propia_partida(e):
 def test_anular_compra_ya_vendida_en_parte_completa_por_fefo(e):
     compra = _comprar(e, 10)
     servicio_stock.ajustar_stock(e.p.id, -12, "ROBO", e.owner.id)  # FEFO por id: 4 del alta + 8 de la compra
-    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.p.id, 20, 90)])
+    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.p.id, 20, 90)], origen_pago="FUERA_DE_CAJA")
     servicio_compras.anular_compra(compra.id, "ERROR_CARGA", None, e.owner.id)
     detalle_id = consultar(e.ruta, "SELECT id FROM detalle_compra WHERE compra_id = ?", (compra.id,))[0][0]
     assert _movimientos(e, "detalle_compra_id", detalle_id) == [(2, -2, "ELEGIDA"), (3, -8, "UNICA")]

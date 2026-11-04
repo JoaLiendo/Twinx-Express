@@ -22,7 +22,7 @@ def e(base_datos_temporal):
     producto = servicio_stock.registrar_producto("1", "Yogur", 100, 300, stock_actual=2)  # stock inicial sin fecha
     servicio_compras.registrar_compra(prov.id, owner.id, [ItemCompra(producto.id, 9, 140, (
         PartidaIngreso(5, "2099-12-15"), PartidaIngreso(4, "2099-11-20"),
-    ))])
+    ))], origen_pago="FUERA_DE_CAJA")
     yield type("E", (), {"ruta": base_datos_temporal, "owner": owner, "prov": prov, "p": producto})
     assert servicio_partidas.productos_no_conciliados() == []
 
@@ -47,7 +47,7 @@ def test_el_costo_congelado_de_la_venta_no_cambia(e):
 
 
 def test_empate_de_vencimiento_sale_la_partida_mas_antigua(e):
-    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.p.id, 3, 150, (PartidaIngreso(3, "2099-11-20"),))])
+    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.p.id, 3, 150, (PartidaIngreso(3, "2099-11-20"),))], origen_pago="FUERA_DE_CAJA")
     venta = _vender(e, 6)
     consumos = servicio_partidas.consumos_de_venta(venta.id)
     assert [(c.fecha_vencimiento, c.cantidad, c.costo_unitario_centavos) for c in consumos] == [
@@ -65,7 +65,7 @@ def test_existencia_heredada_va_despues_de_lo_que_tiene_fecha(e):
     with obtener_conexion() as conexion:
         viejo = repositorio_productos.crear_producto_en_conexion(conexion, Producto("9", "Viejo", 50, 90, stock_actual=3))
         heredar_existencia_en_conexion(conexion, viejo.id, 3)
-    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(viejo.id, 2, 60, (PartidaIngreso(2, "2099-10-01"),))])
+    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(viejo.id, 2, 60, (PartidaIngreso(2, "2099-10-01"),))], origen_pago="FUERA_DE_CAJA")
     venta = servicio_ventas.registrar_venta([ItemVenta(viejo.id, 4)], "EFECTIVO")
     assert [(c.origen, c.cantidad) for c in servicio_partidas.consumos_de_venta(venta.id)] == [("COMPRA", 2), ("HEREDADA", 2)]
 

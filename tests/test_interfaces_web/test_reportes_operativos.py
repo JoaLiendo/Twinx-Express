@@ -142,9 +142,9 @@ class TestComprasPorProveedor:
         a = servicio_proveedores.crear_proveedor("Norte")
         b = servicio_proveedores.crear_proveedor("Sur")
         servicio_proveedores.crear_proveedor("Sin compras")
-        c1 = servicio_compras.registrar_compra(a.id, e.owner.id, [ItemCompra(e.p.id, 3, 100)])
-        c2 = servicio_compras.registrar_compra(a.id, e.owner.id, [ItemCompra(e.p.id, 2, 150)])
-        c3 = servicio_compras.registrar_compra(b.id, e.owner.id, [ItemCompra(e.p.id, 10, 50)])
+        c1 = servicio_compras.registrar_compra(a.id, e.owner.id, [ItemCompra(e.p.id, 3, 100)], origen_pago="FUERA_DE_CAJA")
+        c2 = servicio_compras.registrar_compra(a.id, e.owner.id, [ItemCompra(e.p.id, 2, 150)], origen_pago="FUERA_DE_CAJA")
+        c3 = servicio_compras.registrar_compra(b.id, e.owner.id, [ItemCompra(e.p.id, 10, 50)], origen_pago="FUERA_DE_CAJA")
         for compra, fecha in ((c1, "2026-01-10 10:00:00"), (c2, "2026-02-10 10:00:00"), (c3, "2026-01-31 23:59:59")):
             escribir(e.ruta, "UPDATE compras SET fecha = ? WHERE id = ?", (fecha, compra.id))
         return type("C", (), {"a": a, "b": b})
@@ -263,7 +263,7 @@ class TestEscalaYSoloLectura:
         _dos_sesiones(e)
         proveedor = servicio_proveedores.crear_proveedor("Norte")
         for _ in range(25):
-            servicio_compras.registrar_compra(proveedor.id, e.owner.id, [ItemCompra(e.p.id, 2, 100)])
+            servicio_compras.registrar_compra(proveedor.id, e.owner.id, [ItemCompra(e.p.id, 2, 100)], origen_pago="FUERA_DE_CAJA")
 
         def _prohibido(*_argumentos, **_kwargs):
             raise AssertionError("el reporte no debe cargar listados completos para sumar")

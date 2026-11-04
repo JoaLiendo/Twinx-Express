@@ -32,7 +32,8 @@ def e(base_datos_temporal):
 def _comprar(e, proveedor, *lineas, fecha=None):
     """`lineas`: (producto, cantidad, costo). `fecha` fuerza el instante de la compra."""
     compra = servicio_compras.registrar_compra(
-        proveedor.id, e.owner.id, [ItemCompra(p.id, cantidad, costo) for p, cantidad, costo in lineas]
+        proveedor.id, e.owner.id, [ItemCompra(p.id, cantidad, costo) for p, cantidad, costo in lineas],
+        origen_pago="FUERA_DE_CAJA",
     )
     if fecha:
         escribir(e.ruta, "UPDATE compras SET fecha = ? WHERE id = ?", (fecha, compra.id))

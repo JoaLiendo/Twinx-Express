@@ -82,7 +82,7 @@ def test_proveedor_sin_cuit_ni_datos_fiscales_y_varios_sin_cuit_conviven(base_da
 def test_cuit_duplicado_se_rechaza_incluso_contra_un_proveedor_dado_de_baja(base_datos_temporal):
     owner = crear_owner()
     viejo = servicio_proveedores.crear_proveedor("Viejo", fiscales=DatosFiscales(cuit=CUIT_A))
-    servicio_compras.registrar_compra(viejo.id, owner.id, [ItemCompra(crear_producto().id, 1, 10)])
+    servicio_compras.registrar_compra(viejo.id, owner.id, [ItemCompra(crear_producto().id, 1, 10)], origen_pago="FUERA_DE_CAJA")
     assert servicio_proveedores.eliminar_proveedor(viejo.id) is True
 
     with pytest.raises(CuitProveedorDuplicadoError):
@@ -212,7 +212,7 @@ def test_busqueda_por_cuit_con_o_sin_guiones_por_razon_social_y_combinada_con_ca
 def test_inactivos_se_filtran_por_categoria_solo_si_se_piden(cat):
     owner = crear_owner()
     proveedor = servicio_proveedores.crear_proveedor("A", categoria_ids=[cat.bebidas.id])
-    servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(crear_producto().id, 1, 10)])
+    servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(crear_producto().id, 1, 10)], origen_pago="FUERA_DE_CAJA")
     servicio_proveedores.eliminar_proveedor(proveedor.id)
 
     assert servicio_proveedores.buscar_proveedores("", categoria_id=cat.bebidas.id) == []
@@ -271,6 +271,6 @@ def test_la_clasificacion_no_restringe_compras_de_otras_categorias(cat):
     proveedor = servicio_proveedores.crear_proveedor("Bebidas SA", categoria_ids=[cat.bebidas.id])
     escribir(cat.ruta, "UPDATE productos SET categoria_id = ? WHERE id = ?", (cat.limpieza.id, producto.id))
 
-    compra = servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 2, 10)])
+    compra = servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 2, 10)], origen_pago="FUERA_DE_CAJA")
 
     assert compra.id is not None

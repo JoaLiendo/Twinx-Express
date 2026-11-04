@@ -104,7 +104,7 @@ def test_una_falla_despues_de_crear_el_vinculo_revierte_compra_vinculo_stock_y_c
     antes = servicio_stock.obtener_por_id(e.p1.id)
 
     with pytest.raises(RuntimeError):
-        servicio_compras.registrar_compra(e.prov_a.id, e.owner.id, [ItemCompra(e.p1.id, 2, 777)])
+        servicio_compras.registrar_compra(e.prov_a.id, e.owner.id, [ItemCompra(e.p1.id, 2, 777)], origen_pago="FUERA_DE_CAJA")
 
     assert contar(e.ruta, "producto_proveedor") == 0 and contar(e.ruta, "compras") == 0
     despues = servicio_stock.obtener_por_id(e.p1.id)
@@ -114,7 +114,7 @@ def test_una_falla_despues_de_crear_el_vinculo_revierte_compra_vinculo_stock_y_c
 
 def test_secuencia_primer_segundo_y_segundo_con_principal_existente(e):
     def comprar(proveedor):
-        servicio_compras.registrar_compra(proveedor.id, e.owner.id, [ItemCompra(e.p1.id, 1, 100)])
+        servicio_compras.registrar_compra(proveedor.id, e.owner.id, [ItemCompra(e.p1.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
     def vinculos():
         return {

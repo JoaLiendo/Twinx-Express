@@ -40,7 +40,8 @@ def e(base_datos_temporal):
 
 def _comprar(e, proveedor, producto, costo=100, cantidad=2, clave=None):
     return servicio_compras.registrar_compra(
-        proveedor.id, e.owner.id, [ItemCompra(producto.id, cantidad, costo)], clave_idempotencia=clave
+        proveedor.id, e.owner.id, [ItemCompra(producto.id, cantidad, costo)], clave_idempotencia=clave,
+        origen_pago="FUERA_DE_CAJA",
     )
 
 
@@ -202,7 +203,8 @@ def test_un_producto_sin_principal_toma_como_principal_a_un_proveedor_nuevo_de_u
 
 def test_compra_con_varios_productos_vincula_cada_uno(e):
     servicio_compras.registrar_compra(
-        e.prov_a.id, e.owner.id, [ItemCompra(e.p1.id, 1, 10), ItemCompra(e.p2.id, 1, 20)]
+        e.prov_a.id, e.owner.id, [ItemCompra(e.p1.id, 1, 10), ItemCompra(e.p2.id, 1, 20)],
+        origen_pago="FUERA_DE_CAJA",
     )
 
     assert _vinculos(e, e.p1) == {e.prov_a.id: True}
@@ -224,7 +226,8 @@ def test_compra_idempotente_no_duplica_vinculos_ni_stock(e):
 def test_una_compra_fallida_no_deja_vinculos(e):
     with pytest.raises(ProductoNoEncontradoError):
         servicio_compras.registrar_compra(
-            e.prov_a.id, e.owner.id, [ItemCompra(e.p1.id, 1, 10), ItemCompra(9999, 1, 10)]
+            e.prov_a.id, e.owner.id, [ItemCompra(e.p1.id, 1, 10), ItemCompra(9999, 1, 10)],
+            origen_pago="FUERA_DE_CAJA",
         )
 
     assert contar(e.ruta, "producto_proveedor") == 0

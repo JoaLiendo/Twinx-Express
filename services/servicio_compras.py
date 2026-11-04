@@ -28,7 +28,6 @@ from db.repositorios import partidas as repositorio_partidas
 from domain.caja import MovimientoCaja
 from domain.compra import (
     ORIGEN_CAJA_ACTUAL,
-    ORIGEN_FUERA_DE_CAJA,
     Compra,
     CompraDeProducto,
     DecisionCosto,
@@ -107,8 +106,8 @@ def registrar_compra(
             y reenvía igual ante cualquier reintento (V1.1): un reenvío
             devuelve la compra ya registrada sin duplicar compra, stock ni
             costo.
-        condicion_pago: 'CONTADO' (default, sin cambios respecto de versiones
-            anteriores) o 'CREDITO' (V1.9-B): genera exactamente un
+        condicion_pago: 'CONTADO' (default; exige `origen_pago`, ver abajo)
+            o 'CREDITO' (V1.9-B): genera exactamente un
             `CARGO_COMPRA` al proveedor, por el total, en la misma
             transacción que la compra -- nunca puede persistir una compra
             a crédito sin su cargo.
@@ -118,9 +117,10 @@ def registrar_compra(
             una vez dentro de la transacción), no contra otro reloj.
         origen_pago: (RC4) solo para CONTADO: 'CAJA_ACTUAL' (exige caja abierta y crea, en la misma
             transacción, un EGRESO de caja vinculado a la compra) o 'FUERA_DE_CAJA' (no toca la caja).
-            Queda siempre persistido. `None` es el valor por defecto de la API ('FUERA_DE_CAJA', lo que
-            hacían las versiones anteriores); el formulario web nunca lo usa: manda la opción elegida o
-            `""`, que se rechaza para que nadie registre una compra al contado sin decir cómo se pagó.
+            Es obligatorio para toda compra CONTADO nueva, en todas las capas: `None` o `""` se rechazan,
+            sin inferir ningún origen, para que ningún caller registre una compra al contado sin decir
+            cómo se pagó. Una compra CREDITO no lleva origen (`None`). Las compras históricas (anteriores
+            a la migración 047) conservan `origen_pago = NULL`.
 
     Raises:
         DatosInvalidosError: si `items` está vacío, `condicion_pago` no es 'CONTADO' ni 'CREDITO', el
@@ -137,8 +137,6 @@ def registrar_compra(
     if not items:
         raise DatosInvalidosError("Una compra debe tener al menos un ítem.")
     validar_condicion_pago(condicion_pago)
-    if origen_pago is None and condicion_pago == "CONTADO":
-        origen_pago = ORIGEN_FUERA_DE_CAJA
     origen_pago = validar_origen_pago(
         condicion_pago, origen_pago, sum(item.cantidad * item.costo_unitario_centavos for item in items)
     )

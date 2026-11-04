@@ -66,7 +66,7 @@ def _vender(e, producto, cantidad=1):
 
 def _comprar(e, producto, cantidad=1, costo=100):
     proveedor = servicio_proveedores.crear_proveedor(f"Prov {producto.id} {cantidad}")
-    return servicio_compras.registrar_compra(proveedor.id, e.owner.id, [ItemCompra(producto.id, cantidad, costo)])
+    return servicio_compras.registrar_compra(proveedor.id, e.owner.id, [ItemCompra(producto.id, cantidad, costo)], origen_pago="FUERA_DE_CAJA")
 
 
 def _acciones(prefijo):
@@ -85,7 +85,8 @@ def test_crea_un_inventario_con_todos_los_productos_activos(e):
     servicio_stock.eliminar_producto(e.c.id)  # sin registros: se borra
     inactivo = crear_producto("7790000000009", stock=3)
     servicio_compras.registrar_compra(
-        servicio_proveedores.crear_proveedor("P").id, e.owner.id, [ItemCompra(inactivo.id, 1, 1)]
+        servicio_proveedores.crear_proveedor("P").id, e.owner.id, [ItemCompra(inactivo.id, 1, 1)],
+        origen_pago="FUERA_DE_CAJA",
     )
     servicio_stock.eliminar_producto(inactivo.id)  # baja lógica
 
@@ -99,7 +100,8 @@ def test_crea_un_inventario_con_todos_los_productos_activos(e):
 
 def test_seleccion_manual_incluye_un_producto_inactivo_con_stock(e):
     servicio_compras.registrar_compra(
-        servicio_proveedores.crear_proveedor("P").id, e.owner.id, [ItemCompra(e.c.id, 1, 1)]
+        servicio_proveedores.crear_proveedor("P").id, e.owner.id, [ItemCompra(e.c.id, 1, 1)],
+        origen_pago="FUERA_DE_CAJA",
     )
     servicio_stock.eliminar_producto(e.c.id)  # baja lógica, conserva su stock (6)
 
@@ -112,7 +114,8 @@ def test_seleccion_manual_incluye_un_producto_inactivo_con_stock(e):
 
 def test_un_producto_inactivo_sin_stock_o_inexistente_no_puede_incluirse(e):
     servicio_compras.registrar_compra(
-        servicio_proveedores.crear_proveedor("P").id, e.owner.id, [ItemCompra(e.c.id, 1, 1)]
+        servicio_proveedores.crear_proveedor("P").id, e.owner.id, [ItemCompra(e.c.id, 1, 1)],
+        origen_pago="FUERA_DE_CAJA",
     )
     servicio_ventas.registrar_venta([ItemVenta(e.c.id, 6)], "EFECTIVO", usuario_id=e.cajera.id)
     servicio_stock.eliminar_producto(e.c.id)  # inactivo y sin stock
@@ -295,7 +298,8 @@ def test_no_se_confirma_un_inventario_sin_ninguna_linea_contada(e):
 
 def test_producto_inactivo_con_stock_se_cuenta_y_ajusta(e):
     servicio_compras.registrar_compra(
-        servicio_proveedores.crear_proveedor("P").id, e.owner.id, [ItemCompra(e.c.id, 1, 1)]
+        servicio_proveedores.crear_proveedor("P").id, e.owner.id, [ItemCompra(e.c.id, 1, 1)],
+        origen_pago="FUERA_DE_CAJA",
     )
     servicio_stock.eliminar_producto(e.c.id)  # inactivo con stock 6
     inventario = _abrir(e, e.c)
@@ -309,7 +313,8 @@ def test_producto_inactivo_con_stock_se_cuenta_y_ajusta(e):
 
 def test_el_ajuste_manual_sigue_exigiendo_un_producto_activo(e):
     servicio_compras.registrar_compra(
-        servicio_proveedores.crear_proveedor("P").id, e.owner.id, [ItemCompra(e.c.id, 1, 1)]
+        servicio_proveedores.crear_proveedor("P").id, e.owner.id, [ItemCompra(e.c.id, 1, 1)],
+        origen_pago="FUERA_DE_CAJA",
     )
     servicio_stock.eliminar_producto(e.c.id)
 

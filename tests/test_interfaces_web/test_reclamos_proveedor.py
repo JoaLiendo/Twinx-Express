@@ -22,7 +22,7 @@ def e(base_datos_temporal):
 
 
 def _comprar(e, proveedor):
-    return servicio_compras.registrar_compra(proveedor.id, e.owner.id, [ItemCompra(e.producto.id, 5, 100)])
+    return servicio_compras.registrar_compra(proveedor.id, e.owner.id, [ItemCompra(e.producto.id, 5, 100)], origen_pago="FUERA_DE_CAJA")
 
 
 def _location(respuesta) -> str:

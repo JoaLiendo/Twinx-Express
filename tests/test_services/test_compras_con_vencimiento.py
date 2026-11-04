@@ -29,7 +29,8 @@ def _partidas(producto):
 
 
 def _comprar(e, item, **kwargs):
-    return servicio_compras.registrar_compra(e.prov.id, e.owner.id, [item], **kwargs)
+    origen = "FUERA_DE_CAJA" if kwargs.get("condicion_pago", "CONTADO") == "CONTADO" else None
+    return servicio_compras.registrar_compra(e.prov.id, e.owner.id, [item], origen_pago=origen, **kwargs)
 
 
 class TestParseo:

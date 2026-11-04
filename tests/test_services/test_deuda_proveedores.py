@@ -45,6 +45,7 @@ def _comprar(e, proveedor, monto, dias=None, condicion="CREDITO"):
     compra = servicio_compras.registrar_compra(
         proveedor.id, e.owner.id, [ItemCompra(e.p.id, 1, monto)],
         condicion_pago=condicion, fecha_vencimiento=vencimiento,
+        origen_pago="FUERA_DE_CAJA" if condicion == "CONTADO" else None,
     )
     if dias is not None and dias < 0:
         escribir(e.ruta, "UPDATE compras SET fecha = ? WHERE id = ?", ((HOY - timedelta(days=60)).isoformat() + " 10:00:00", compra.id))

@@ -31,7 +31,8 @@ def _en(e, dias):
 
 def _comprar(e, condicion="CREDITO", vencimiento=None):
     return servicio_compras.registrar_compra(
-        e.prov.id, e.owner.id, [ItemCompra(e.p.id, 5, 150)], condicion_pago=condicion, fecha_vencimiento=vencimiento
+        e.prov.id, e.owner.id, [ItemCompra(e.p.id, 5, 150)], condicion_pago=condicion, fecha_vencimiento=vencimiento,
+        origen_pago="FUERA_DE_CAJA" if condicion == "CONTADO" else None,
     )
 
 

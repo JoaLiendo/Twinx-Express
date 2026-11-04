@@ -71,7 +71,7 @@ def _renumerar_detalle_de_compra(e, compra_id, desplazamiento):
 
 def _comprar(e, *lineas):
     """`lineas`: (producto, cantidad, costo). Devuelve la compra."""
-    return servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(p.id, c, k) for p, c, k in lineas])
+    return servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(p.id, c, k) for p, c, k in lineas], origen_pago="FUERA_DE_CAJA")
 
 
 def _anular(e, compra, motivo="ERROR_CARGA", observaciones=None):

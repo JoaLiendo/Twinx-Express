@@ -191,7 +191,7 @@ class TestOtrasOperacionesAuditadas:
 
         operaciones = {
             "ajuste": lambda: servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id),
-            "compra": lambda: servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 5, 120)]),
+            "compra": lambda: servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 5, 120)], origen_pago="FUERA_DE_CAJA"),
             "anulacion": lambda: servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id),
             "caja": lambda: servicio_caja.registrar_egreso(1_000, "pago", usuario_id=owner.id),
             "precios": lambda: servicio_precios.aplicar_actualizacion(
@@ -225,7 +225,7 @@ class TestNingunaOperacionAuditadaQuedaSinRastro:
         producto = _producto(usuario_id=owner.id)
         servicio_stock.actualizar_producto(producto.id, producto.codigo_barras, "Nuevo nombre", 100, 300, 0, usuario_id=owner.id)
         servicio_stock.ajustar_stock(producto.id, -1, "ROTURA", owner.id)
-        servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 5, 120)])
+        servicio_compras.registrar_compra(proveedor.id, owner.id, [ItemCompra(producto.id, 5, 120)], origen_pago="FUERA_DE_CAJA")
         venta = servicio_ventas.registrar_venta([ItemVenta(producto.id, 1)], "EFECTIVO")
         servicio_ventas.anular_venta(venta.id, motivo="ERROR_CARGA", observaciones=None, usuario_id=owner.id)
         servicio_precios.aplicar_actualizacion(

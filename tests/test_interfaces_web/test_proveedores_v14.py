@@ -66,7 +66,7 @@ def test_la_lista_enlaza_a_la_ficha(e):
 
 
 def test_ficha_muestra_datos_productos_vinculados_e_historial(e):
-    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.producto.id, 3, 250)])
+    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.producto.id, 3, 250)], origen_pago="FUERA_DE_CAJA")
 
     texto = solicitud("GET", f"/proveedores/{e.prov.id}", cookies=e.co).texto
 
@@ -82,7 +82,7 @@ def test_ficha_de_un_proveedor_inexistente_redirige_con_error(e):
 
 
 def test_ficha_de_un_proveedor_inactivo_se_ve_y_ofrece_reactivar(e):
-    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.producto.id, 1, 100)])
+    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
     servicio_proveedores.eliminar_proveedor(e.prov.id)
 
     texto = solicitud("GET", f"/proveedores/{e.prov.id}", cookies=e.co).texto
@@ -143,7 +143,7 @@ def test_crear_editar_y_baja_por_http_dejan_auditoria_con_el_usuario(e):
 
 
 def test_reposicion_muestra_proveedor_principal_y_costo(e):
-    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.producto.id, 1, 1234)])
+    servicio_compras.registrar_compra(e.prov.id, e.owner.id, [ItemCompra(e.producto.id, 1, 1234)], origen_pago="FUERA_DE_CAJA")
     escribir(e.ruta, "UPDATE productos SET stock_minimo = 50, stock_actual = 1")
 
     texto = solicitud("GET", "/reposicion", cookies=e.co).texto

@@ -44,6 +44,7 @@ def _comprar(e, condicion="CREDITO", vencimiento=None, clave=None, cantidad=5, c
     return servicio_compras.registrar_compra(
         e.prov.id, e.owner.id, [ItemCompra(e.p.id, cantidad, costo)],
         clave_idempotencia=clave, condicion_pago=condicion, fecha_vencimiento=vencimiento,
+        origen_pago="FUERA_DE_CAJA" if condicion == "CONTADO" else None,
     )
 
 

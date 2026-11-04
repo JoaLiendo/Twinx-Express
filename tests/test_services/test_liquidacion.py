@@ -60,7 +60,7 @@ def e(base_datos_temporal):
     servicio_compras.registrar_compra(prov.id, owner.id, [
         ItemCompra(yogur.id, 10, 500, (PartidaIngreso(4, _dia(3)), PartidaIngreso(6, _dia(60)))),
         ItemCompra(lejano.id, 5, 500, (PartidaIngreso(5, _dia(60)),)),
-    ])
+    ], origen_pago="FUERA_DE_CAJA")
     return type("E", (), {"ruta": base_datos_temporal, "owner": owner, "co": co, "ca": ca, "p": yogur, "lejano": lejano})
 
 
