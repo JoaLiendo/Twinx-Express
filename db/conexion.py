@@ -27,9 +27,19 @@ _TABLA_MIGRACIONES = """
 
 _MENSAJE_BASE_DATOS_OCUPADA = "Hay otra operación en curso. Intentá nuevamente en unos segundos."
 _MENSAJE_VALOR_FUERA_DE_RANGO = "Hay un valor numérico fuera del rango admitido."
+_MENSAJE_ERROR_BASE_DATOS = "Error al operar sobre la base de datos."
 
 
 ConexionBD = sqlite3.Connection
+
+
+def _error_de_base(error: sqlite3.Error) -> ErrorBaseDatos:
+    """El texto de sqlite3 (nombres de tablas y columnas) queda en la excepción y en el log, no en lo que ve
+    el usuario. Un `RAISE` de trigger es la excepción: ese texto lo escribimos nosotros, en español."""
+    es_de_trigger = getattr(error, "sqlite_errorname", None) == "SQLITE_CONSTRAINT_TRIGGER"
+    return ErrorBaseDatos(
+        f"Error al operar sobre la base de datos: {error}", None if es_de_trigger else _MENSAJE_ERROR_BASE_DATOS
+    )
 """Tipo de la conexión que entrega `obtener_conexion`: los servicios lo usan para anotar los
 parámetros `conexion` de sus funciones auxiliares sin importar `sqlite3` (solo `db/` lo hace)."""
 
@@ -98,11 +108,11 @@ def obtener_conexion(*, inmediata: bool = False) -> Generator[sqlite3.Connection
             logger.warning("Contención real de escritura en la base de datos: %s", error)
             raise ErrorBaseDatos(_MENSAJE_BASE_DATOS_OCUPADA) from error
         logger.error("Error de base de datos, se revirtió la transacción: %s", error)
-        raise ErrorBaseDatos(f"Error al operar sobre la base de datos: {error}") from error
+        raise _error_de_base(error) from error
     except sqlite3.Error as error:
         conexion.rollback()
         logger.error("Error de base de datos, se revirtió la transacción: %s", error)
-        raise ErrorBaseDatos(f"Error al operar sobre la base de datos: {error}") from error
+        raise _error_de_base(error) from error
     except OverflowError as error:
         # Un entero de Python que SQLite no puede representar (más de 64 bits) al enlazar un
         # parámetro: dato inválido del usuario, no un fallo de la base. Se revierte y se informa.

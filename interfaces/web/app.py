@@ -21,13 +21,13 @@ from urllib.parse import quote
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from config import DIRECTORIO_BACKUPS, DIRECTORIO_IMAGENES_PRODUCTOS, SEMBRAR_CATALOGO_INICIAL
 from excepciones import ErrorAplicacion, NoAutenticadoError, PermisoDenegadoError
+from interfaces.web.errores import MENSAJE_500, respuesta_error
 from interfaces.web.plantillas import templates
 from interfaces.web.rutas import (
     autenticacion,
@@ -59,6 +59,7 @@ logger = logging.getLogger(__name__)
 
 _METODOS_DE_LECTURA = {"GET", "HEAD", "OPTIONS"}
 _RUTAS_CON_BLOQUEO_PROPIO = {backup.RUTA_CREAR_BACKUP, caja.RUTA_CERRAR_CAJA}
+_MENSAJE_BACKUP_EN_CURSO = "Hay un backup en curso. Probá de nuevo en unos segundos."
 
 DIRECTORIO_WEB = Path(__file__).resolve().parent
 
@@ -141,10 +142,7 @@ async def bloquear_escrituras_durante_backup(request: Request, call_next):
         return await call_next(request)
 
     if not control_escrituras.permitir_escritura_de_negocio():
-        return JSONResponse(
-            status_code=503,
-            content={"error": "Hay un backup en curso. Probá de nuevo en unos segundos."},
-        )
+        return respuesta_error(request, 503, _MENSAJE_BACKUP_EN_CURSO, detalle=_MENSAJE_BACKUP_EN_CURSO)
     try:
         return await call_next(request)
     finally:
@@ -206,10 +204,12 @@ async def manejar_error_de_aplicacion(request: Request, exc: ErrorAplicacion) ->
     de vuelta a la página de origen para el resto. Único lugar de la
     capa web que atrapa estas excepciones.
     """
+    # V1.17: `ErrorBaseDatos` separa el detalle técnico de lo que se puede mostrar.
+    mensaje = getattr(exc, "mensaje_usuario", str(exc))
     if request.url.path.startswith("/api/"):
         # `codigo` (si la excepción lo define) le permite al POS reaccionar a un caso puntual, ej. pedir
         # la autorización para vender mercadería vencida (V1.12-D).
-        contenido = {"error": str(exc)}
+        contenido = {"error": mensaje}
         if getattr(exc, "codigo", None):
             contenido["codigo"] = exc.codigo
         if getattr(exc, "motivos", None):
@@ -217,15 +217,21 @@ async def manejar_error_de_aplicacion(request: Request, exc: ErrorAplicacion) ->
             contenido["motivos"] = exc.motivos
         return JSONResponse(status_code=422, content=contenido)
     referer = request.headers.get("referer", "/")
-    return redireccionar_con_mensaje(referer, "error", str(exc))
+    return redireccionar_con_mensaje(referer, "error", mensaje)
 
 
 @app.exception_handler(RequestValidationError)
 async def manejar_error_de_validacion(request: Request, exc: RequestValidationError) -> Response:
-    """Datos mal formados en la API JSON del POS -> mensaje claro, no un 500."""
-    if request.url.path.startswith("/api/"):
-        return JSONResponse(status_code=422, content={"error": "Los datos enviados no son válidos."})
-    return await request_validation_exception_handler(request, exc)
+    """Datos mal formados -> mensaje claro. Nunca el detalle de FastAPI: repite los valores recibidos."""
+    return respuesta_error(request, 422, "Los datos enviados no son válidos.")
+
+
+@app.exception_handler(Exception)
+async def manejar_error_inesperado(request: Request, exc: Exception) -> Response:
+    """Lo que nadie tradujo: un defecto, no un error del usuario. Se registra acá para que la traza quede en
+    el log persistente; la ruta va sin la query, que puede traer datos de quien navega."""
+    logger.error("Error no controlado en %s %s", request.method, request.url.path, exc_info=exc)
+    return respuesta_error(request, 500, MENSAJE_500)
 
 
 if __name__ == "__main__":

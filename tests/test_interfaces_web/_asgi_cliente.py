@@ -85,6 +85,8 @@ def solicitud(
     formulario: dict[str, str | list[str]] | None = None,
     archivos: dict[str, tuple[str, bytes]] | None = None,
     json_body: object | None = None,
+    headers: dict[str, str] | None = None,
+    tolerar_error_servidor: bool = False,
 ) -> RespuestaHttp:
     """Ejecuta una request HTTP real contra la app ASGI, en memoria.
 
@@ -109,25 +111,30 @@ def solicitud(
     `POST /api/ventas` (Fase 5A), que recibe un `VentaEntrada` por
     JSON, no un `<form>`. Es mutuamente excluyente con `formulario`/
     `archivos`: si se pasa `json_body`, se usa ese cuerpo.
+
+    `headers` agrega cabeceras (ej. el `Accept` de un navegador). Con
+    `tolerar_error_servidor` se devuelve la respuesta de un 500: Starlette
+    la envía y después relanza la excepción para el servidor, que acá es
+    este mismo helper.
     """
     ruta, _, query = path.partition("?")
 
-    headers: list[tuple[bytes, bytes]] = []
+    cabeceras: list[tuple[bytes, bytes]] = [(clave.encode(), valor.encode()) for clave, valor in (headers or {}).items()]
     if cookies:
         valor_cookie = "; ".join(f"{clave}={valor}" for clave, valor in cookies.items())
-        headers.append((b"cookie", valor_cookie.encode()))
+        cabeceras.append((b"cookie", valor_cookie.encode()))
 
     cuerpo = b""
     if json_body is not None:
         cuerpo = json.dumps(json_body).encode("utf-8")
-        headers.append((b"content-type", b"application/json"))
+        cabeceras.append((b"content-type", b"application/json"))
     elif archivos is not None:
         cuerpo, content_type = _construir_cuerpo_multipart(formulario, archivos)
-        headers.append((b"content-type", content_type.encode()))
+        cabeceras.append((b"content-type", content_type.encode()))
     elif formulario is not None:
         cuerpo = urlencode(formulario, doseq=True).encode()
-        headers.append((b"content-type", b"application/x-www-form-urlencoded"))
-    headers.append((b"content-length", str(len(cuerpo)).encode()))
+        cabeceras.append((b"content-type", b"application/x-www-form-urlencoded"))
+    cabeceras.append((b"content-length", str(len(cuerpo)).encode()))
 
     scope = {
         "type": "http",
@@ -135,7 +142,7 @@ def solicitud(
         "path": ruta,
         "raw_path": ruta.encode(),
         "query_string": query.encode(),
-        "headers": headers,
+        "headers": cabeceras,
         "client": ("test", 1),
         "server": ("test", 80),
         "scheme": "http",
@@ -165,5 +172,9 @@ def solicitud(
             if not mensaje.get("more_body", False):
                 respuesta_completa.set()
 
-    asyncio.run(app(scope, receive, send))
+    try:
+        asyncio.run(app(scope, receive, send))
+    except Exception:
+        if not tolerar_error_servidor or resultado["status"] is None:
+            raise
     return RespuestaHttp(status=resultado["status"], headers=resultado["headers"], cuerpo=resultado["cuerpo"])

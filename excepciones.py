@@ -15,7 +15,15 @@ class ErrorBaseDatos(ErrorAplicacion):
 
     Traduce errores de bajo nivel de sqlite3 en un error de dominio,
     para que las capas superiores no dependan de sqlite3.
+
+    `str()` conserva el detalle técnico para el diagnóstico; `mensaje_usuario`
+    es lo único que puede llegar a una pantalla o a la API. Sin un mensaje
+    propio coinciden: quien lanza el error ya escribió un texto para mostrar.
     """
+
+    def __init__(self, mensaje: str, mensaje_usuario: str | None = None) -> None:
+        super().__init__(mensaje)
+        self.mensaje_usuario = mensaje_usuario or mensaje
 
 
 class ProductoNoEncontradoError(ErrorAplicacion):
