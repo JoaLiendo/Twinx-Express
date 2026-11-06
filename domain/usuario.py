@@ -17,6 +17,26 @@ from excepciones import DatosInvalidosError, PermisoDenegadoError
 
 ROLES_VALIDOS = frozenset({"OWNER", "CASHIER"})
 
+# El máximo acota el costo de PBKDF2 ante una entrada desmedida; cualquier frase razonable entra.
+LARGO_MINIMO_PASSWORD = 10
+LARGO_MAXIMO_PASSWORD = 128
+
+
+def validar_password(password: str) -> None:
+    """Política de contraseñas nuevas (V1.17): solo largo, sin combinaciones obligatorias, para que una
+    frase larga y fácil de recordar valga. No se aplica al iniciar sesión: una cuenta anterior a esta
+    regla sigue entrando con su contraseña. El mensaje nunca incluye la contraseña.
+
+    Raises:
+        DatosInvalidosError: si está vacía, es solo espacios o su largo queda fuera de los límites.
+    """
+    if not password or not password.strip():
+        raise DatosInvalidosError("La contraseña no puede estar vacía.")
+    if len(password) < LARGO_MINIMO_PASSWORD:
+        raise DatosInvalidosError(f"La contraseña debe tener al menos {LARGO_MINIMO_PASSWORD} caracteres.")
+    if len(password) > LARGO_MAXIMO_PASSWORD:
+        raise DatosInvalidosError(f"La contraseña no puede superar los {LARGO_MAXIMO_PASSWORD} caracteres.")
+
 
 @dataclass
 class Usuario:
