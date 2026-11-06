@@ -6,7 +6,7 @@ Política uniforme, la misma del catálogo de productos (`services.servicio_expo
 (nunca filas armadas concatenando). Los importes salen como texto decimal simple ("150.50", ver
 `domain.dinero.centavos_a_texto`), no con el formato localizado de pantalla. Cada exportación devuelve TODO el
 conjunto filtrado -- no la página visible --, con los mismos filtros y las mismas consultas que la pantalla de
-origen; todo se genera en memoria.
+origen. Se genera en memoria, salvo la auditoría (V1.17), que crece sin tope y sale de a lotes.
 
 PROTECCIÓN CONTRA INYECCIÓN DE FÓRMULAS: un texto que empiece con `=`, `+`, `-`, `@` (o tabulación / retorno de
 carro) lo interpretaría como fórmula Excel/LibreOffice al abrir el archivo. `domain.celdas_seguras.neutralizar_texto`
@@ -16,13 +16,16 @@ Solo se tocan los textos: los números que generamos (`numero`, `dinero`) pasan 
 
 import csv
 import io
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
+from itertools import chain
 
+from domain.auditoria import EntradaAuditoria
 from domain.celdas_seguras import Numero, neutralizar_texto
 from domain.dinero import centavos_a_texto
 from domain.movimiento_stock import etiqueta_de_tipo
 from domain.reportes_operativos import FilaPerdida, ProductoRotacion
 from services import (
+    servicio_auditoria,
     servicio_compras,
     servicio_deuda_proveedores,
     servicio_movimientos_stock,
@@ -51,6 +54,21 @@ def generar_csv(encabezados: Sequence[str], filas: Iterable[Sequence[str | None]
     for fila in filas:
         escritor.writerow([_celda(valor) for valor in fila])
     return buffer.getvalue().encode("utf-8-sig")
+
+
+def _renglones(filas: Iterable[Sequence[str]]) -> bytes:
+    buffer = io.StringIO()
+    csv.writer(buffer).writerows(filas)
+    return buffer.getvalue().encode("utf-8")
+
+
+def generar_csv_por_lotes(
+    encabezados: Sequence[str], lotes: Iterable[Iterable[Sequence[str | None]]]
+) -> Iterator[bytes]:
+    """Misma política que `generar_csv` (BOM una sola vez, celdas neutralizadas), un bloque por lote."""
+    yield "﻿".encode() + _renglones([encabezados])
+    for lote in lotes:
+        yield _renglones([_celda(valor) for valor in fila] for fila in lote)
 
 
 COLUMNAS_COMPRAS = (
@@ -212,3 +230,27 @@ def csv_perdidas(
     `costo_unitario`/`perdida_a_costo` vacíos y `costo_historico` = DESCONOCIDO: nunca con un costo inventado."""
     reporte = servicio_reportes.generar_reporte_perdidas(fecha_desde, fecha_hasta, producto_id, motivo)
     return generar_csv(COLUMNAS_PERDIDAS, (_fila_perdida(fila) for fila in reporte.filas))
+
+
+COLUMNAS_AUDITORIA = ("id", "fecha", "usuario_id", "usuario", "accion", "entidad", "entidad_id", "resumen")
+
+
+def _fila_auditoria(entrada: EntradaAuditoria) -> tuple[str | None, ...]:
+    return (
+        numero(entrada.id), entrada.fecha, numero(entrada.usuario_id), entrada.usuario_nombre_completo,
+        entrada.accion, entrada.entidad, numero(entrada.entidad_id), entrada.resumen,
+    )
+
+
+def csv_auditoria(
+    accion: str | None, usuario_id: int | None, fecha_desde: str | None, fecha_hasta: str | None
+) -> Iterator[bytes]:
+    """Las columnas propias de `auditoria` con el nombre del usuario resuelto: el mismo filtro de la pantalla,
+    sin su paginación. La tabla no guarda secretos (ver `domain.auditoria`).
+
+    El primer lote se trae acá y no al recorrer el resultado: un filtro inválido o una base no disponible
+    tienen que ser un error normal, antes de que la descarga ya haya empezado con un 200.
+    """
+    lotes = servicio_auditoria.lotes_para_exportar(accion, usuario_id, fecha_desde, fecha_hasta)
+    primero = next(lotes, [])
+    return generar_csv_por_lotes(COLUMNAS_AUDITORIA, ([_fila_auditoria(e) for e in lote] for lote in chain([primero], lotes)))

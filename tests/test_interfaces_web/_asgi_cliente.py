@@ -144,11 +144,15 @@ def solicitud(
 
     resultado: dict = {"status": None, "headers": [], "cuerpo": b""}
     ya_enviado = False
+    respuesta_completa = asyncio.Event()
 
     async def receive():
         nonlocal ya_enviado
         if ya_enviado:
-            return {"type": "http.request", "body": b"", "more_body": False}
+            # Como un servidor real: tras el cuerpo, `receive` espera y recién informa la desconexión al
+            # terminar la respuesta (`StreamingResponse` la escucha mientras envía).
+            await respuesta_completa.wait()
+            return {"type": "http.disconnect"}
         ya_enviado = True
         return {"type": "http.request", "body": cuerpo, "more_body": False}
 
@@ -158,6 +162,8 @@ def solicitud(
             resultado["headers"] = mensaje["headers"]
         elif mensaje["type"] == "http.response.body":
             resultado["cuerpo"] += mensaje.get("body", b"")
+            if not mensaje.get("more_body", False):
+                respuesta_completa.set()
 
     asyncio.run(app(scope, receive, send))
     return RespuestaHttp(status=resultado["status"], headers=resultado["headers"], cuerpo=resultado["cuerpo"])

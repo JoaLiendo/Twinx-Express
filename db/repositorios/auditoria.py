@@ -23,14 +23,10 @@ def registrar_en_conexion(
     )
 
 
-def listar(
-    accion: str | None = None,
-    usuario_id: int | None = None,
-    fecha_desde: str | None = None,
-    fecha_hasta: str | None = None,
-    limite: int = 200,
-) -> list[EntradaAuditoria]:
-    """Entradas de auditoría, la más reciente primero, con filtros opcionales.
+def _condiciones(
+    accion: str | None, usuario_id: int | None, fecha_desde: str | None, fecha_hasta: str | None
+) -> tuple[list[str], list[object]]:
+    """Filtros compartidos por el listado, el conteo y la exportación: los tres deben coincidir.
     `fecha_desde`/`fecha_hasta` son "YYYY-MM-DD" inclusivos."""
     condiciones = ["1 = 1"]
     parametros: list[object] = []
@@ -46,6 +42,10 @@ def listar(
     if fecha_hasta:
         condiciones.append("date(a.fecha) <= date(?)")
         parametros.append(fecha_hasta)
+    return condiciones, parametros
+
+
+def _consultar_entradas(condiciones: list[str], parametros: list[object], recorte: str) -> list[EntradaAuditoria]:
     consulta = f"""
         SELECT a.id, a.fecha, a.usuario_id, u.nombre_completo AS usuario_nombre_completo,
                a.accion, a.entidad, a.entidad_id, a.resumen
@@ -53,12 +53,56 @@ def listar(
         LEFT JOIN usuarios u ON u.id = a.usuario_id
         WHERE {" AND ".join(condiciones)}
         ORDER BY a.id DESC
-        LIMIT ?
+        {recorte}
     """
-    parametros.append(limite)
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta, parametros).fetchall()
     return [_entrada(f) for f in filas]
+
+
+def listar(
+    accion: str | None = None,
+    usuario_id: int | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    limite: int = 200,
+    desplazamiento: int = 0,
+) -> list[EntradaAuditoria]:
+    """Entradas de auditoría, la más reciente primero, con filtros opcionales. `limite`/`desplazamiento`
+    recortan la página en SQL: nunca se carga en memoria lo que no se muestra."""
+    condiciones, parametros = _condiciones(accion, usuario_id, fecha_desde, fecha_hasta)
+    return _consultar_entradas(condiciones, [*parametros, limite, desplazamiento], "LIMIT ? OFFSET ?")
+
+
+def contar(
+    accion: str | None = None,
+    usuario_id: int | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+) -> int:
+    """Total de entradas que cumplen los filtros."""
+    condiciones, parametros = _condiciones(accion, usuario_id, fecha_desde, fecha_hasta)
+    consulta = f"SELECT COUNT(*) FROM auditoria a WHERE {' AND '.join(condiciones)}"
+    with obtener_conexion() as conexion:
+        return conexion.execute(consulta, parametros).fetchone()[0]
+
+
+def listar_anteriores(
+    accion: str | None,
+    usuario_id: int | None,
+    fecha_desde: str | None,
+    fecha_hasta: str | None,
+    antes_de_id: int | None,
+    limite: int,
+) -> list[EntradaAuditoria]:
+    """Un lote de la exportación: las `limite` entradas siguientes a `antes_de_id` (`None` = desde la más
+    reciente). Avanza por id y no por `OFFSET`: cada lote cuesta lo mismo aunque la tabla sea grande, y una
+    operación registrada durante la descarga no corre las filas ni repite ninguna."""
+    condiciones, parametros = _condiciones(accion, usuario_id, fecha_desde, fecha_hasta)
+    if antes_de_id is not None:
+        condiciones.append("a.id < ?")
+        parametros.append(antes_de_id)
+    return _consultar_entradas(condiciones, [*parametros, limite], "LIMIT ?")
 
 
 def registrar(usuario_id: int | None, accion: str, entidad: str, entidad_id: int | None, resumen: str) -> None:
