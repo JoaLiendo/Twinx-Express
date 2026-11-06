@@ -94,7 +94,7 @@ def test_post_nombre_completo_vacio_muestra_error_y_no_crea_usuario(base_datos_t
     respuesta = solicitud(
         "POST",
         "/configuracion-inicial",
-        formulario={"nombre_completo": "", "nombre_usuario": "dueno1", "password": "clave-123"},
+        formulario={"nombre_completo": "", "nombre_usuario": "dueno1", "password": "clave-1234"},
         archivos={},
     )
 
@@ -112,7 +112,7 @@ def test_post_nombre_usuario_vacio_muestra_error_y_no_crea_usuario(base_datos_te
     respuesta = solicitud(
         "POST",
         "/configuracion-inicial",
-        formulario={"nombre_completo": "Dueño Prueba", "nombre_usuario": "", "password": "clave-123"},
+        formulario={"nombre_completo": "Dueño Prueba", "nombre_usuario": "", "password": "clave-1234"},
         archivos={},
     )
 
@@ -157,7 +157,7 @@ def test_post_nombre_usuario_duplicado_muestra_error_y_no_crea_segundo_owner(bas
         formulario={
             "nombre_completo": "Dueño Nuevo",
             "nombre_usuario": "cajero_existente",
-            "password": "clave-123",
+            "password": "clave-1234",
         },
     )
 

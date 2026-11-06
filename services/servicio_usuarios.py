@@ -26,7 +26,7 @@ from db.conexion import obtener_conexion
 from db.repositorios import auditoria as repositorio_auditoria
 from db.repositorios import sesiones as repositorio_sesiones
 from db.repositorios import usuarios as repositorio_usuarios
-from domain.usuario import Usuario
+from domain.usuario import Usuario, validar_password
 from excepciones import CredencialesInvalidasError, UltimoOwnerActivoError, UsuarioNoEncontradoError
 from services import servicio_auth
 
@@ -40,6 +40,7 @@ def crear_usuario(
     al construir `Usuario`; `NombreUsuarioDuplicadoError` se propaga
     desde el repositorio si `nombre_usuario` ya existe.
     """
+    validar_password(password)
     password_hash = servicio_auth.hashear_password(password)  # costoso: antes de tomar el lock
     usuario = Usuario(
         nombre_usuario=nombre_usuario,
@@ -85,6 +86,7 @@ def crear_primer_owner(nombre_usuario: str, nombre_completo: str, password: str)
     `db.repositorios.usuarios.crear_primer_owner`, nunca un simple
     chequeo previo en Python (ver auditoría de concurrencia de Stage D).
     """
+    validar_password(password)
     password_hash = servicio_auth.hashear_password(password)
     # Solo para validar los datos (campos no vacíos) antes de persistir,
     # mismo patrón que `crear_usuario`.
@@ -212,6 +214,7 @@ def resetear_password(usuario_id: int, password_nueva: str, actor_id: int | None
     RC4: en la misma transacción se cierran TODAS las sesiones abiertas de
     ese usuario (si la contraseña se reseteó porque alguien la conocía, una
     sesión ya abierta no puede seguir valiendo hasta que expire)."""
+    validar_password(password_nueva)
     password_hash = servicio_auth.hashear_password(password_nueva)  # costoso: antes de tomar el lock
     with obtener_conexion(inmediata=True) as conexion:
         _obtener_o_fallar_en_conexion(conexion, usuario_id)
@@ -240,6 +243,7 @@ def cambiar_password_propia(usuario_id: int, password_actual: str, password_nuev
     usuario_actual = _obtener_o_fallar(usuario_id)
     if not servicio_auth.verificar_password(password_actual, usuario_actual.password_hash):
         raise CredencialesInvalidasError("La contraseña actual es incorrecta.")
+    validar_password(password_nueva)
     password_hash = servicio_auth.hashear_password(password_nueva)
     with obtener_conexion(inmediata=True) as conexion:
         actualizado = repositorio_usuarios.actualizar_password_en_conexion(conexion, usuario_id, password_hash)
