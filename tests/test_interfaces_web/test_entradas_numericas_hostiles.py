@@ -187,6 +187,7 @@ CASOS = [
     ("perdidas_exportar", "GET", "/reportes/perdidas/exportar", {"producto_id": "{pid}"}, {"producto_id": "entero"}),
     ("productos_listado", "GET", "/productos", {"categoria_id": "1"}, {"categoria_id": "entero"}),
     ("auditoria_listado", "GET", "/auditoria", {"usuario_id": "1"}, {"usuario_id": "entero"}),
+    ("auditoria_exportar", "GET", "/auditoria/exportar", {"usuario_id": "1"}, {"usuario_id": "entero"}),
     ("historial_cliente", "GET", "/ventas/historial", {"cliente_id": "1"}, {"cliente_id": "entero"}),
     ("ventas_exportar", "GET", "/ventas/historial/exportar", {"cliente_id": "1"}, {"cliente_id": "entero"}),
     # V1.13
@@ -437,7 +438,7 @@ def test_la_importacion_con_celdas_hostiles_no_da_500_y_no_crea_nada(e, celda, p
 
 @pytest.mark.parametrize("valor", MONTOS_HOSTILES + ENTEROS_HOSTILES)
 @pytest.mark.parametrize("campo", ["fecha_desde", "fecha_hasta"])
-@pytest.mark.parametrize("ruta", ["/ventas/historial", "/reportes", "/compras", "/auditoria"])
+@pytest.mark.parametrize("ruta", ["/ventas/historial", "/reportes", "/compras", "/auditoria", "/auditoria/exportar"])
 def test_fechas_con_texto_numerico_hostil_no_dan_500(e, ruta, campo, valor):
     """Las fechas son texto libre (`YYYY-MM-DD`): un valor que no es fecha da un listado vacío, no un 500."""
     from urllib.parse import urlencode
@@ -494,7 +495,8 @@ def test_toda_ruta_con_campos_numericos_esta_cubierta_o_exenta_con_motivo():
     assert sin_cubrir == [], f"rutas con campos numéricos sin probar contra entradas hostiles: {sin_cubrir}"
 
 
-def test_auditoria_usuario_id_con_mas_de_4300_digitos_es_error_controlado(e):
+@pytest.mark.parametrize("ruta", ["/auditoria", "/auditoria/exportar"])
+def test_auditoria_usuario_id_con_mas_de_4300_digitos_es_error_controlado(e, ruta):
     """`int()` rechaza más de 4300 dígitos con `ValueError`: no debe llegar como 500."""
-    respuesta = solicitud("GET", "/auditoria?usuario_id=" + "9" * 5000, cookies=e.cookies)
+    respuesta = solicitud("GET", f"{ruta}?usuario_id=" + "9" * 5000, cookies=e.cookies)
     assert respuesta.status == 303

@@ -31,6 +31,7 @@
       <input id="fecha_hasta" type="date" name="fecha_hasta" value="{{ filtro.fecha_hasta }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
     </div>
     <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">Filtrar</button>
+    <a href="/auditoria/exportar{{ '?' ~ consulta_filtros if consulta_filtros else '' }}" class="rounded-lg border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-300 text-sm font-medium px-4 py-2">Exportar CSV</a>
   </form>
 
   {% if entradas %}
@@ -58,7 +59,14 @@
         </table>
       </div>
     </div>
-    <p class="text-xs text-slate-400 dark:text-slate-500">Se muestran las 200 operaciones más recientes que coinciden con el filtro.</p>
+    {% set base_enlace = '/auditoria?' ~ (consulta_filtros ~ '&' if consulta_filtros else '') ~ 'pagina=' %}
+    <nav id="paginacion-auditoria" class="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400" aria-label="Paginación">
+      <span>{{ total_entradas }} operaciones · página {{ pagina }} de {{ total_paginas }}</span>
+      <span class="flex gap-4">
+        {% if pagina > 1 %}<a href="{{ base_enlace }}{{ pagina - 1 }}" class="font-medium text-primary hover:text-primary-hover">← Anterior</a>{% endif %}
+        {% if pagina < total_paginas %}<a href="{{ base_enlace }}{{ pagina + 1 }}" class="font-medium text-primary hover:text-primary-hover">Siguiente →</a>{% endif %}
+      </span>
+    </nav>
   {% else %}
     {{ ui.estado_vacio("Sin registros", "No hay operaciones auditadas que coincidan con el filtro.") }}
   {% endif %}
