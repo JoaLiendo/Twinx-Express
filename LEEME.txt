@@ -230,6 +230,11 @@ que otro programa lo esta usando.
   3. Si el problema sigue, reinicia Windows y proba de nuevo. Si aun asi
      no funciona, pedi soporte.
 
+Si la ventana dice "TWINX EXPRESS YA ESTA ABIERTO", no es una falla: ya hay
+otra ventana de KioscoApp usando tus datos, y solo puede haber una a la vez.
+Segui trabajando en esa ventana, o cerrala antes de volver a abrir
+KioscoApp. Con KioscoApp abierto tampoco se puede restaurar un backup.
+
 Si en cambio la ventana dice "TWINX EXPRESS NO PUDO INICIAR", el problema
 NO es el puerto: es un error al abrir tus datos (por ejemplo, una base de
 datos danada). La ventana muestra la causa y donde estan tus datos y tus

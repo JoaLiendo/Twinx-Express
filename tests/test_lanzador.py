@@ -10,6 +10,7 @@ import threading
 
 import pytest
 
+import db.conexion as modulo_conexion
 import lanzador
 from config import ErrorMigracionDatos
 from excepciones import ErrorInicioServidor, ErrorRestore, PuertoOcupadoError
@@ -19,6 +20,13 @@ from excepciones import ErrorInicioServidor, ErrorRestore, PuertoOcupadoError
 def _sin_log_real(monkeypatch):
     """Los tests del lanzador nunca deben crear el archivo de log real."""
     monkeypatch.setattr(lanzador, "_configurar_logging", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def _sin_base_real(tmp_path, monkeypatch):
+    """El lanzador toma la instancia de la base activa: nunca la de `data/kiosco.db`, que además podría
+    estar en uso por una copia de la app abierta durante los tests."""
+    monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", tmp_path / "data" / "kiosco.db")
 
 
 def test_error_migracion_datos_no_imprime_traceback_y_muestra_mensaje_claro(monkeypatch, capsys):

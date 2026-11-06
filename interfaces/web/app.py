@@ -15,7 +15,7 @@ Para desarrollo con recarga automática ante cambios de código:
 
 import logging
 import threading
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from config import DIRECTORIO_BACKUPS, DIRECTORIO_IMAGENES_PRODUCTOS, SEMBRAR_CATALOGO_INICIAL
+from db import instancia_unica
 from excepciones import ErrorAplicacion, NoAutenticadoError, PermisoDenegadoError
 from interfaces.web.errores import MENSAJE_500, respuesta_error
 from interfaces.web.plantillas import templates
@@ -82,30 +83,37 @@ async def lifespan(app: FastAPI):
     `uvicorn --reload` reinicia en desarrollo), solo entre requests dentro
     del mismo proceso -- suficiente para el ejecutable single-process real
     de Twinx Express, que es el único caso que este bloque necesita cubrir.
+
+    Entre procesos coordina `db.instancia_unica`, antes que nada: migrar y
+    `recuperar_al_iniciar` solo son seguros siendo el único dueño de la base.
+    El lock se toma acá para cubrir cualquier arranque (uvicorn a mano, otro
+    puerto), no solo el del ejecutable.
     """
-    try:
-        servicio_backup.migrar_base_datos_con_backup_preventivo(DIRECTORIO_BACKUPS, control_escrituras)
-        # V1.16: un comprobante que quedó "enviando" cuando se cerró la app pasa a INCIERTO (solo base);
-        # su conciliación con ARCA corre después, en segundo plano, sin demorar el arranque.
-        servicio_facturacion.recuperar_al_iniciar()
-        if SEMBRAR_CATALOGO_INICIAL:
-            # Si falla, el error se propaga: el arranque se aborta y el operador ve el
-            # error en la consola (`lanzador.py`), en vez de seguir con un catálogo a medias.
-            servicio_catalogo_inicial.sembrar_si_corresponde()
-    except Exception as error:
-        # Uvicorn convierte cualquier fallo de lifespan en `SystemExit`, igual
-        # que un puerto ocupado: se deja la causa real en `app.state` para que
-        # el lanzador pueda distinguirlos (ver `lanzador.py`).
-        logger.critical("No se pudo iniciar la aplicación: %s", error, exc_info=True)
-        app.state.error_de_inicio = error
-        raise
-    threading.Thread(
-        target=servicio_backup.ejecutar_backup_automatico_si_corresponde,
-        args=(DIRECTORIO_BACKUPS, control_escrituras),
-        daemon=True,
-    ).start()
-    threading.Thread(target=servicio_notas.conciliar_y_aplicar, daemon=True).start()
-    yield
+    with ExitStack() as instancia:
+        try:
+            instancia.enter_context(instancia_unica.exclusiva())
+            servicio_backup.migrar_base_datos_con_backup_preventivo(DIRECTORIO_BACKUPS, control_escrituras)
+            # V1.16: un comprobante que quedó "enviando" cuando se cerró la app pasa a INCIERTO (solo base);
+            # su conciliación con ARCA corre después, en segundo plano, sin demorar el arranque.
+            servicio_facturacion.recuperar_al_iniciar()
+            if SEMBRAR_CATALOGO_INICIAL:
+                # Si falla, el error se propaga: el arranque se aborta y el operador ve el
+                # error en la consola (`lanzador.py`), en vez de seguir con un catálogo a medias.
+                servicio_catalogo_inicial.sembrar_si_corresponde()
+        except Exception as error:
+            # Uvicorn convierte cualquier fallo de lifespan en `SystemExit`, igual
+            # que un puerto ocupado: se deja la causa real en `app.state` para que
+            # el lanzador pueda distinguirlos (ver `lanzador.py`).
+            logger.critical("No se pudo iniciar la aplicación: %s", error, exc_info=True)
+            app.state.error_de_inicio = error
+            raise
+        threading.Thread(
+            target=servicio_backup.ejecutar_backup_automatico_si_corresponde,
+            args=(DIRECTORIO_BACKUPS, control_escrituras),
+            daemon=True,
+        ).start()
+        threading.Thread(target=servicio_notas.conciliar_y_aplicar, daemon=True).start()
+        yield
 
 
 app = FastAPI(title="Kiosco - Panel de Control", lifespan=lifespan)

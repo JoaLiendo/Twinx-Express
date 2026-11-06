@@ -29,6 +29,7 @@ from pathlib import Path
 
 import db.conexion as modulo_conexion
 from config import DIRECTORIO_DATA
+from db import instancia_unica
 from db.archivo_sqlite import leer_historia_fiscal, registrar_auditoria_en_archivo, verificar_archivo
 from domain.auditoria import ACCION_RESTORE, normalizar
 from domain.backup import TIPO_SEGURIDAD
@@ -140,6 +141,7 @@ def _proteger_estado_actual(directorio_data: Path, directorio_backups: Path) -> 
     return ruta
 
 
+@instancia_unica.exclusiva()
 def restaurar_desde_backup(
     ruta_zip,
     *,
@@ -153,6 +155,7 @@ def restaurar_desde_backup(
     base (por defecto, esta); el rollback pasa las de la versión anterior.
 
     Raises:
+        InstanciaEnUsoError: hay una instancia viva usando la base; no se toca nada.
         ErrorRestore: backup inválido o incompatible, o la base restaurada no
             pasó la verificación final (en ambos casos la instalación queda
             como estaba).

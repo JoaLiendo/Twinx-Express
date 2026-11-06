@@ -239,5 +239,8 @@ def migraciones_desconocidas() -> list[str]:
 if __name__ == "__main__":
     # Permite inicializar la base de datos manualmente:
     #   python -m db.conexion
+    from db import instancia_unica
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    inicializar_base_datos()
+    with instancia_unica.exclusiva():
+        inicializar_base_datos()

@@ -13,6 +13,9 @@ logs/
 # Backups generados por la app (ZIP con la base de datos y las imágenes)
 backups/
 
+# Archivos de lock de instancia (ver db/instancia_unica.py)
+locks/
+
 # Archivos de Python
 __pycache__/
 *.py[cod]

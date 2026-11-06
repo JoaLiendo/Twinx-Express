@@ -7,7 +7,7 @@ import time
 import webbrowser
 import traceback
 
-from excepciones import ErrorInicioServidor, ErrorRestore, PuertoOcupadoError
+from excepciones import ErrorBaseDatos, ErrorInicioServidor, ErrorRestore, InstanciaEnUsoError, PuertoOcupadoError
 
 if getattr(sys, 'frozen', False):
     base_dir = sys._MEIPASS
@@ -62,6 +62,18 @@ def _resumen_de_causa(causa: BaseException | None) -> str:
 
 
 def _importar_y_ejecutar_servidor(evento_servidor_listo):
+    """Arranca el servidor siendo el único dueño de la base, desde antes de
+    importar la app hasta que el servidor termina: una segunda instancia se
+    detiene acá, sin haber tocado nada y sin el traceback que uvicorn imprime
+    cuando falla el lifespan. El import es diferido por el mismo motivo que en
+    `_importar_restaurar_desde_backup`."""
+    from db import instancia_unica
+
+    with instancia_unica.exclusiva():
+        _ejecutar_servidor(evento_servidor_listo)
+
+
+def _ejecutar_servidor(evento_servidor_listo):
     """Importa la app y arranca uvicorn.
 
     Aislado en su propia función para poder reemplazarla en tests sin
@@ -86,8 +98,8 @@ def _importar_y_ejecutar_servidor(evento_servidor_listo):
     import uvicorn
 
     # Antes de importar la app y correr el lifespan (migraciones, seed, backup):
-    # una segunda instancia no debe tocar la base de datos si el puerto ya
-    # está en uso, y el mensaje correcto es el de puerto ocupado.
+    # con el puerto tomado por otro programa el servidor no podría escuchar,
+    # y el mensaje correcto es el de puerto ocupado.
     if _puerto_ocupado():
         raise PuertoOcupadoError(f"El puerto {PUERTO} ya está en uso.")
 
@@ -147,7 +159,8 @@ def iniciar_servidor(evento_servidor_listo, ejecutar=_importar_y_ejecutar_servid
 
     Un conflicto de migración de datos (`config.ErrorMigracionDatos`) ya
     trae un mensaje pensado para el usuario final: se muestra tal cual,
-    sin traceback técnico. Un puerto ocupado (`PuertoOcupadoError`) y un
+    sin traceback técnico. Otra instancia sobre la misma base
+    (`InstanciaEnUsoError`), un puerto ocupado (`PuertoOcupadoError`) y un
     fallo real de arranque (`ErrorInicioServidor`: base de datos,
     migración, seed o backup) se distinguen y cada uno muestra su propio
     mensaje. Cualquier otro error es inesperado y conserva el diagnóstico
@@ -156,12 +169,17 @@ def iniciar_servidor(evento_servidor_listo, ejecutar=_importar_y_ejecutar_servid
     """
     try:
         ejecutar(evento_servidor_listo)
+    except InstanciaEnUsoError as error:
+        print("\n--- TWINX EXPRESS YA ESTÁ ABIERTO ---")
+        print(error)
+        print(f"Para seguir trabajando, usá esa ventana o entrá a {URL_APLICACION} desde el navegador.")
+        input("\nPresiona Enter para cerrar esta ventana...")
     except PuertoOcupadoError:
         print("\n--- EL SERVIDOR NO PUDO INICIAR ---")
         print(f"Twinx Express ya está ejecutándose o el puerto {PUERTO} está ocupado por otro programa.")
         print(f"Si ya lo tenés abierto, usá esa ventana o entrá a {URL_APLICACION} desde el navegador.")
         input("\nPresiona Enter para cerrar esta ventana...")
-    except ErrorInicioServidor as error:
+    except (ErrorInicioServidor, ErrorBaseDatos) as error:
         print("\n--- TWINX EXPRESS NO PUDO INICIAR ---")
         print(f"Causa: {error}")
         _imprimir_orientacion_de_datos()
@@ -225,28 +243,36 @@ def _importar_restaurar_desde_backup():
     return restaurar_desde_backup
 
 
+def _restore_rechazado_por_aplicacion_abierta():
+    print("\n--- NO SE RESTAURÓ NADA ---")
+    print("Twinx Express está abierto. Cerralo (y su ventana negra) y volvé a intentar.")
+    input("\nPresiona Enter para cerrar esta ventana...")
+    return 1
+
+
 def _modo_restore(ruta_zip, obtener_ejecutar_restore, aplicacion_en_uso=_puerto_ocupado):
     """Ejecuta `KioscoApp.exe --restore <ruta_zip>`: no inicia FastAPI
     ni abre el navegador, solo corre la restauración y termina.
 
-    Se niega si la aplicación está abierta (puerto en uso): reemplazar los
-    datos mientras el servidor escribe los dañaría. Un ZIP inválido
-    (`ErrorRestore`) o un conflicto de datos ya detectado por `config.py`
-    (`ErrorMigracionDatos`) muestran un mensaje claro sin traceback;
-    cualquier otro error es inesperado y conserva el diagnóstico completo.
-    Devuelve el código de salida del proceso (0 éxito, 1 error).
+    Se niega si la aplicación está abierta: reemplazar los datos mientras el
+    servidor escribe los dañaría. Lo que protege es el lock de instancia que
+    toma el restore; el puerto queda para una versión anterior abierta, que
+    no toma ese lock. Un ZIP inválido (`ErrorRestore`) o un conflicto de datos
+    ya detectado por `config.py` (`ErrorMigracionDatos`) muestran un mensaje
+    claro sin traceback; cualquier otro error es inesperado y conserva el
+    diagnóstico completo. Devuelve el código de salida del proceso (0 éxito,
+    1 error).
     """
     if aplicacion_en_uso():
-        print("\n--- NO SE RESTAURÓ NADA ---")
-        print("Twinx Express está abierto. Cerralo (y su ventana negra) y volvé a intentar.")
-        input("\nPresiona Enter para cerrar esta ventana...")
-        return 1
+        return _restore_rechazado_por_aplicacion_abierta()
     try:
         _configurar_logging()
         ejecutar_restore = obtener_ejecutar_restore()
         resultado = ejecutar_restore(ruta_zip)
+    except InstanciaEnUsoError:
+        return _restore_rechazado_por_aplicacion_abierta()
     except Exception as error:
-        if isinstance(error, ErrorRestore) or type(error).__name__ == "ErrorMigracionDatos":
+        if isinstance(error, (ErrorRestore, ErrorBaseDatos)) or type(error).__name__ == "ErrorMigracionDatos":
             print("\n--- ERROR AL RESTAURAR EL BACKUP ---")
             print(str(error))
         else:
@@ -299,9 +325,11 @@ def _ejecutar_mantenimiento(comando, argumento, aplicacion_en_uso=_puerto_ocupad
         elif comando == "--habilitar-produccion-fiscal":
             # V1.16: única puerta a ARCA producción. Exige escribir el CUIT del emisor y un certificado de
             # producción vigente de ese CUIT; queda registrado en la base y en la auditoría.
+            from db import instancia_unica
             from services.fiscal import servicio_tecnico
 
-            mensaje = servicio_tecnico.habilitar_produccion(argumento)
+            with instancia_unica.exclusiva():
+                mensaje = servicio_tecnico.habilitar_produccion(argumento)
         else:
             registro = servicio_actualizacion.versiones_conservadas()
             lineas = [f"Instalación: {registro.instalacion or 'sin registrar'} (activa: {registro.activa or '-'})"]

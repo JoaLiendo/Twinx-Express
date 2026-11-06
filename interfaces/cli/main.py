@@ -10,11 +10,12 @@ un mensaje claro en vez de un stack trace.
 
 import logging
 
+from db import instancia_unica
 from db.conexion import inicializar_base_datos
 from domain.dinero import centavos_a_texto, texto_a_centavos
 from domain.producto import Producto
 from domain.venta import TIPOS_PAGO_VALIDOS, ItemVenta
-from excepciones import DatosInvalidosError, ErrorAplicacion
+from excepciones import DatosInvalidosError, ErrorAplicacion, InstanciaEnUsoError
 from services import servicio_caja, servicio_stock, servicio_ventas
 
 logger = logging.getLogger(__name__)
@@ -292,8 +293,7 @@ def _ver_stock_critico() -> None:
 # --- Menú principal ---------------------------------------------------
 
 
-def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+def _menu_principal() -> None:
     inicializar_base_datos()
 
     try:
@@ -321,6 +321,15 @@ def main() -> None:
                 print("Opción inválida.")
     except (KeyboardInterrupt, EOFError):
         print("\n¡Hasta luego!")
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    try:
+        with instancia_unica.exclusiva():
+            _menu_principal()
+    except InstanciaEnUsoError as error:
+        print(error)
 
 
 if __name__ == "__main__":

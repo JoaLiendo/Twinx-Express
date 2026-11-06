@@ -24,6 +24,7 @@ from datetime import datetime
 from pathlib import Path
 
 import config
+from db import instancia_unica
 from db.conexion import inicializar_base_datos, migraciones_desconocidas
 from domain.auditoria import ACCION_ROLLBACK
 from domain.backup import TIPO_PRE_UPDATE
@@ -133,10 +134,12 @@ def _podar_versiones(registro: Registro) -> None:
         logger.info("Versión archivada descartada: %s", sobrante.version)
 
 
+@instancia_unica.exclusiva()
 def actualizar(instalacion: Path, programa_nuevo: Path, aplicacion_en_uso: bool) -> ResultadoActualizacion:
     """Actualiza la instalación a la versión de `programa_nuevo` (la que corre).
 
     Raises:
+        InstanciaEnUsoError: hay una instancia viva usando la base; no se toca nada.
         ErrorActualizacion: con el estado en que quedó todo. Antes del backup
             pre-update validado no se modifica nada.
     """
@@ -223,10 +226,12 @@ def _volver_atras_tras_migracion_fallida(
     registro_versiones.guardar(registro)
 
 
+@instancia_unica.exclusiva()
 def rollback(version: str, programa_actual: Path, aplicacion_en_uso: bool) -> ResultadoRollback:
     """Vuelve a `version` (programa archivado + su backup pre-update).
 
     Raises:
+        InstanciaEnUsoError: hay una instancia viva usando la base; no se toca nada.
         ErrorActualizacion: si no se puede hacer con seguridad (no se toca
             nada) o, si el fallo es después de restaurar la base, con las
             instrucciones para terminar a mano.

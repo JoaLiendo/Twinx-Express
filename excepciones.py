@@ -74,6 +74,11 @@ class PuertoOcupadoError(ErrorAplicacion):
     Twinx Express, u otro programa."""
 
 
+class InstanciaEnUsoError(ErrorAplicacion):
+    """Otro proceso de Twinx Express es el dueño de esta base de datos (ver
+    `db.instancia_unica`). El mensaje se muestra tal cual al operador."""
+
+
 class ErrorInicioServidor(ErrorAplicacion):
     """El servidor no pudo iniciar por un fallo real de arranque (base de
     datos inaccesible o corrupta, migración, seed o backup fallidos), no
