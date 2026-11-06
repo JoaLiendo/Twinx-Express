@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ mensaje }} · Twinx Express</title>
+  {# Sin `base.html` ni recursos externos: tiene que verse aunque la base o la red sean lo que falló. #}
+  <style>
+    :root { color-scheme: light dark; --fondo: #f8fafc; --tarjeta: #ffffff; --borde: #e2e8f0; --texto: #0f172a; --suave: #64748b; --acento: #0f172a; --sobre-acento: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      :root { --fondo: #020617; --tarjeta: #0f172a; --borde: #1e293b; --texto: #f1f5f9; --suave: #94a3b8; --acento: #f1f5f9; --sobre-acento: #0f172a; }
+    }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: var(--fondo); color: var(--texto); font-family: system-ui, sans-serif; }
+    main { max-width: 24rem; width: 100%; text-align: center; background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 1rem; padding: 2rem; box-sizing: border-box; }
+    .codigo { font-size: 2.25rem; font-weight: 700; margin: 0 0 .5rem; color: var(--suave); }
+    .mensaje { font-weight: 600; margin: 0 0 .5rem; }
+    .detalle { font-size: .875rem; color: var(--suave); margin: 0 0 1.5rem; }
+    a { display: inline-block; margin-top: 1rem; background: var(--acento); color: var(--sobre-acento); text-decoration: none; font-size: .875rem; font-weight: 600; padding: .625rem 1rem; border-radius: .5rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="codigo">{{ codigo }}</p>
+    <p class="mensaje">{{ mensaje }}</p>
+    {% if detalle %}<p class="detalle">{{ detalle }}</p>{% endif %}
+    <a href="/">Volver al inicio</a>
+  </main>
+</body>
+</html>
