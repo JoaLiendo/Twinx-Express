@@ -804,8 +804,10 @@ aunque ARCA no responda, pero solo es factura cuando ARCA devolvió el CAE (o se
   el cliente V1.14 (persona/empresa no decide la condición); sin cliente, consumidor final anónimo solo
   debajo del umbral vigente. Snapshot inmutable de emisor, receptor, líneas e importes.
 - **Numeración e incertidumbre**: el número sale de `FECompUltimoAutorizado`; se persiste ENVIANDO antes del
-  `FECAESolicitar`. Si el pedido no salió, vuelve a PENDIENTE; si salió y no hubo respuesta, queda INCIERTO,
-  que se resuelve con `FECompConsultar` (recupera el CAE o libera el número), nunca reenviando. Un incierto
+  `FECAESolicitar`. Si el pedido no salió, vuelve a PENDIENTE; si salió y no hubo respuesta (o ARCA devolvió
+  un error interno 500/501/502), queda INCIERTO y conserva su número: una consulta negativa no prueba que ARCA
+  no lo procesó. Se resuelve con `FECompConsultar` o, por decisión del dueño, reenviando el mismo número y
+  fecha; nunca se avanza a N+1 con N sin resolver, porque ARCA no autoriza dos veces un número. Un incierto
   bloquea su secuencia; al arrancar, todo ENVIANDO pasa a INCIERTO y se concilia en segundo plano. La base
   exige número único por ambiente+CUIT+punto de venta+tipo y una sola factura viva por venta.
 - **Documentos**: factura A4, ticket térmico de 80 mm y PDF (escritor propio) desde el mismo modelo, con CAE,

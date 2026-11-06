@@ -34,6 +34,8 @@ NS_WSFE = "http://ar.gov.afip.dif.FEV1/"
 ERROR_SIN_RESULTADOS = 602
 # Errores de credenciales: ARCA no procesó nada (el Ticket no validó o no incluye al CUIT).
 ERRORES_DE_CREDENCIALES = frozenset({600, 601})
+# Errores internos de infraestructura de ARCA: no dicen si el comprobante se asentó.
+ERRORES_INTERNOS = frozenset({500, 501, 502})
 
 TABLAS_PARAMETROS = {
     "TiposCbte": "CbteTipo",
@@ -88,7 +90,11 @@ def _entero(texto: str | None, campo: str) -> int:
 
 
 def xml_solicitud(solicitud: SolicitudAutorizacion, caea: bool = False) -> str:
-    """`FeCabReq` + `FeDetReq` de una solicitud (sin credenciales)."""
+    """`FeCabReq` + `FeDetReq` de una solicitud (sin credenciales).
+
+    En el WSDL `FECAEADetRequest` extiende `FEDetRequest`: comparte su orden (ImpTrib antes de ImpIVA, aunque
+    el ejemplo XML del manual muestre lo inverso) y agrega CAEA y CbteFchHsGen al final.
+    """
     imp = solicitud.importes
     partes = [
         f"<FeCabReq><CantReg>1</CantReg><PtoVta>{solicitud.punto_venta}</PtoVta><CbteTipo>{solicitud.tipo}</CbteTipo></FeCabReq>",
@@ -160,6 +166,12 @@ class ClienteWSFE:
                 raise ErrorWSAA(f"ARCA no validó las credenciales en {operacion}: {errores[0].mensaje[:200]}")
             raise ErrorWSFE(operacion, errores)
 
+    @staticmethod
+    def _exigir_sin_error_interno(errores: tuple[MensajeARCA, ...]) -> None:
+        """Tras enviar una autorización, un error interno no es un rechazo: el resultado sigue sin saberse."""
+        if any(e.codigo in ERRORES_INTERNOS for e in errores):
+            raise ErrorWSFE("FECAESolicitar", errores)
+
     def dummy(self) -> EstadoServidores:
         resultado = self._llamar("FEDummy", con_auth=False)
         return EstadoServidores(
@@ -217,6 +229,7 @@ class ClienteWSFE:
             if errores:
                 if any(e.codigo in ERRORES_DE_CREDENCIALES for e in errores):
                     raise ErrorWSAA(f"ARCA no validó las credenciales: {errores[0].mensaje[:200]}")
+                self._exigir_sin_error_interno(errores)
                 return RespuestaAutorizacion("R", None, None, None, None, None, errores=errores, eventos=eventos)
             raise RespuestaARCAInvalidaError("FECAESolicitar no devolvió cabecera ni detalle.")
         if _entero(soap.valor(cabecera, "PtoVta"), "punto de venta") != solicitud.punto_venta or _entero(
@@ -226,6 +239,8 @@ class ClienteWSFE:
         resultado_det = soap.valor(detalle, "Resultado")
         if resultado_det not in ("A", "R"):
             raise RespuestaARCAInvalidaError(f"Resultado de autorización desconocido: {resultado_det!r}.")
+        if resultado_det == "R":
+            self._exigir_sin_error_interno(errores)
         numero = _entero(soap.valor(detalle, "CbteDesde"), "número")
         if numero != solicitud.numero:
             raise RespuestaARCAInvalidaError("ARCA respondió por otro número de comprobante.")

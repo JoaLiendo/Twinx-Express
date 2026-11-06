@@ -136,7 +136,8 @@ Fuera de alcance: actualización por Internet, integración con APIs de nube, ro
 - **V1.16-C** (042): cliente WSFEv1 según el WSDL vigente, caché de tablas `FEParam*` por ambiente con fuente y
   fecha, validación del punto de venta contra ARCA, gateway real y ARCA falso determinista para tests.
 - **V1.16-D**: CAE con número de `FECompUltimoAutorizado`, ENVIANDO persistido antes del envío, INCIERTO
-  conciliado con `FECompConsultar` (nunca reenvío ciego), bloqueo de la secuencia, recuperación al arrancar.
+  conciliado con `FECompConsultar` (conserva su número; solo el dueño puede reenviar ese mismo número, nunca
+  N+1), bloqueo de la secuencia, recuperación al arrancar.
 - **V1.16-E**: POS con estado fiscal, QR oficial, factura A4/80 mm/PDF, ticket interno «no válido como
   factura», historial y detalle, panel del dueño, permisos; `--habilitar-produccion-fiscal` por consola.
 - **V1.16-F** (043): nota de crédito total con cancelación comercial aplicada una única vez y solo con la NC

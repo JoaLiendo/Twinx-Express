@@ -1,6 +1,8 @@
 """V1.16-C: cliente WSFEv1 (respuestas SOAP con la forma del WSDL vigente), validación del punto de venta
 y caché de tablas de ARCA. Nunca se llama a ARCA real."""
 
+import dataclasses
+import re
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -137,6 +139,42 @@ class TestFECAESolicitar:
         cuerpo = transporte.pedidos[0][1]
         assert cuerpo.index("<CbtesAsoc>") < cuerpo.index("<Iva>")
         assert "<CbteAsoc><Tipo>6</Tipo><PtoVta>3</PtoVta><Nro>7</Nro>" in cuerpo
+
+    def test_orden_exacto_de_fecaedetrequest(self):
+        """Secuencia de `FEDetRequest` del WSDL de homologación (consultado el 06/11/2026)."""
+        xml = wsfe.xml_solicitud(_solicitud(tipo=8, asociados=(ComprobanteAsociado(6, 3, 7, uf.CUIT_EMISOR, "20261101"),)))
+        assert re.findall(r"<(\w+)>", xml[xml.index("<FECAEDetRequest>") + 17 : xml.index("</FECAEDetRequest>")]) == [
+            "Concepto", "DocTipo", "DocNro", "CbteDesde", "CbteHasta", "CbteFch", "ImpTotal", "ImpTotConc", "ImpNeto",
+            "ImpOpEx", "ImpTrib", "ImpIVA", "MonId", "MonCotiz", "CondicionIVAReceptorId",
+            "CbtesAsoc", "CbteAsoc", "Tipo", "PtoVta", "Nro", "Cuit", "CbteFch",
+            "Iva", "AlicIva", "Id", "BaseImp", "Importe",
+        ]
+
+    @pytest.mark.parametrize("codigo", [500, 501, 502])
+    def test_error_interno_sin_detalle_no_es_rechazo(self, codigo):
+        cliente, _ = _cliente(_sobre("FECAESolicitar", f"<Errors><Err><Code>{codigo}</Code><Msg>Interno</Msg></Err></Errors>"))
+        with pytest.raises(wsfe.ErrorWSFE, match=str(codigo)):
+            cliente.solicitar_cae(_solicitud())
+
+    @pytest.mark.parametrize("codigo", [500, 501, 502])
+    def test_error_interno_con_detalle_r_no_es_rechazo(self, codigo):
+        respuesta = _respuesta_cae(resultado="R").cuerpo.decode().replace(
+            "</FECAESolicitarResult>", f"<Errors><Err><Code>{codigo}</Code><Msg>Interno</Msg></Err></Errors></FECAESolicitarResult>"
+        )
+        cliente, _ = _cliente(RespuestaHTTP(200, respuesta.encode(), 5))
+        with pytest.raises(wsfe.ErrorWSFE, match=str(codigo)):
+            cliente.solicitar_cae(_solicitud())
+
+    def test_aprobado_con_error_interno_conserva_el_cae(self):
+        respuesta = _respuesta_cae().cuerpo.decode().replace(
+            "</FECAESolicitarResult>", "<Errors><Err><Code>500</Code><Msg>Interno</Msg></Err></Errors></FECAESolicitarResult>"
+        )
+        cliente, _ = _cliente(RespuestaHTTP(200, respuesta.encode(), 5))
+        assert cliente.solicitar_cae(_solicitud()).cae == "76123456789012"
+
+    def test_error_general_de_arca_sigue_siendo_rechazo(self):
+        cliente, _ = _cliente(_sobre("FECAESolicitar", "<Errors><Err><Code>10002</Code><Msg>Cantidad</Msg></Err></Errors>"))
+        assert cliente.solicitar_cae(_solicitud()).resultado == "R"
 
     def test_aprobado_con_observaciones(self):
         obs = "<Observaciones><Obs><Code>10217</Code><Msg>Observación informativa</Msg></Obs></Observaciones>"
@@ -305,6 +343,17 @@ class TestCAEA:
         cliente, _ = _cliente(_sobre("FECAEAConsultar", "<Errors><Err><Code>602</Code><Msg>Sin datos</Msg></Err></Errors>"))
         assert cliente.consultar_caea(202611, 1) is None
 
+    def test_orden_exacto_de_fecaeadetrequest(self):
+        """`FECAEADetRequest` extiende `FEDetRequest` en el WSDL de homologación (06/11/2026): ImpTrib va antes
+        de ImpIVA como en CAE, y CAEA y CbteFchHsGen cierran. El ejemplo XML del manual muestra lo inverso."""
+        solicitud = dataclasses.replace(_solicitud(numero=1), punto_venta=4, caea="31234567890123", fecha_hora_generacion="20261101101500")
+        xml = wsfe.xml_solicitud(solicitud, caea=True)
+        assert re.findall(r"<(\w+)>", xml[xml.index("<FECAEADetRequest>") + 18 : xml.index("</FECAEADetRequest>")]) == [
+            "Concepto", "DocTipo", "DocNro", "CbteDesde", "CbteHasta", "CbteFch", "ImpTotal", "ImpTotConc", "ImpNeto",
+            "ImpOpEx", "ImpTrib", "ImpIVA", "MonId", "MonCotiz", "CondicionIVAReceptorId",
+            "Iva", "AlicIva", "Id", "BaseImp", "Importe", "CAEA", "CbteFchHsGen",
+        ]
+
     def test_reg_informativo_lleva_caea_y_hora_de_generacion(self):
         respuesta = _sobre("FECAEARegInformativo", (
             f"<FeCabResp><Cuit>{uf.CUIT_EMISOR}</Cuit><PtoVta>4</PtoVta><CbteTipo>6</CbteTipo><FchProceso>20261102</FchProceso>"
@@ -313,8 +362,6 @@ class TestCAEA:
             "<Resultado>A</Resultado><CAEA>31234567890123</CAEA></FECAEADetResponse></FeDetResp>"
         ))
         cliente, transporte = _cliente(respuesta)
-        import dataclasses
-
         solicitud = dataclasses.replace(_solicitud(numero=1), punto_venta=4, caea="31234567890123", fecha_hora_generacion="20261101101500")
         assert cliente.informar_caea(solicitud).resultado == "A"
         cuerpo = transporte.pedidos[0][1]

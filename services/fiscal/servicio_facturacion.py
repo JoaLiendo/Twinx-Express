@@ -11,7 +11,9 @@ No existe una transacción distribuida SQLite + ARCA: el orden de los pasos es l
 4. ENVIANDO con ese número, persistido ANTES de enviar `FECAESolicitar`.
 5. Respuesta A → AUTORIZADO (CAE, vencimiento, observaciones) en una transacción. R → RECHAZADO sin CAE.
    El pedido no llegó a salir → vuelve a PENDIENTE (número liberado). Cualquier otra falla después de
-   enviar → INCIERTO. Jamás se reintenta a ciegas: un INCIERTO se resuelve con `FECompConsultar`.
+   enviar → INCIERTO, que conserva su número: una consulta negativa no prueba que ARCA no lo procesó, porque
+   puede asentarlo más tarde. Se resuelve con `FECompConsultar` o, por decisión del dueño, reenviando ese
+   MISMO número: ARCA no autoriza dos veces un número, así que nunca se llega a N+1 con N sin resolver.
 """
 
 import hashlib
@@ -56,6 +58,7 @@ from excepciones import (
     FiscalizacionNoDisponibleError,
     OperacionFiscalInvalidaError,
     SecuenciaFiscalBloqueadaError,
+    TicketYaVigenteError,
     VentaNoEncontradaError,
 )
 from services.fiscal import servicio_parametros
@@ -393,7 +396,7 @@ def _enviar(comprobante: ComprobanteFiscal, numero: int, gateway: GatewayARCA, u
         return _quedo_incierto(comprobante.id, correlacion, inicio, error, gateway)
     except ErrorWSAA as error:
         # ARCA no validó las credenciales: no procesó nada, el número no se consumió.
-        gateway.invalidar_credenciales()
+        _invalidar_ticket_rechazado(error, gateway)
         _volver_a_pendiente(comprobante.id, correlacion, inicio, error)
         raise
     except Exception as error:
@@ -404,6 +407,12 @@ def _enviar(comprobante: ComprobanteFiscal, numero: int, gateway: GatewayARCA, u
             raise
         return resultado
     return _registrar_respuesta(comprobante.id, correlacion, inicio, respuesta, gateway, usuario_id)
+
+
+def _invalidar_ticket_rechazado(error: ErrorWSAA, gateway: GatewayARCA) -> None:
+    """`alreadyAuthenticated` no acusa al TA guardado: borrarlo perdería uno que WSAA todavía tiene por válido."""
+    if not isinstance(error, TicketYaVigenteError):
+        gateway.invalidar_credenciales()
 
 
 def _volver_a_pendiente(comprobante_id: int, correlacion: str, inicio: float, error: Exception) -> None:
@@ -502,7 +511,7 @@ def conciliar(comprobante_id: int, usuario_id: int | None) -> ComprobanteFiscal:
 
     - ARCA lo tiene con los mismos datos: se reconstruye la autorización con el CAE de ARCA.
     - ARCA tiene ese número con OTROS datos (lo usó otro sistema): el nuestro no se procesó → PENDIENTE.
-    - ARCA no lo tiene y su último es menor: no se procesó → PENDIENTE (reintento seguro con nuevo número).
+    - ARCA no lo tiene y su último es menor: todavía no se sabe (puede asentarlo después) → sigue INCIERTO.
     - Respuesta contradictoria o ARCA no disponible: sigue INCIERTO.
 
     `usuario_id` (OWNER) es la acción manual "Reintentar conciliación"; `None` es la automática.
@@ -560,10 +569,9 @@ def _conciliar_bajo_candado(comprobante_id: int, gateway: GatewayARCA, usuario_i
             auditar(conexion, usuario_id, ACCION_FISCAL_RECONCILIADO, actual,
                      "ARCA tiene ese número con otros datos: el pedido no se procesó; queda pendiente con número nuevo")
         elif ultimo < actual.numero:
-            repositorio_fiscal.actualizar_estado_en_conexion(conexion, comprobante_id, estados.PENDIENTE, numero=None, fecha_comprobante=None)
             _cerrar_intento(correlacion, "NO_ENCONTRADO", inicio, {"ultimo": ultimo}, conexion)
-            auditar(conexion, usuario_id, ACCION_FISCAL_RECONCILIADO, actual,
-                     f"ARCA no lo procesó (último autorizado {ultimo}): queda pendiente para reintento seguro")
+            logger.warning("Comprobante %s sigue INCIERTO: ARCA no informa el número %s (último %s)",
+                           comprobante_id, actual.numero, ultimo)
         else:
             _cerrar_intento(correlacion, "ERROR", inicio, {"ultimo": ultimo, "mensaje": "ARCA no lo tiene pero su último lo supera"}, conexion)
             auditar(conexion, usuario_id, ACCION_FISCAL_ERROR, actual,
@@ -611,14 +619,71 @@ def descartar(comprobante_id: int, usuario_id: int) -> ComprobanteFiscal:
 
 
 def reintentar(comprobante_id: int, usuario_id: int) -> ComprobanteFiscal:
-    """OWNER: reenvía un PENDIENTE (factura o nota). Un INCIERTO nunca se reenvía: se concilia."""
+    """OWNER: reenvía un PENDIENTE (factura o nota). Un INCIERTO primero se concilia y, si ARCA sigue sin
+    informarlo, se reenvía con su MISMO número y fecha, nunca con uno nuevo.
+
+    Raises:
+        SecuenciaFiscalBloqueadaError: ese número ya no es el próximo a autorizar: reenviarlo no sirve.
+        FiscalizacionNoDisponibleError: el reenvío no llegó a salir (sigue INCIERTO).
+    """
     _exigir_usuario(usuario_id, _SOLO_OWNER)
     comprobante = _obtener(comprobante_id)
     if comprobante.estado == estados.INCIERTO:
-        comprobante = conciliar(comprobante_id, usuario_id)
+        comprobante = _resolver_incierto_con_reenvio(comprobante, usuario_id)
     if comprobante.estado != estados.PENDIENTE:
         return comprobante
     return emitir(comprobante_id, usuario_id)
+
+
+def _resolver_incierto_con_reenvio(comprobante: ComprobanteFiscal, usuario_id: int) -> ComprobanteFiscal:
+    perfil = perfil_listo()
+    if comprobante.ambiente != perfil.ambiente:
+        raise OperacionFiscalInvalidaError("El comprobante es de otro ambiente: no puede reenviarse desde el actual.")
+    gateway = gateway_para(perfil)
+    with _candado_secuencia(_clave_secuencia(comprobante)):
+        comprobante = _conciliar_bajo_candado(comprobante.id, gateway, usuario_id)
+        if comprobante.estado != estados.INCIERTO:
+            return comprobante
+        ultimo = gateway.ultimo_autorizado(comprobante.punto_venta, comprobante.tipo_comprobante)
+        if ultimo + 1 != comprobante.numero:
+            raise SecuenciaFiscalBloqueadaError(
+                f"ARCA informa como último el {ultimo}: el número {comprobante.numero} no es el próximo a autorizar"
+                " y no se reenvía. Hay que revisar la secuencia con el técnico."
+            )
+        return _reenviar_mismo_numero(comprobante, gateway, usuario_id)
+
+
+def _reenviar_mismo_numero(comprobante: ComprobanteFiscal, gateway: GatewayARCA, usuario_id: int) -> ComprobanteFiscal:
+    """Repite el pedido idéntico. Sigue INCIERTO hasta que ARCA lo decida: si el pedido anterior ya se asentó,
+    responde 10016 y el CAE se recupera por consulta; nunca hay un segundo comprobante."""
+    fecha = date.fromisoformat(comprobante.fecha_comprobante)
+    solicitud = solicitud_de(comprobante, comprobante.numero, fecha)
+    with obtener_conexion(inmediata=True) as conexion:
+        correlacion = repositorio_fiscal.abrir_intento_en_conexion(
+            conexion, comprobante.id, "FECAESolicitar", comprobante.ambiente, comprobante.numero, hash_solicitud(solicitud)
+        )
+    inicio = time.monotonic()
+    logger.info("FECAESolicitar (reenvío del mismo número): pto=%s tipo=%s nro=%s correlacion=%s",
+                comprobante.punto_venta, comprobante.tipo_comprobante, comprobante.numero, correlacion)
+    try:
+        respuesta = gateway.solicitar_cae(solicitud)
+    except ErrorComunicacionARCA as error:
+        if error.enviado:
+            return _quedo_incierto(comprobante.id, correlacion, inicio, error, gateway)
+        _cerrar_intento(correlacion, "NO_ENVIADO", inicio, _detalle_error(error))
+        raise FiscalizacionNoDisponibleError(f"ARCA no está disponible: {error}") from error
+    except ErrorWSAA as error:
+        _invalidar_ticket_rechazado(error, gateway)
+        _cerrar_intento(correlacion, "NO_ENVIADO", inicio, _detalle_error(error))
+        raise
+    except ErrorFiscal as error:
+        return _quedo_incierto(comprobante.id, correlacion, inicio, error, gateway)
+    if respuesta.resultado == "R" and any(
+        mensaje.codigo == tablas_arca.ERROR_NUMERO_NO_CONSECUTIVO for mensaje in (*respuesta.observaciones, *respuesta.errores)
+    ):
+        _cerrar_intento(correlacion, "R", inicio, {"observaciones": [m.como_dict() for m in respuesta.observaciones]})
+        return _conciliar_bajo_candado(comprobante.id, gateway, usuario_id)
+    return _registrar_respuesta(comprobante.id, correlacion, inicio, respuesta, gateway, usuario_id)
 
 
 def obtener(comprobante_id: int) -> ComprobanteFiscal:

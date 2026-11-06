@@ -114,6 +114,16 @@ class TestNotaCredito:
         servicio_notas.conciliar_y_aplicar()
         assert _stock(producto.id) == 10 and fiscal.autorizaciones == 2
 
+    def test_nc_incierta_sin_confirmar_se_reenvia_con_su_numero_y_devuelve_una_vez(self, fiscal, owner):
+        producto, venta, _ = _facturada(owner)
+        fiscal.timeout_sin_procesar = True
+        nc = servicio_notas.emitir_nota_credito_total(venta.id, "ERROR_CARGA", None, owner)
+        assert nc.estado == "INCIERTO" and nc.numero == 1 and _stock(producto.id) == 7
+        assert facturacion.reintentar(nc.id, owner).numero == 1
+        servicio_notas.aplicar_pendientes()
+        assert facturacion.obtener(nc.id).estado == "AUTORIZADO" and _stock(producto.id) == 10
+        assert fiscal.autorizaciones == 2  # la factura y una sola nota
+
     def test_nc_pendiente_por_arca_caido_y_reintento(self, fiscal, owner):
         producto, venta, _ = _facturada(owner)
         fiscal.caido = True

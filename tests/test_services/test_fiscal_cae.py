@@ -2,7 +2,7 @@
 conciliación, concurrencia y recuperación tras reinicio."""
 
 import dataclasses
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 import threading
 
 import pytest
@@ -22,11 +22,20 @@ from excepciones import (
     OperacionFiscalInvalidaError,
     PermisoDenegadoError,
     SecuenciaFiscalBloqueadaError,
+    TicketYaVigenteError,
 )
 from services import servicio_ventas
 from services.fiscal import servicio_facturacion as facturacion
 from services.fiscal import servicio_parametros
+from services.fiscal.arca.wsaa import CacheTickets
+from services.fiscal.gateway import GatewayARCAReal, establecer_fabrica
 from tests import utilidades_fiscales as uf
+from tests.test_services.test_fiscal_credenciales_wsaa import _fault as wsaa_fault
+from tests.test_services.test_fiscal_credenciales_wsaa import _importar as wsaa_importar
+from tests.test_services.test_fiscal_credenciales_wsaa import _respuesta_login as wsaa_login
+from tests.test_services.test_fiscal_wsfe import _cliente as wsfe_cliente
+from tests.test_services.test_fiscal_wsfe import _respuesta_cae as wsfe_respuesta_cae
+from tests.test_services.test_fiscal_wsfe import _sobre as wsfe_sobre
 
 UMBRAL = 1_000_000_000
 
@@ -238,13 +247,190 @@ class TestARCANoDisponible:
 
 
 class TestIncertidumbre:
-    def test_timeout_sin_procesar_se_concilia_a_pendiente_y_reintenta_seguro(self, fiscal, owner):
+    def test_timeout_con_consulta_negativa_conserva_el_numero_en_incierto(self, fiscal, owner):
+        fiscal.timeout_sin_procesar = True
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        assert comprobante.estado == "INCIERTO" and comprobante.numero == 1
+        assert fiscal.autorizaciones == 0 and "FISCAL_INCIERTO" in _acciones()
+        assert "FECompConsultar" in fiscal.llamadas
+
+    def test_procesamiento_tardio_de_arca_recupera_n_y_nunca_emite_n_mas_uno(self, fiscal, owner):
         fiscal.timeout_sin_procesar = True
         venta = _venta()
         comprobante = facturacion.fiscalizar_venta(venta.id, owner)
-        assert comprobante.estado == "PENDIENTE" and comprobante.numero is None
-        assert fiscal.autorizaciones == 0 and "FISCAL_INCIERTO" in _acciones() and "FISCAL_RECONCILIADO" in _acciones()
-        assert facturacion.fiscalizar_venta(venta.id, owner).numero == 1
+        fiscal.solicitar_cae(facturacion.solicitud_de(comprobante, 1, date.today()))  # ARCA lo asienta después de la consulta
+        recuperado = facturacion.fiscalizar_venta(venta.id, owner)
+        assert recuperado.estado == "AUTORIZADO" and recuperado.numero == 1
+        assert recuperado.codigo_autorizacion == fiscal.registro(3, 6, 1).cae
+        assert fiscal.autorizaciones == 1 and fiscal.registro(3, 6, 2) is None
+
+    def test_consultas_negativas_repetidas_no_liberan_ni_reenvian(self, fiscal, owner):
+        fiscal.timeout_sin_procesar = True
+        venta = _venta()
+        comprobante = facturacion.fiscalizar_venta(venta.id, owner)
+        enviados = fiscal.llamadas.count("FECAESolicitar")
+        assert facturacion.fiscalizar_venta(venta.id, owner).estado == "INCIERTO"
+        assert facturacion.conciliar(comprobante.id, owner).numero == 1
+        facturacion.conciliar_inciertos()
+        assert facturacion.obtener(comprobante.id).estado == "INCIERTO"
+        assert fiscal.llamadas.count("FECAESolicitar") == enviados
+
+    def test_timeout_bloquea_la_secuencia_hasta_que_arca_informa_n(self, fiscal, owner):
+        fiscal.timeout_sin_procesar = True
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        segunda = _venta()
+        with pytest.raises(SecuenciaFiscalBloqueadaError):
+            facturacion.fiscalizar_venta(segunda.id, owner)
+        fiscal.solicitar_cae(facturacion.solicitud_de(comprobante, 1, date.today()))
+        assert facturacion.fiscalizar_venta(segunda.id, owner).numero == 2
+        assert facturacion.obtener(comprobante.id).estado == "AUTORIZADO"
+        assert fiscal.autorizaciones == 2
+
+    def test_reenvio_del_dueno_autoriza_el_mismo_numero_si_arca_nunca_lo_proceso(self, fiscal, owner):
+        fiscal.timeout_sin_procesar = True
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        reenviado = facturacion.reintentar(comprobante.id, owner)
+        assert reenviado.estado == "AUTORIZADO" and reenviado.numero == 1
+        assert reenviado.fecha_comprobante == comprobante.fecha_comprobante
+        assert fiscal.autorizaciones == 1
+        with obtener_conexion() as conexion:
+            hashes = conexion.execute(
+                "SELECT request_hash FROM intentos_fiscales WHERE comprobante_id = ? AND operacion = 'FECAESolicitar'",
+                (comprobante.id,),
+            ).fetchall()
+        assert len(hashes) == 2 and hashes[0][0] == hashes[1][0]
+
+    def test_reenvio_exige_owner(self, fiscal, owner):
+        fiscal.timeout_sin_procesar = True
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        with pytest.raises(PermisoDenegadoError):
+            facturacion.reintentar(comprobante.id, uf.crear_cashier())
+        assert fiscal.llamadas.count("FECAESolicitar") == 1
+
+    def test_reenvio_con_n_asentado_en_carrera_recupera_n_por_10016(self, fiscal, owner):
+        fiscal.timeout_sin_procesar = True
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        original = fiscal.solicitar_cae
+
+        def solicitar(solicitud):
+            fiscal.solicitar_cae = original
+            original(solicitud)  # el pedido viejo gana justo antes del reenvío
+            return original(solicitud)
+
+        fiscal.solicitar_cae = solicitar
+        recuperado = facturacion.reintentar(comprobante.id, owner)
+        assert recuperado.estado == "AUTORIZADO" and recuperado.numero == 1
+        assert recuperado.codigo_autorizacion == fiscal.registro(3, 6, 1).cae and fiscal.autorizaciones == 1
+
+    def test_reenvio_no_enviado_sigue_incierto_con_su_numero(self, fiscal, owner):
+        fiscal.timeout_sin_procesar = True
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        fiscal.cae_no_enviado = True
+        with pytest.raises(FiscalizacionNoDisponibleError):
+            facturacion.reintentar(comprobante.id, owner)
+        sigue = facturacion.obtener(comprobante.id)
+        assert sigue.estado == "INCIERTO" and sigue.numero == 1
+
+    def test_reenvio_con_timeout_sigue_incierto_con_su_numero(self, fiscal, owner):
+        fiscal.timeout_sin_procesar = True
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        fiscal.timeout_sin_procesar = True
+        sigue = facturacion.reintentar(comprobante.id, owner)
+        assert sigue.estado == "INCIERTO" and sigue.numero == 1 and fiscal.autorizaciones == 0
+
+    def test_reenvio_rechazado_por_arca_queda_rechazado_sin_cae(self, fiscal, owner):
+        fiscal.timeout_sin_procesar = True
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        fiscal.rechazar_proximo = [MensajeARCA(10013, "Documento inválido")]
+        rechazado = facturacion.reintentar(comprobante.id, owner)
+        assert rechazado.estado == "RECHAZADO" and rechazado.codigo_autorizacion is None and fiscal.autorizaciones == 0
+
+    def test_conciliacion_contradictoria_no_se_reenvia(self, fiscal, owner):
+        fiscal.caer_tras_cae = True
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        del fiscal._registros[(3, 6, 1)]  # ARCA "no lo tiene" pero su último es 1
+        fiscal.caido = False
+        enviados = fiscal.llamadas.count("FECAESolicitar")
+        with pytest.raises(SecuenciaFiscalBloqueadaError):
+            facturacion.reintentar(comprobante.id, owner)
+        assert facturacion.obtener(comprobante.id).estado == "INCIERTO"
+        assert fiscal.llamadas.count("FECAESolicitar") == enviados
+
+    @pytest.mark.parametrize("codigo", [500, 501, 502])
+    def test_error_interno_de_arca_queda_incierto_y_se_consulta(self, fiscal, owner, codigo):
+        cliente, transporte = wsfe_cliente(wsfe_sobre("FECAESolicitar", f"<Errors><Err><Code>{codigo}</Code><Msg>Interno</Msg></Err></Errors>"))
+        fiscal.solicitar_cae = cliente.solicitar_cae  # el parser real, no un doble que ya devuelva lo esperado
+        venta = _venta()
+        comprobante = facturacion.fiscalizar_venta(venta.id, owner)
+        assert comprobante.estado == "INCIERTO" and comprobante.numero == 1
+        assert "FECompConsultar" in fiscal.llamadas
+        assert facturacion.fiscalizar_venta(venta.id, owner).id == comprobante.id  # la venta no se libera
+        assert len(transporte.pedidos) == 1  # no se reenvía solo
+
+    @pytest.mark.parametrize("codigo", [500, 501, 502])
+    def test_error_interno_con_arca_que_ya_asento_recupera_el_cae(self, fiscal, owner, codigo):
+        cliente, _ = wsfe_cliente(wsfe_sobre("FECAESolicitar", f"<Errors><Err><Code>{codigo}</Code><Msg>Interno</Msg></Err></Errors>"))
+        original = fiscal.solicitar_cae
+
+        def asentar_y_fallar(solicitud):
+            original(solicitud)
+            return cliente.solicitar_cae(solicitud)
+
+        fiscal.solicitar_cae = asentar_y_fallar
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        assert comprobante.estado == "AUTORIZADO" and comprobante.numero == 1 and fiscal.autorizaciones == 1
+
+    def test_ticket_que_cruza_el_margen_durante_la_emision_se_reutiliza_y_sigue_en_disco(self, fiscal, owner, fiscal_aislado):
+        wsaa_importar()
+        reloj = [datetime.now(UTC)]
+        logins = []
+
+        class Transporte:
+            def enviar(self, url, cuerpo, soap_action):
+                if "LoginCms" in url:
+                    logins.append(url)
+                    return wsaa_login(generacion=reloj[0]) if len(logins) == 1 else wsaa_fault("coe.alreadyAuthenticated")
+                if soap_action.endswith("FECompUltimoAutorizado"):
+                    reloj[0] += timedelta(hours=11, minutes=51)  # el TA entra en el margen de renovación preventiva
+                    return wsfe_sobre("FECompUltimoAutorizado", "<PtoVta>3</PtoVta><CbteTipo>6</CbteTipo><CbteNro>0</CbteNro>")
+                return wsfe_respuesta_cae(numero=1)
+
+        real = GatewayARCAReal("HOMOLOGACION", uf.CUIT_EMISOR, CacheTickets(persistir=True))
+        real._wsaa._transporte = real._wsfe._transporte = Transporte()
+        real._wsaa._reloj = lambda: reloj[0]
+        establecer_fabrica(lambda perfil: real)
+        comprobante = facturacion.fiscalizar_venta(_venta().id, owner)
+        assert comprobante.estado == "AUTORIZADO" and len(logins) == 2
+        assert (fiscal_aislado / "homologacion" / "ta_wsfe.dpapi").is_file()
+
+    def test_already_authenticated_al_enviar_no_consume_numero_ni_invalida_credenciales(self, fiscal, owner):
+        def sin_ticket_conservado(solicitud):
+            raise TicketYaVigenteError("ARCA ya entregó un Ticket de Acceso")
+
+        fiscal.solicitar_cae = sin_ticket_conservado
+        venta = _venta()
+        with pytest.raises(ErrorWSAA):
+            facturacion.fiscalizar_venta(venta.id, owner)
+        vivo = facturacion.comprobantes_de_venta(venta.id)[0]
+        assert vivo.estado == "PENDIENTE" and vivo.numero is None
+        assert "invalidar_credenciales" not in fiscal.llamadas
+
+    def test_numero_tomado_por_otro_sistema_conserva_el_rechazo_10016(self, fiscal, owner):
+        original = fiscal.ultimo_autorizado
+
+        def ultimo(punto_venta, tipo):
+            fiscal.ultimo_autorizado = original
+            valor = original(punto_venta, tipo)
+            fiscal.emitir_externo(punto_venta, tipo)  # otro sistema gana la carrera tras leer el último
+            return valor
+
+        fiscal.ultimo_autorizado = ultimo
+        venta = _venta()
+        rechazado = facturacion.fiscalizar_venta(venta.id, owner)
+        assert rechazado.estado == "RECHAZADO" and "10016" in str(rechazado.observaciones)
+        assert fiscal.llamadas.count("FECAESolicitar") == 1  # 10016 no se reintenta solo
+        nuevo = facturacion.fiscalizar_venta(venta.id, owner)
+        assert nuevo.estado == "AUTORIZADO" and nuevo.numero == 2 and fiscal.autorizaciones == 1
 
     def test_respuesta_perdida_con_arca_habiendo_autorizado(self, fiscal, owner):
         fiscal.perder_respuesta = True

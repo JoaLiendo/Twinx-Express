@@ -4,14 +4,18 @@
   pedido (`wsfe`). Las horas van con zona horaria y un margen de ±10 minutos contra relojes desfasados.
 - CMS SignedData con el contenido adjunto (no detached), SHA-256, firmado con el certificado del
   ambiente; viaja en base64 en `loginCms/in0`.
-- El TA dura actualmente 12 horas (lo fija WSAA y debe usarse mientras siga vigente): se reutiliza hasta
-  pocos minutos antes de vencer.
+- El TA dura actualmente 12 horas (lo fija WSAA y debe usarse mientras siga vigente): se intenta renovar
+  pocos minutos antes de vencer. Esa renovación es preventiva: si WSAA responde `coe.alreadyAuthenticated`,
+  el TA guardado sigue en uso hasta su `expirationTime` real.
 
 Caché: primero en memoria. Además, una cache cifrada del TA vigente (DPAPI, junto a la clave del ambiente,
 fuera de `data/` y de todo backup) para reutilizarlo durante su período de validez y sobrevivir reinicios:
 WSAA puede rechazar una nueva solicitud mientras ya exista uno válido (`coe.alreadyAuthenticated`), y sin
 esa copia un reinicio podría dejar a Twinx sin poder fiscalizar hasta que venza. Token y Sign nunca se
 loguean, auditan, muestran ni guardan en SQLite.
+
+Dentro del proceso, un candado por ambiente y servicio evita dos `LoginCms` simultáneos: `gateway_para` crea
+un cliente por llamada, así que el candado no puede vivir en el cliente. No coordina procesos distintos.
 """
 
 import base64
@@ -28,7 +32,7 @@ from datetime import UTC, datetime, timedelta
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
 
-from excepciones import CredencialesFiscalesError, ErrorWSAA, RespuestaARCAInvalidaError
+from excepciones import CredencialesFiscalesError, ErrorWSAA, RespuestaARCAInvalidaError, TicketYaVigenteError
 from services.fiscal import credenciales, dpapi
 from services.fiscal.arca import soap
 from services.fiscal.arca.transporte import Transporte
@@ -41,6 +45,14 @@ MARGEN_TRA = timedelta(minutes=10)
 MARGEN_RENOVACION = timedelta(minutes=10)
 NOMBRE_CACHE = "ta_{servicio}.dpapi"
 
+_candados: dict[tuple[str, str], threading.Lock] = {}
+_candado_registro = threading.Lock()
+
+
+def _candado_ticket(ambiente: str, servicio: str) -> threading.Lock:
+    with _candado_registro:
+        return _candados.setdefault((ambiente, servicio), threading.Lock())
+
 
 @dataclass(frozen=True)
 class TicketAcceso:
@@ -51,7 +63,11 @@ class TicketAcceso:
     huella_certificado: str
 
     def vigente(self, ahora: datetime) -> bool:
+        """Se usa sin intentar renovarlo: todavía no entró en el margen de renovación preventiva."""
         return ahora + MARGEN_RENOVACION < self.expiracion
+
+    def no_expirado(self, ahora: datetime) -> bool:
+        return ahora < self.expiracion
 
     def __repr__(self) -> str:  # nunca exponer Token ni Sign en una traza o un log
         return f"TicketAcceso(expiracion={self.expiracion.isoformat()}, token=***, sign=***)"
@@ -128,6 +144,16 @@ class CacheTickets:
             return None
         return ticket
 
+    def no_expirado(self, ambiente: str, servicio: str, huella: str, ahora: datetime) -> TicketAcceso | None:
+        """TA guardado que todavía no alcanzó su `expirationTime`, aunque ya esté en el margen de renovación.
+        Relee el disco primero: la memoria puede haber quedado atrás de la copia DPAPI."""
+        en_disco = self._leer(ambiente, servicio) if self._persistir else None
+        for ticket in (en_disco, self._memoria.get((ambiente, servicio))):
+            if ticket is not None and ticket.huella_certificado == huella and ticket.no_expirado(ahora):
+                self._memoria[(ambiente, servicio)] = ticket
+                return ticket
+        return None
+
     def _leer(self, ambiente: str, servicio: str) -> TicketAcceso | None:
         ruta = self._ruta(ambiente, servicio)
         if not ruta.is_file():
@@ -188,17 +214,17 @@ class ClienteWSAA:
         self._cache = cache
         self._cargar_material = cargar_material
         self._reloj = reloj
-        self._candado = threading.Lock()
 
     def ticket(self, servicio: str = SERVICIO_WSFE) -> TicketAcceso:
         """TA vigente (de la caché o uno nuevo).
 
         Raises:
             CredencialesFiscalesError: certificado ausente, vencido, de otro ambiente o ilegible.
+            TicketYaVigenteError: WSAA dice que hay un TA válido y esta PC no conserva ninguno utilizable.
             ErrorWSAA: WSAA rechazó el pedido (mensaje sanitizado).
             ErrorComunicacionARCA / RespuestaARCAInvalidaError: falla de red o respuesta inválida.
         """
-        with self._candado:
+        with _candado_ticket(self._ambiente, servicio):
             ahora = self._reloj()
             material = self._cargar_material(self._ambiente)
             huella = hashlib.sha256(material.certificado.public_bytes(serialization.Encoding.DER)).hexdigest()
@@ -211,7 +237,13 @@ class ClienteWSAA:
             try:
                 respuesta = soap.cuerpo_de_respuesta(self._transporte.enviar(self._url, cuerpo, ""))
             except soap.SoapFault as fault:
-                raise _error_de_fault(fault) from fault
+                error = _error_de_fault(fault)
+                if isinstance(error, TicketYaVigenteError):
+                    conservado = self._cache.no_expirado(self._ambiente, servicio, huella, self._reloj())
+                    if conservado is not None:
+                        logger.warning("WSAA no renovó el Ticket de Acceso (%s): se usa el guardado hasta su vencimiento", self._ambiente)
+                        return conservado
+                raise error from fault
             ticket = parsear_ticket(soap.valor(respuesta, "loginCmsReturn") or "", huella)
             if ticket.expiracion <= ahora:
                 raise RespuestaARCAInvalidaError("WSAA devolvió un Ticket de Acceso ya vencido.")
@@ -220,7 +252,7 @@ class ClienteWSAA:
             return ticket
 
     def invalidar(self) -> None:
-        with self._candado:
+        with _candado_ticket(self._ambiente, SERVICIO_WSFE):
             self._cache.invalidar(self._ambiente)
 
 
@@ -238,5 +270,6 @@ _MENSAJES_FAULT = {
 def _error_de_fault(fault: soap.SoapFault) -> ErrorWSAA:
     for clave, mensaje in _MENSAJES_FAULT.items():
         if clave.lower() in fault.codigo.lower():
-            return ErrorWSAA(f"{mensaje} [{fault.codigo}]")
+            tipo = TicketYaVigenteError if clave == "alreadyAuthenticated" else ErrorWSAA
+            return tipo(f"{mensaje} [{fault.codigo}]")
     return ErrorWSAA(f"WSAA rechazó el pedido de acceso [{fault.codigo}]: {fault.mensaje}")

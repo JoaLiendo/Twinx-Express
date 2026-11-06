@@ -450,6 +450,11 @@ class ErrorWSAA(ErrorFiscal):
     """WSAA rechazó el pedido de Ticket de Acceso o respondió algo inválido (mensaje sanitizado)."""
 
 
+class TicketYaVigenteError(ErrorWSAA):
+    """WSAA dice que ya existe un TA válido y esta PC no conserva ninguno utilizable. No acusa a credencial
+    alguna: lo que haya guardado no debe invalidarse por este motivo."""
+
+
 class ErrorComunicacionARCA(ErrorFiscal):
     """No se pudo completar el intercambio con ARCA. `enviado` distingue lo crítico: si el pedido no
     llegó a enviarse es seguro reintentar; si se envió y no hubo respuesta, el resultado es INCIERTO."""

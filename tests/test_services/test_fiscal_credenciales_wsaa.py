@@ -5,11 +5,13 @@ firmados): prueba que lo que Twinx envía a WSAA es un SignedData válido con el
 """
 
 import base64
+import dataclasses
 import hashlib
 import json
 import socket
 import ssl
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from xml.sax.saxutils import escape
 
@@ -29,6 +31,7 @@ from excepciones import (
 from services.fiscal import credenciales, dpapi
 from services.fiscal.arca import endpoints, wsaa
 from services.fiscal.arca.transporte import RespuestaHTTP, TransporteHTTPS
+from services.fiscal.gateway import GatewayARCAReal
 from tests import certificados_prueba as cp
 
 AHORA = datetime.now(UTC)
@@ -233,6 +236,80 @@ class TestWSAA:
         cliente.ticket()
         reloj[0] += timedelta(minutes=55)
         assert cliente.ticket().token == "OTRO"
+
+    def test_already_authenticated_reutiliza_el_ticket_que_todavia_no_expiro(self):
+        _importar()
+        reloj = [datetime.now(UTC)]
+        transporte = TransporteFalso(_respuesta_login(generacion=reloj[0]), _fault("coe.alreadyAuthenticated"))
+        cliente = _cliente(transporte, reloj=lambda: reloj[0])
+        original = cliente.ticket()
+        reloj[0] += timedelta(hours=11, minutes=55)
+        assert cliente.ticket() is original
+        assert len(transporte.pedidos) == 2  # la renovación preventiva se intentó
+
+    def test_already_authenticated_conserva_la_copia_dpapi(self, fiscal_aislado):
+        _importar()
+        reloj = [datetime.now(UTC)]
+        transporte = TransporteFalso(_respuesta_login(generacion=reloj[0]), _fault("coe.alreadyAuthenticated"))
+        cliente = _cliente(transporte, persistir=True, reloj=lambda: reloj[0])
+        cliente.ticket()
+        reloj[0] += timedelta(hours=11, minutes=55)
+        assert cliente.ticket().token == "TOKEN-SECRETO"
+        assert (fiscal_aislado / "homologacion" / "ta_wsfe.dpapi").is_file()
+
+    def test_already_authenticated_relee_el_disco_si_la_memoria_quedo_vieja(self):
+        _importar()
+        reloj = [datetime.now(UTC)]
+        transporte = TransporteFalso(_respuesta_login(generacion=reloj[0]), _fault("coe.alreadyAuthenticated"))
+        cliente = _cliente(transporte, persistir=True, reloj=lambda: reloj[0])
+        ticket = cliente.ticket()
+        en_disco = dataclasses.replace(ticket, token="DISCO", expiracion=ticket.expiracion + timedelta(hours=12))
+        wsaa.CacheTickets(persistir=True).guardar("HOMOLOGACION", "wsfe", en_disco)
+        reloj[0] += timedelta(hours=12, seconds=1)  # el de memoria expiró; el del disco no
+        assert cliente.ticket().token == "DISCO"
+
+    def test_already_authenticated_sin_ticket_conservado_informa_el_error(self):
+        _importar()
+        with pytest.raises(ErrorWSAA, match="ya entregó"):
+            _cliente(TransporteFalso(_fault("coe.alreadyAuthenticated"))).ticket()
+
+    def test_already_authenticated_no_reutiliza_un_ticket_expirado(self):
+        _importar()
+        reloj = [datetime.now(UTC)]
+        transporte = TransporteFalso(_respuesta_login(generacion=reloj[0]), _fault("coe.alreadyAuthenticated"))
+        cliente = _cliente(transporte, reloj=lambda: reloj[0])
+        cliente.ticket()
+        reloj[0] += timedelta(hours=12, seconds=1)
+        with pytest.raises(ErrorWSAA, match="ya entregó"):
+            cliente.ticket()
+
+    def test_dos_gateways_concurrentes_hacen_un_solo_login(self):
+        _importar()
+        cache = wsaa.CacheTickets(persistir=False)
+        pedidos = []
+        ambos_listos = threading.Barrier(2, timeout=5)
+
+        class TransporteLento:
+            def enviar(self, url, cuerpo, soap_action):
+                pedidos.append(url)
+                time.sleep(0.2)
+                return _respuesta_login()
+
+        gateways = [GatewayARCAReal("HOMOLOGACION", cp.CUIT, cache) for _ in range(2)]
+        for gateway in gateways:
+            gateway._wsaa._transporte = TransporteLento()
+        tickets = []
+
+        def pedir(gateway):
+            ambos_listos.wait()
+            tickets.append(gateway._wsaa.ticket())
+
+        hilos = [threading.Thread(target=pedir, args=(gateway,)) for gateway in gateways]
+        for hilo in hilos:
+            hilo.start()
+        for hilo in hilos:
+            hilo.join(10)
+        assert len(pedidos) == 1 and len(tickets) == 2 and tickets[0] is tickets[1]
 
     def test_ticket_ya_vencido_se_rechaza(self):
         _importar()

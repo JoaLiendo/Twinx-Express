@@ -58,6 +58,9 @@ DOC_SIN_IDENTIFICAR = 99
 # Concepto (FEParamGetTiposConcepto): un kiosco vende productos.
 CONCEPTO_PRODUCTOS = 1
 
+# Consecutividad: el número o la fecha no corresponden al próximo a autorizar.
+ERROR_NUMERO_NO_CONSECUTIVO = 10016
+
 # Moneda (FEParamGetTiposMonedas): Twinx factura solo en pesos, cotización 1.
 MONEDA_PESOS = "PES"
 COTIZACION_PESOS = Decimal("1")

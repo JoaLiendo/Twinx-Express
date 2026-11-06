@@ -159,7 +159,8 @@ def descartar(comprobante_id: int, usuario: Usuario = Depends(obtener_usuario_ac
 
 @router.post("/fiscal/comprobantes/{comprobante_id}/reintentar", dependencies=[_SOLO_OWNER])
 def reintentar(comprobante_id: int, usuario: Usuario = Depends(obtener_usuario_actual)):
-    """Reenvía un PENDIENTE (nunca un INCIERTO: ese se concilia). Sirve para facturas y notas de crédito."""
+    """Reenvía un PENDIENTE, o un INCIERTO que ARCA sigue sin informar (con su mismo número). Sirve para
+    facturas y notas de crédito."""
     comprobante = servicio_facturacion.reintentar(comprobante_id, usuario.id)
     servicio_notas.aplicar_pendientes()
     return redireccionar_con_mensaje(f"/ventas/{comprobante.venta_id}", "success", f"{comprobante.nombre_tipo}: {comprobante.etiqueta_estado}.")

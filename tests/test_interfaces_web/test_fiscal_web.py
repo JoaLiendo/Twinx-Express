@@ -132,6 +132,26 @@ class TestDetalleEHistorial:
         assert "data-estado-fiscal" in solicitud("GET", "/ventas/historial", cookies=owner[1]).texto
 
 
+class TestIncierto:
+    ACCION = "Reenviar con el mismo número"
+
+    def _incierto(self, fiscal, owner):
+        fiscal.timeout_sin_procesar = True
+        venta = _venta()
+        return venta, servicio_facturacion.fiscalizar_venta(venta.id, owner[0].id)
+
+    def test_owner_resuelve_con_el_mismo_numero_desde_la_venta(self, fiscal, owner):
+        venta, comprobante = self._incierto(fiscal, owner)
+        assert self.ACCION in solicitud("GET", f"/ventas/{venta.id}", cookies=owner[1]).texto
+        assert solicitud("POST", f"/fiscal/comprobantes/{comprobante.id}/reintentar", cookies=owner[1]).status == 303
+        final = servicio_facturacion.obtener(comprobante.id)
+        assert final.estado == "AUTORIZADO" and final.numero == 1 and fiscal.autorizaciones == 1
+
+    def test_cashier_no_ve_la_accion_de_reenvio(self, fiscal, owner, cashier):
+        venta, _ = self._incierto(fiscal, owner)
+        assert self.ACCION not in solicitud("GET", f"/ventas/{venta.id}", cookies=cashier[1]).texto
+
+
 class TestNotaCreditoWeb:
     def test_owner_cancela_con_nota_de_credito(self, fiscal, owner):
         comprobante = _autorizado(owner[0].id)
