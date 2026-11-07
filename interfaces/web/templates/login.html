@@ -15,46 +15,7 @@
     })();
   </script>
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: { sans: ['Plus Jakarta Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
-          colors: {
-            primary: { DEFAULT: 'var(--color-primary)', hover: 'var(--color-primary-hover)', subtle: 'var(--color-primary-subtle)' },
-            success: 'var(--color-success)', warning: 'var(--color-warning)', error: 'var(--color-error)', info: 'var(--color-info)',
-          },
-        },
-      },
-    };
-  </script>
-  <style>
-    @font-face {
-      font-family: 'Plus Jakarta Sans';
-      font-style: normal;
-      font-weight: 400 800;
-      font-display: swap;
-      src: url('/static/fonts/PlusJakartaSans-Variable.woff2') format('woff2');
-    }
-    :root {
-      --color-primary: #4338CA; --color-primary-hover: #3730A3; --color-primary-subtle: #EEF2FF;
-      --color-success: #059669; --color-warning: #D97706; --color-error: #E11D48; --color-info: #0284C7;
-    }
-    .dark {
-      --color-primary: #6366F1; --color-primary-hover: #818CF8; --color-primary-subtle: #332C66;
-      --color-success: #34D399; --color-warning: #FBBF24; --color-error: #FB7185; --color-info: #38BDF8;
-    }
-    body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; }
-    a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important; scroll-behavior: auto !important;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="/static/css/twinx.css?v={{ app_version }}" />
 </head>
 <body class="bg-slate-50 text-slate-900 antialiased min-h-screen flex items-center justify-center p-4 dark:bg-slate-950 dark:text-slate-100">
   <div class="w-full max-w-sm">

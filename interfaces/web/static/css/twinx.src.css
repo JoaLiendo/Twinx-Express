@@ -1,0 +1,175 @@
+/* Design system Twinx Express (V1.17-B). Fuente del CSS compilado `twinx.css` (ver tailwind.config.js).
+
+   Tres capas:
+   1. Tokens: los colores semánticos de marca (claro/oscuro) como variables CSS; Tailwind los expone como
+      `primary`, `success`, `warning`, `error`, `info`. Los grises siguen siendo la paleta slate.
+   2. Base: tipografía autohospedada, scrollbar, foco visible y movimiento reducido.
+   3. Componentes: botones, tarjetas, campos, tablas, badges, alertas, pastillas de navegación y KPI.
+      Son las piezas que se repetían en decenas de templates; los templates pueden seguir combinando
+      utilidades, pero toda pieza nueva usa estas clases. */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/static/fonts/PlusJakartaSans-Variable.woff2') format('woff2');
+}
+
+/* Cada token existe dos veces: como color (para usarlo directo en CSS/JS: `var(--color-primary)`) y como
+   canales RGB (`--color-primary-rgb`), que es lo que consume Tailwind para admitir opacidades (`bg-error/10`). */
+:root {
+  --color-primary: #4338ca;        --color-primary-rgb: 67 56 202;
+  --color-primary-hover: #3730a3;  --color-primary-hover-rgb: 55 48 163;
+  --color-primary-subtle: #eef2ff; --color-primary-subtle-rgb: 238 242 255;
+  --color-success: #059669;        --color-success-rgb: 5 150 105;
+  --color-warning: #d97706;        --color-warning-rgb: 217 119 6;
+  --color-error: #e11d48;          --color-error-rgb: 225 29 72;
+  --color-info: #0284c7;           --color-info-rgb: 2 132 199;
+}
+
+.dark {
+  --color-primary: #6366f1;        --color-primary-rgb: 99 102 241;
+  --color-primary-hover: #818cf8;  --color-primary-hover-rgb: 129 140 248;
+  --color-primary-subtle: #332c66; --color-primary-subtle-rgb: 51 44 102;
+  --color-success: #34d399;        --color-success-rgb: 52 211 153;
+  --color-warning: #fbbf24;        --color-warning-rgb: 251 191 36;
+  --color-error: #fb7185;          --color-error-rgb: 251 113 133;
+  --color-info: #38bdf8;           --color-info-rgb: 56 189 248;
+}
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 9999px; }
+  ::-webkit-scrollbar-track { background-color: transparent; }
+  .dark ::-webkit-scrollbar-thumb { background-color: #475569; }
+
+  /* Foco visible consistente en todo elemento interactivo. */
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+  textarea:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  @media print {
+    .no-imprimir { display: none !important; }
+  }
+}
+
+@layer components {
+  /* --- Página ---------------------------------------------------------------------------- */
+  .page { @apply max-w-6xl mx-auto space-y-6; }
+  .page-wide { @apply max-w-7xl mx-auto space-y-6; }
+  .page-title { @apply text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate; }
+  .page-intro { @apply text-sm text-slate-500 dark:text-slate-400 max-w-2xl; }
+  .section-title { @apply font-semibold text-slate-900 dark:text-slate-100; }
+  .muted { @apply text-slate-500 dark:text-slate-400; }
+
+  /* --- Tarjetas -------------------------------------------------------------------------- */
+  .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900; }
+  .card-hover { @apply transition hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700; }
+  .card-header { @apply flex items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-100 dark:border-slate-800; }
+  .card-body { @apply p-5; }
+  .card-footer { @apply px-5 py-3 border-t border-slate-100 dark:border-slate-800; }
+
+  /* --- Botones --------------------------------------------------------------------------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition
+           active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2
+           dark:focus-visible:ring-offset-slate-900;
+  }
+  .btn-primary { @apply bg-primary text-white shadow-sm hover:bg-primary-hover; }
+  .btn-secondary { @apply bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700; }
+  .btn-outline { @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800; }
+  .btn-dark { @apply bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600; }
+  .btn-danger { @apply bg-error/10 text-error hover:bg-error/20; }
+  .btn-success { @apply bg-success text-white shadow-sm hover:opacity-90; }
+  .btn-ghost { @apply bg-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800; }
+  .btn-link { @apply bg-transparent px-1 text-primary hover:text-primary-hover; }
+  .btn-sm { @apply px-3 py-1.5 text-xs; }
+  .btn-lg { @apply rounded-xl px-5 py-3 text-base; }
+  .btn-icon { @apply w-11 h-11 rounded-full p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800; }
+
+  /* --- Campos ---------------------------------------------------------------------------- */
+  .label { @apply block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1; }
+  .label-lg { @apply block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5; }
+  .input, .select, .textarea {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400
+           dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+           focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 dark:disabled:bg-slate-800;
+  }
+  .input-lg { @apply px-3.5 py-2.5; }
+  .input-error { @apply border-error focus:ring-error focus:border-error; }
+  .field-error { @apply mt-1.5 text-xs text-error; }
+  .input-icon { @apply relative; }
+  .input-icon > svg { @apply w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none; }
+  .input-icon > .input { @apply pl-9; }
+
+  /* --- Tablas de datos ------------------------------------------------------------------- */
+  .data-table { @apply w-full text-sm; }
+  .data-table thead th {
+    @apply px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 bg-slate-50
+           border-b border-slate-100 whitespace-nowrap dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-800;
+  }
+  .data-table tbody td { @apply px-4 py-2.5 align-middle; }
+  .data-table tbody tr { @apply border-b border-slate-100 last:border-0 dark:border-slate-800; }
+  .data-table tbody tr:hover { @apply bg-slate-50/70 dark:bg-slate-800/40; }
+  .data-table .num { @apply text-right tabular-nums whitespace-nowrap; }
+  .data-table-dense thead th, .data-table-dense tbody td { @apply px-3 py-2; }
+  .table-wrap { @apply overflow-x-auto; }
+
+  /* --- Badges ---------------------------------------------------------------------------- */
+  .badge { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset whitespace-nowrap; }
+  .badge::before { content: ''; @apply w-1.5 h-1.5 rounded-full bg-current opacity-80; }
+  .badge-exito { @apply bg-success/10 text-success ring-success/20; }
+  .badge-alerta { @apply bg-error/10 text-error ring-error/20; }
+  .badge-advertencia { @apply bg-warning/10 text-warning ring-warning/20; }
+  .badge-info { @apply bg-info/10 text-info ring-info/20; }
+  .badge-marca { @apply bg-primary-subtle text-primary ring-primary/20; }
+  .badge-neutral { @apply bg-slate-100 text-slate-500 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700; }
+
+  /* --- Alertas (mensajes en línea) ------------------------------------------------------- */
+  .alert { @apply flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm font-medium; }
+  .alert-error { @apply bg-error/10 border-error/20 text-error; }
+  .alert-warning { @apply bg-warning/10 border-warning/20 text-warning; }
+  .alert-success { @apply bg-success/10 border-success/20 text-success; }
+  .alert-info { @apply bg-info/10 border-info/20 text-info; }
+  .alert-neutral { @apply bg-slate-100 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300; }
+  a.alert { @apply transition hover:brightness-95 dark:hover:brightness-110; }
+
+  /* --- Navegación secundaria (pastillas) y control segmentado ---------------------------- */
+  .nav-pill { @apply rounded-lg px-3.5 py-2 text-sm font-medium transition bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700; }
+  .nav-pill-active { @apply bg-primary text-white shadow-sm hover:bg-primary-hover; }
+  .segmented { @apply inline-flex rounded-lg border border-slate-300 overflow-hidden text-sm font-medium dark:border-slate-700; }
+  .segmented > * { @apply px-3.5 py-1.5 bg-white text-slate-600 hover:bg-slate-50 border-l border-slate-300 first:border-l-0 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700 dark:hover:bg-slate-800; }
+  .segmented > .segmented-active { @apply bg-slate-900 text-white hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-700; }
+
+  /* --- Indicadores (KPI) ----------------------------------------------------------------- */
+  .kpi { @apply block rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900; }
+  a.kpi { @apply transition hover:border-primary/40 dark:hover:border-primary/40; }
+  .kpi-label { @apply text-sm font-medium text-slate-500 dark:text-slate-400; }
+  .kpi-value { @apply mt-2 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100; }
+  .kpi-detail { @apply mt-1 text-sm text-slate-500 dark:text-slate-400; }
+
+  /* --- Estado vacío ---------------------------------------------------------------------- */
+  .empty-state { @apply rounded-xl border border-dashed border-slate-300 bg-white py-14 px-6 text-center dark:border-slate-700 dark:bg-slate-900; }
+}

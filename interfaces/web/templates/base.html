@@ -6,10 +6,8 @@
   <title>{% block titulo %}Panel de control{% endblock %} · Twinx Express</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏪</text></svg>" />
 
-  <!-- Twinx Express V1.1: detección de tema ANTES de cualquier render (evita
-       flash del tema incorrecto). Debe ejecutarse sincrónicamente, antes del
-       script de Tailwind, para que la clase `dark` ya esté puesta en <html>
-       cuando Tailwind evalúa qué variantes `dark:` aplicar. -->
+  <!-- Detección de tema ANTES de cualquier render (evita el flash del tema incorrecto): la clase
+       `dark` tiene que estar en <html> antes de que se aplique la hoja de estilos. -->
   <script>
     (function () {
       var guardado = localStorage.getItem('twinx-theme');
@@ -19,83 +17,10 @@
     })();
   </script>
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: { sans: ['Plus Jakarta Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
-          colors: {
-            primary: { DEFAULT: 'var(--color-primary)', hover: 'var(--color-primary-hover)', subtle: 'var(--color-primary-subtle)' },
-            success: 'var(--color-success)',
-            warning: 'var(--color-warning)',
-            error: 'var(--color-error)',
-            info: 'var(--color-info)',
-          },
-        },
-      },
-    };
-  </script>
-  <style>
-    /* Plus Jakarta Sans autohospedada (interfaces/web/static/fonts/): sin
-       dependencia de red en tiempo de ejecución -- ver auditoría V1, KioscoApp
-       es una app de escritorio empaquetada que debe poder abrir sin
-       conectividad. Un único archivo variable cubre los pesos 400-800. */
-    @font-face {
-      font-family: 'Plus Jakarta Sans';
-      font-style: normal;
-      font-weight: 400 800;
-      font-display: swap;
-      src: url('/static/fonts/PlusJakartaSans-Variable.woff2') format('woff2');
-    }
-
-    /* Tokens de marca Twinx Express (Fase V1.1). Solo los 5 semánticos
-       pedidos por la auditoría; los grises siguen usando la paleta slate
-       nativa de Tailwind con variantes `dark:` explícitas -- no se
-       introducen tokens nuevos para fondos/bordes/texto en esta fase. */
-    :root {
-      --color-primary: #4338CA;
-      --color-primary-hover: #3730A3;
-      --color-primary-subtle: #EEF2FF;
-      --color-success: #059669;
-      --color-warning: #D97706;
-      --color-error: #E11D48;
-      --color-info: #0284C7;
-    }
-    .dark {
-      --color-primary: #6366F1;
-      --color-primary-hover: #818CF8;
-      --color-primary-subtle: #332C66;
-      --color-success: #34D399;
-      --color-warning: #FBBF24;
-      --color-error: #FB7185;
-      --color-info: #38BDF8;
-    }
-
-    body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 9999px; }
-    ::-webkit-scrollbar-track { background-color: transparent; }
-    .dark ::-webkit-scrollbar-thumb { background-color: #475569; }
-
-    /* Accesibilidad (Fase V1.1): foco visible consistente en todo elemento
-       interactivo, sin depender de que cada página lo defina por separado. */
-    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
-    textarea:focus-visible, [tabindex]:focus-visible {
-      outline: 2px solid var(--color-primary);
-      outline-offset: 2px;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-        scroll-behavior: auto !important;
-      }
-    }
-  </style>
+  <!-- V1.17-B: design system compilado y autohospedado (tokens, tipografía y componentes en
+       `static/css/twinx.src.css`; se regenera con `npm run build:css`). Sin dependencias de red:
+       la aplicación abre sin conectividad. -->
+  <link rel="stylesheet" href="/static/css/twinx.css?v={{ app_version }}" />
   {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">

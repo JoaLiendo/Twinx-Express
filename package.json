@@ -4,11 +4,15 @@
   "version": "1.0.0",
   "description": "Tests E2E de Stock-app (Fase 5E) con Playwright. No forma parte del ejecutable de producción (ver KioscoApp.spec): es tooling de testing exclusivamente.",
   "scripts": {
+    "build:css": "tailwindcss -c tailwind.config.js -i interfaces/web/static/css/twinx.src.css -o interfaces/web/static/css/twinx.css --minify",
+    "build:css:watch": "tailwindcss -c tailwind.config.js -i interfaces/web/static/css/twinx.src.css -o interfaces/web/static/css/twinx.css --watch",
+    "test:js": "node --test tests_js/*.test.js",
     "test:e2e": "playwright test --project=desktop-1440 --grep-invert @responsive",
     "test:e2e:responsive": "playwright test --grep @responsive --project=mobile-375 --project=tablet-768 --project=desktop-1024 --project=desktop-1440",
     "test:e2e:ui": "playwright test --project=desktop-1440 --grep-invert @responsive --ui"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0"
+    "@playwright/test": "^1.63.0",
+    "tailwindcss": "^3.4.19"
   }
 }
