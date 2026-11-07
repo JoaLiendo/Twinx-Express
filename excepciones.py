@@ -508,3 +508,8 @@ class FiscalizacionNoDisponibleError(ErrorFiscal):
     comprobante fiscal (la venta sigue registrada)."""
 
     codigo = "FISCALIZACION_NO_DISPONIBLE"
+
+
+class MotorIAError(ErrorAplicacion):
+    """El motor de IA local del asistente (V1.18) no está disponible, no respondió a tiempo, respondió mal o
+    su configuración es inválida. Nunca interrumpe la aplicación: el asistente degrada a la ayuda integrada."""
