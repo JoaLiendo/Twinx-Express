@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "analitica/_graficos.html" as g %}
+
+{% block titulo %}Analítica{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Analítica · Resumen del dueño</h1>{% endblock %}
+
+{% block content %}
+{% set ventas = resumen.ventas %}
+{% set margen = resumen.margen.total %}
+{% set deuda = resumen.deuda %}
+{% set periodo = "fecha_desde=" ~ resumen.fecha_desde ~ "&fecha_hasta=" ~ resumen.fecha_hasta %}
+<div class="max-w-6xl mx-auto space-y-6">
+  {% include "analitica/_navegacion.html" %}
+  <p class="text-xs text-slate-500 dark:text-slate-400">
+    Últimos 30 días ({{ resumen.fecha_desde | fecha_corta }} a {{ resumen.fecha_hasta | fecha_corta }}) comparados con los 30 anteriores.
+    Solo ventas y compras activas. El margen bruto es facturación menos costo: no descuenta gastos, impuestos ni pérdidas.
+  </p>
+
+  <div id="kpis-resumen" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    {{ g.kpi("Ventas", "$" ~ (ventas.total_centavos | dinero_ar), id="kpi-ventas", href="/analitica/ventas?" ~ periodo) }}
+    {{ g.kpi("Margen bruto (referencia)", ("$" ~ (margen.margen_ref_centavos | dinero_ar)) if margen.margen_ref_centavos is not none else "—", id="kpi-margen", href="/analitica/margen?" ~ periodo) }}
+    {{ g.kpi("Pérdidas conocidas", "$" ~ (resumen.perdidas_centavos | dinero_ar), id="kpi-perdidas", href="/reportes/perdidas?" ~ periodo) }}
+    {{ g.kpi("Deuda de clientes", "$" ~ (deuda.clientes.total_centavos | dinero_ar), id="kpi-deuda", href="/analitica/deuda") }}
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-slate-600 dark:text-slate-400">
+    <p>{{ ventas.cantidad_ventas }} venta{{ 's' if ventas.cantidad_ventas != 1 else '' }} · ticket promedio ${{ ventas.ticket_promedio_centavos | dinero_ar }} · vs. anterior {{ g.variacion(ventas.comparacion_anterior.variacion_total) }}</p>
+    <p>{{ margen.margen_ref_porcentual | porcentaje }} sobre ventas con costo{% if margen.diferencia_real_vs_ref_centavos is not none %} · costo real {{ '+' if margen.diferencia_real_vs_ref_centavos > 0 else '' }}${{ margen.diferencia_real_vs_ref_centavos | dinero_ar }} vs. referencia{% endif %}</p>
+    <p>{{ resumen.perdidas_unidades }} unidad{{ 'es' if resumen.perdidas_unidades != 1 else '' }}{% if resumen.perdidas_sin_costo %} · {{ resumen.perdidas_sin_costo }} sin costo histórico{% endif %}</p>
+    <p>A proveedores: ${{ deuda.proveedores_total_centavos | dinero_ar }}{% if deuda.proveedores_por_situacion('vencida') %} · vencida ${{ deuda.proveedores_por_situacion('vencida') | dinero_ar }}{% endif %}</p>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <section class="lg:col-span-2 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <p class="font-semibold text-slate-900 dark:text-slate-100">Decisiones a revisar hoy</p>
+        <span class="text-xs text-slate-500 dark:text-slate-400">Observaciones sobre datos registrados, no predicciones</span>
+      </div>
+      {% if resumen.decisiones %}
+        <ul id="decisiones" class="divide-y divide-slate-100 dark:divide-slate-800">
+          {% for decision in resumen.decisiones %}
+            <li data-decision="{{ decision.clave }}">
+              <a href="{{ decision.href }}" class="flex items-start justify-between gap-4 px-6 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium text-slate-900 dark:text-slate-100">{{ decision.titulo }}</span>
+                  <span class="block text-xs text-slate-500 dark:text-slate-400">{{ decision.detalle }}</span>
+                </span>
+                {{ ui.badge(decision.cantidad ~ '', decision.severidad) }}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        {{ ui.estado_vacio("Nada pendiente de revisión", "No hay márgenes negativos, deudas críticas, proveedores con seguimiento ni productos para reponer.") }}
+      {% endif %}
+    </section>
+
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800"><p class="font-semibold text-slate-900 dark:text-slate-100">Stock que necesita atención</p></div>
+      <dl class="divide-y divide-slate-100 dark:divide-slate-800 text-sm" id="stock-atencion">
+        <a href="/productos?estado_stock=critico" class="flex justify-between px-6 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60"><dt class="text-slate-600 dark:text-slate-400">Stock crítico</dt><dd class="font-semibold tabular-nums">{{ resumen.stock_critico }}</dd></a>
+        <a href="/reposicion" class="flex justify-between px-6 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60"><dt class="text-slate-600 dark:text-slate-400">Para reponer</dt><dd class="font-semibold tabular-nums">{{ resumen.reposicion_pendiente }}</dd></a>
+        <a href="/reportes/rotacion?{{ periodo }}" class="flex justify-between px-6 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60"><dt class="text-slate-600 dark:text-slate-400">Con stock y sin ventas</dt><dd class="font-semibold tabular-nums">{{ resumen.sin_rotacion }}</dd></a>
+        <div class="flex justify-between px-6 py-3"><dt class="text-slate-600 dark:text-slate-400">Valor inmovilizado</dt><dd class="font-semibold tabular-nums">${{ resumen.valor_inmovilizado_centavos | dinero_ar }}</dd></div>
+      </dl>
+    </section>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <section class="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="flex items-center justify-between mb-3">
+        <p class="font-semibold text-slate-900 dark:text-slate-100">Ventas por día</p>
+        <a href="/analitica/ventas?{{ periodo }}" class="text-xs font-semibold text-primary hover:text-primary-hover">Ver análisis →</a>
+      </div>
+      {% set puntos = [] %}
+      {% for p in ventas.periodos %}{% set _ = puntos.append((p.clave[8:10] ~ '/' ~ p.clave[5:7], p.total_centavos, p.clave ~ ': $' ~ (p.total_centavos | dinero_ar) ~ ' en ' ~ p.cantidad_ventas ~ ' venta(s)')) %}{% endfor %}
+      {{ g.barras(puntos, id='grafico-ventas-dia', etiqueta_accesible='Ventas por día de los últimos 30 días') }}
+    </section>
+
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800"><p class="font-semibold text-slate-900 dark:text-slate-100">Productos que más facturan</p></div>
+      {% if ventas.top_facturacion %}
+        <ol id="top-productos" class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+          {% for p in ventas.top_facturacion[:6] %}
+            <li class="flex items-center justify-between gap-3 px-6 py-2.5">
+              <span class="min-w-0 truncate text-slate-800 dark:text-slate-200">{{ loop.index }}. {{ p.etiqueta }}</span>
+              <span class="shrink-0 text-right">
+                <span class="block font-semibold tabular-nums">${{ p.facturado_centavos | dinero_ar }}</span>
+                <span class="block text-xs text-slate-500">{{ p.unidades }} u.{% if p.margen_ref_porcentual is not none %} · margen {{ p.margen_ref_porcentual | porcentaje }}{% endif %}</span>
+              </span>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        {{ ui.estado_vacio("Sin ventas en el período") }}
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

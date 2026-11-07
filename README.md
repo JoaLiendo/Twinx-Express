@@ -829,6 +829,45 @@ comprobante. La facturación queda inactiva hasta configurar el emisor, validar 
 certificado y clasificar los productos (IVA y otros impuestos nacionales indirectos). El
 rollback a V1.15 restaura el backup previo (V1.15 rechaza abrir una base con migraciones que no conoce).
 
+## Analítica (V1.17)
+
+Sección «Analítica» del menú (solo OWNER; el CASHIER no ve costos, márgenes ni deuda), de solo lectura, construida
+sobre los datos ya persistidos: nunca proyecta ni reconstruye lo que la base no guarda.
+
+- **Resumen del dueño** (`/analitica`): últimos 30 días contra los 30 anteriores (ventas, margen bruto, pérdidas, deuda),
+  stock que necesita atención (crítico, para reponer, sin rotación, valor inmovilizado), productos que más facturan y
+  una lista de **decisiones a revisar hoy** (márgenes negativos, costos que subieron sin ajustar el precio, clientes
+  críticos o demorados, proveedores con deuda vencida o con seguimiento, reposición pendiente): observaciones sobre
+  hechos registrados, no predicciones.
+- **Ventas** (`/analitica/ventas`): por día, semana ISO o mes; comparación con el período anterior y con el mismo
+  período del año anterior; mayor facturación y más unidades; comportamiento por mes del año como promedio histórico,
+  solo con 12 meses distintos con ventas (si no, lo dice). Filtros por producto y categoría (incluye subcategorías).
+- **Margen bruto** (`/analitica/margen` + CSV): por producto, categoría o período, distinguiendo **costo de referencia**
+  (`detalle_venta.costo_unitario_centavos`, vigente al vender), **costo real** (partidas consumidas, libro de
+  movimientos) y **unidades sin costo conocido** (ventas anteriores a cada dato o existencias heredadas: nunca se
+  valorizan con el costo actual). La diferencia real − referencia se mide sobre las mismas unidades. Solo ventas
+  activas (las anuladas, también por nota de crédito, no cuentan). Margen bruto ≠ ganancia neta.
+- **Precios y costos** (`/analitica/precios` + CSV): evolución por producto desde el historial real de cambios
+  (inicial → final → vigente, cantidad de cambios, variación), subas/bajas por mes, cambios relevantes según un umbral
+  configurable (10 % por defecto) y productos cuyo costo subió sin cambio de precio de venta.
+- **Pérdidas**: el reporte existente (`/reportes/perdidas`) suma filtro por categoría y resúmenes por producto,
+  categoría y mes, con las mismas reglas (reversas no suman, costo desconocido nunca se valoriza).
+- **Deuda** (`/analitica/deuda`): cuentas por cobrar y por pagar siempre separadas. Clientes por antigüedad con los
+  tramos del estado de crédito (normal / regular / demorado / crítica), strikes y cierres ya registrados (solo lectura:
+  no evalúa ni cierra nada); proveedores por vencimiento (estimación FIFO del reporte existente); evolución mensual de
+  cada saldo reconstruida desde su libro.
+- **Proveedores** (`/analitica/proveedores`): compras y participación del período, calificación actual (hecho
+  subjetivo, no puntaje predictivo), reclamos totales y abiertos, saldo, costos que subieron/bajaron por producto y
+  dependencia por categoría (alta desde el 80 %).
+- **Reposición** (`/reposicion`): cada sugerencia explica su cálculo («¿Cómo se calculó?»): la cantidad por mínimo
+  (regla existente, sin cambios), la rotación de los últimos 30 días con los días de cobertura y la cantidad para cubrir
+  14 días, mercadería vencida o por vencer en sus partidas y la calificación del proveedor principal. Nunca genera
+  compras: el operador decide.
+
+Código: `db/repositorios/analitica.py` (consultas agregadas), `domain/analitica.py` (cálculos puros),
+`services/servicio_analitica.py`, `interfaces/web/rutas/analitica.py`, `interfaces/web/templates/analitica/`. Los
+gráficos son SVG inline sin dependencias.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
@@ -857,5 +896,6 @@ rollback a V1.15 restaura el backup previo (V1.15 rechaza abrir una base con mig
 - [x] Proveedores con categorías, datos fiscales, evaluaciones, reclamos auditables y documentación fiscal declarada (V1.13, ver «Proveedores (V1.13)»)
 - [x] Clientes persona/empresa, políticas de crédito, venta mixta, obligaciones con FIFO persistido, estados, cierres, strikes y veto (V1.14, ver «Clientes y crédito (V1.14)»)
 - [x] Facturación fiscal ARCA: WSAA + WSFEv1, factura A/B/C con CAE, QR, A4/80 mm/PDF, notas de crédito, conciliación de inciertos y contingencia CAEA (V1.16, ver «Facturación fiscal ARCA (V1.16)»; homologación externa pendiente)
+- [x] Analítica del dueño: ventas por período, margen bruto con costo real de partidas, precios y costos, pérdidas por categoría, deuda por antigüedad, proveedores y reposición explicada (V1.17, ver «Analítica (V1.17)»)
 - [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
 - [ ] Exportación de datos y backup automático/programado

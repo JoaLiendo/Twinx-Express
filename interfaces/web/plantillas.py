@@ -23,6 +23,17 @@ templates.env.filters["dinero"] = centavos_a_texto
 # en el `value=` de un input editable, ver domain.dinero.centavos_a_texto_localizado.
 templates.env.filters["dinero_ar"] = centavos_a_texto_localizado
 templates.env.filters["fecha_corta"] = fecha_corta
+
+
+def formato_porcentaje(valor: float | None, decimales: int = 1) -> str:
+    """Porcentaje para lectura (V1.17): `12,5 %`, con signo cuando es una variación negativa; `None`
+    (sin datos) se muestra como un guion, nunca como 0 %."""
+    if valor is None:
+        return "—"
+    return f"{valor:.{decimales}f}".replace(".", ",") + " %"
+
+
+templates.env.filters["porcentaje"] = formato_porcentaje
 # Pie de página (base.html y login.html): versión de la aplicación para soporte.
 templates.env.globals["app_version"] = VERSION
 # Formularios de contraseña nueva: el aviso sale de la misma regla que aplica el dominio.

@@ -30,6 +30,8 @@ NAV_ITEMS: list[dict[str, object]] = [
     {"href": "/compras", "etiqueta": "Compras", "icono": "compras", "roles": _SOLO_OWNER},
     {"href": "/reposicion", "etiqueta": "Reposición", "icono": "pedidos", "roles": _SOLO_OWNER},
     {"href": "/reportes", "etiqueta": "Reportes", "icono": "reportes", "roles": _SOLO_OWNER},
+    # V1.17: analítica del dueño (ventas, margen, precios, deuda, proveedores). El CASHIER no ve costos.
+    {"href": "/analitica", "etiqueta": "Analítica", "icono": "analitica", "roles": _SOLO_OWNER},
     # V1.16: panel de facturación ARCA. El CASHIER fiscaliza desde el POS sin entrar acá.
     {"href": "/fiscal", "etiqueta": "Fiscal", "icono": "auditoria", "roles": _SOLO_OWNER},
     {"href": "/empleados", "etiqueta": "Empleados", "icono": "empleados", "roles": _SOLO_OWNER},

@@ -150,6 +150,8 @@ class FilaPerdida:
     reversa_id: int | None = None
     reversa_fecha: str | None = None
     reversa_usuario_nombre_completo: str | None = None
+    categoria_id: int | None = None
+    categoria_nombre: str | None = None
 
     @property
     def revertida(self) -> bool:
@@ -201,6 +203,48 @@ def resumir_perdidas_por_motivo(filas: list[FilaPerdida]) -> list[ResumenPerdida
 
 
 @dataclass(frozen=True)
+class GrupoPerdidas:
+    """Resumen de pérdidas de un grupo (producto, categoría o mes) del reporte (V1.17)."""
+
+    clave: str
+    etiqueta: str
+    resumen: ResumenPerdidas
+
+
+def _agrupar_perdidas(filas: list[FilaPerdida], clave_de, etiqueta_de) -> list[GrupoPerdidas]:
+    grupos: dict[str, list[FilaPerdida]] = {}
+    etiquetas: dict[str, str] = {}
+    for fila in filas:
+        clave = clave_de(fila)
+        grupos.setdefault(clave, []).append(fila)
+        etiquetas.setdefault(clave, etiqueta_de(fila))
+    return [GrupoPerdidas(clave, etiquetas[clave], resumir_perdidas(grupos[clave])) for clave in grupos]
+
+
+def resumir_perdidas_por_producto(filas: list[FilaPerdida]) -> list[GrupoPerdidas]:
+    """Un resumen por producto, de mayor a menor pérdida conocida y luego por unidades."""
+    grupos = _agrupar_perdidas(filas, lambda f: str(f.producto_id), lambda f: f.producto_nombre)
+    return sorted(grupos, key=lambda g: (-g.resumen.valor_conocido_centavos, -g.resumen.cantidad, g.etiqueta.casefold()))
+
+
+def resumir_perdidas_por_categoria(filas: list[FilaPerdida]) -> list[GrupoPerdidas]:
+    """Un resumen por categoría del producto (hoy, no la histórica: el ajuste no la guarda), con los
+    productos sin categoría agrupados aparte."""
+    grupos = _agrupar_perdidas(
+        filas,
+        lambda f: str(f.categoria_id) if f.categoria_id is not None else "",
+        lambda f: f.categoria_nombre or "Sin categoría",
+    )
+    return sorted(grupos, key=lambda g: (-g.resumen.valor_conocido_centavos, -g.resumen.cantidad, g.etiqueta.casefold()))
+
+
+def resumir_perdidas_por_mes(filas: list[FilaPerdida]) -> list[GrupoPerdidas]:
+    """Un resumen por mes (`AAAA-MM`) del ajuste, en orden cronológico."""
+    grupos = _agrupar_perdidas(filas, lambda f: f.fecha[:7], lambda f: f.fecha[:7])
+    return sorted(grupos, key=lambda g: g.clave)
+
+
+@dataclass(frozen=True)
 class ReportePerdidas:
     fecha_desde: str
     fecha_hasta: str
@@ -209,3 +253,7 @@ class ReportePerdidas:
     filas: list[FilaPerdida]
     total: ResumenPerdidas
     por_motivo: list[ResumenPerdidas]
+    categoria_id: int | None = None
+    por_producto: list[GrupoPerdidas] = field(default_factory=list)
+    por_categoria: list[GrupoPerdidas] = field(default_factory=list)
+    por_mes: list[GrupoPerdidas] = field(default_factory=list)

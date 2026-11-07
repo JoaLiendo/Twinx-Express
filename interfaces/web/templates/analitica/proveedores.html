@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "analitica/_graficos.html" as g %}
+{% import "reportes/_periodo.html" as periodo %}
+
+{% block titulo %}Análisis de proveedores{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Analítica · Proveedores</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+  {% include "analitica/_navegacion.html" %}
+  {% call periodo.formulario("/analitica/proveedores", analisis.fecha_desde, analisis.fecha_hasta) %}{% endcall %}
+  <p class="text-xs text-slate-500 dark:text-slate-400">
+    Compras activas entre {{ analisis.fecha_desde | fecha_corta }} y {{ analisis.fecha_hasta | fecha_corta }}: ${{ analisis.total_centavos | dinero_ar }} en total.
+    La calificación es la última evaluación registrada (un hecho subjetivo, no un puntaje predictivo); los reclamos y el saldo son de toda la historia.
+    «Dependencia alta» marca una categoría en la que el proveedor concentró el 80 % o más de lo comprado en el período.
+  </p>
+
+  {% if analisis.con_seguimiento %}
+    <section class="rounded-2xl border border-warning/30 bg-warning/5 p-5" id="proveedores-seguimiento">
+      <p class="font-semibold text-slate-900 dark:text-slate-100">Requieren seguimiento ({{ analisis.con_seguimiento | length }})</p>
+      <ul class="mt-2 text-sm text-slate-700 dark:text-slate-300 space-y-1">
+        {% for p in analisis.con_seguimiento %}
+          <li data-proveedor="{{ p.proveedor_id }}"><a href="/proveedores/{{ p.proveedor_id }}" class="font-medium hover:underline">{{ p.nombre }}</a>:
+            {% set motivos = [] %}
+            {% if p.calificacion is not none and p.calificacion <= 2 %}{% set _ = motivos.append('calificación ' ~ p.calificacion ~ ' de 5') %}{% endif %}
+            {% if p.reclamos_abiertos %}{% set _ = motivos.append(p.reclamos_abiertos ~ ' reclamo(s) abierto(s)') %}{% endif %}
+            {% for d in p.dependencias if d.alta %}{% set _ = motivos.append('concentra el ' ~ (d.porcentaje | porcentaje(0)) ~ ' de ' ~ d.categoria_nombre) %}{% endfor %}
+            {{ motivos | join('; ') }}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if analisis.proveedores %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto">
+        <table id="tabla-proveedores" class="w-full text-sm">
+          <thead><tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <th class="px-4 py-3">Proveedor</th><th class="px-4 py-3 text-right">Compras</th><th class="px-4 py-3 text-right">Unidades</th><th class="px-4 py-3 text-right">Total</th><th class="px-4 py-3 text-right">Particip.</th><th class="px-4 py-3">Calificación</th><th class="px-4 py-3 text-right">Reclamos</th><th class="px-4 py-3 text-right">Costos ↑/↓</th><th class="px-4 py-3 text-right">Saldo</th><th class="px-4 py-3">Dependencia</th>
+          </tr></thead>
+          <tbody>
+            {% for p in analisis.proveedores %}
+              <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800 {{ 'opacity-60' if not p.activo else '' }}" data-proveedor="{{ p.proveedor_id }}" data-seguimiento="{{ 'si' if p.requiere_seguimiento else 'no' }}">
+                <td class="px-4 py-2.5 font-medium text-slate-900 dark:text-slate-100"><a href="/proveedores/{{ p.proveedor_id }}" class="hover:underline">{{ p.nombre }}</a>{% if not p.activo %} {{ ui.badge('Inactivo', 'neutral') }}{% endif %}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ p.cantidad_compras }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ p.unidades }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums font-semibold">${{ p.total_centavos | dinero_ar }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ p.participacion | porcentaje }}</td>
+                <td class="px-4 py-2.5">{% if p.calificacion is not none %}{{ ui.estrellas(p.calificacion) }} <span class="text-xs text-slate-500">({{ p.evaluaciones }})</span>{% else %}<span class="text-xs text-slate-500">Sin evaluar</span>{% endif %}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ p.reclamos_total }}{% if p.reclamos_abiertos %} <span class="text-error font-semibold">({{ p.reclamos_abiertos }} abiertos)</span>{% endif %}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums"><span class="text-error">{{ p.costos_subieron }}</span> / <span class="text-success">{{ p.costos_bajaron }}</span></td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{% if p.saldo_centavos %}${{ p.saldo_centavos | dinero_ar }}{% else %}—{% endif %}</td>
+                <td class="px-4 py-2.5 text-xs text-slate-600 dark:text-slate-400">
+                  {% for d in p.dependencias[:3] %}<span class="{{ 'text-warning font-semibold' if d.alta else '' }}">{{ d.categoria_nombre }} {{ d.porcentaje | porcentaje(0) }}</span>{{ ' · ' if not loop.last else '' }}{% endfor %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% set con_costos = analisis.proveedores | selectattr('costos') | list %}
+    {% if con_costos %}
+      <details class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900" id="costos-por-proveedor">
+        <summary class="cursor-pointer px-6 py-4 font-semibold text-slate-900 dark:text-slate-100">Evolución de costos por producto y proveedor</summary>
+        <div class="overflow-x-auto border-t border-slate-100 dark:border-slate-800">
+          <table class="w-full text-sm">
+            <thead><tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-4 py-2">Proveedor</th><th class="px-4 py-2">Producto</th><th class="px-4 py-2 text-right">Compras</th><th class="px-4 py-2 text-right">Primer costo</th><th class="px-4 py-2 text-right">Último costo</th><th class="px-4 py-2 text-right">Variación</th>
+            </tr></thead>
+            <tbody class="divide-y divide-slate-50 dark:divide-slate-800">
+              {% for p in con_costos %}{% for c in p.costos %}
+                <tr data-proveedor="{{ p.proveedor_id }}" data-producto="{{ c.producto_id }}">
+                  <td class="px-4 py-2 text-slate-600 dark:text-slate-400">{{ p.nombre }}</td>
+                  <td class="px-4 py-2 font-medium text-slate-800 dark:text-slate-200">{{ c.producto_nombre }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">{{ c.compras }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">${{ c.costo_inicial_centavos | dinero_ar }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">${{ c.costo_final_centavos | dinero_ar }}</td>
+                  <td class="px-4 py-2 text-right">{{ g.variacion(c.variacion_porcentual) }}</td>
+                </tr>
+              {% endfor %}{% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    {% endif %}
+  {% else %}
+    {{ ui.estado_vacio("Sin proveedores", "Todavía no hay proveedores cargados.") }}
+  {% endif %}
+</div>
+{% endblock %}

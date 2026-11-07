@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "analitica/_graficos.html" as g %}
+{% import "analitica/_filtros.html" as filtros %}
+{% import "reportes/_periodo.html" as periodo %}
+
+{% block titulo %}Análisis de ventas{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Analítica · Ventas</h1>{% endblock %}
+
+{% block content %}
+{% set meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'] %}
+<div class="max-w-6xl mx-auto space-y-6">
+  {% include "analitica/_navegacion.html" %}
+  {% call periodo.formulario("/analitica/ventas", analisis.fecha_desde, analisis.fecha_hasta) %}
+    {{ filtros.opcion('granularidad', 'Agrupar', granularidades, analisis.granularidad) }}
+    {{ filtros.producto(productos, analisis.producto_id) }}
+    {{ filtros.categoria(categorias, analisis.categoria_id) }}
+  {% endcall %}
+  <p class="text-xs text-slate-500 dark:text-slate-400">
+    Ventas activas entre {{ analisis.fecha_desde | fecha_corta }} y {{ analisis.fecha_hasta | fecha_corta }}. Con filtro de producto o categoría
+    (incluye subcategorías) se cuentan las ventas que los incluyeron y solo la facturación de esas líneas. Solo consulta.
+  </p>
+
+  <div id="kpis-ventas" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    {{ g.kpi("Facturado", "$" ~ (analisis.total_centavos | dinero_ar), analisis.cantidad_ventas ~ " venta(s)", id="ventas-total") }}
+    {{ g.kpi("Unidades", analisis.unidades, "ticket promedio $" ~ (analisis.ticket_promedio_centavos | dinero_ar)) }}
+    {% for c in [analisis.comparacion_anterior, analisis.comparacion_anio_anterior] %}
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900" data-comparacion="{{ loop.index }}">
+        <p class="text-sm font-medium text-slate-500 dark:text-slate-400">{{ c.etiqueta }}</p>
+        <p class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">{{ g.variacion(c.variacion_total) }}</p>
+        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ c.fecha_desde | fecha_corta }} a {{ c.fecha_hasta | fecha_corta }}: ${{ c.total_anterior_centavos | dinero_ar }} · {{ c.cantidad_ventas_anterior }} venta(s) · {{ c.unidades_anterior }} u.</p>
+      </div>
+    {% endfor %}
+  </div>
+
+  <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <p class="font-semibold text-slate-900 dark:text-slate-100 mb-3">Evolución {{ {'dia': 'por día', 'semana': 'por semana', 'mes': 'por mes'}[analisis.granularidad] }}</p>
+    {% set puntos = [] %}
+    {% for p in analisis.periodos %}{% set _ = puntos.append((p.clave[5:] if analisis.granularidad != 'mes' else p.clave, p.total_centavos, p.clave ~ ': $' ~ (p.total_centavos | dinero_ar) ~ ' · ' ~ p.cantidad_ventas ~ ' venta(s) · ' ~ p.unidades ~ ' u.')) %}{% endfor %}
+    {{ g.barras(puntos, id='grafico-evolucion', etiqueta_accesible='Evolución de ventas del período') }}
+    {% if analisis.periodos %}
+      <div class="overflow-x-auto mt-4">
+        <table id="tabla-periodos" class="w-full text-sm">
+          <thead><tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <th class="px-4 py-2">Período</th><th class="px-4 py-2 text-right">Ventas</th><th class="px-4 py-2 text-right">Unidades</th><th class="px-4 py-2 text-right">Total</th><th class="px-4 py-2 text-right">Ticket prom.</th>
+          </tr></thead>
+          <tbody>
+            {% for p in analisis.periodos %}
+              <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800" data-periodo="{{ p.clave }}">
+                <td class="px-4 py-2 font-medium text-slate-900 dark:text-slate-100">{{ p.clave }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ p.cantidad_ventas }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ p.unidades }}</td>
+                <td class="px-4 py-2 text-right tabular-nums font-semibold">${{ p.total_centavos | dinero_ar }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">${{ p.ticket_promedio_centavos | dinero_ar }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    {% for titulo, lista, id in [('Mayor facturación', analisis.top_facturacion, 'top-facturacion'), ('Más unidades vendidas', analisis.top_unidades, 'top-unidades')] %}
+      <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800"><p class="font-semibold text-slate-900 dark:text-slate-100">{{ titulo }}</p></div>
+        {% if lista %}
+          <table id="{{ id }}" class="w-full text-sm">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+              {% for p in lista %}
+                <tr>
+                  <td class="px-6 py-2.5 text-slate-500 dark:text-slate-400 w-8 tabular-nums">{{ loop.index }}</td>
+                  <td class="px-2 py-2.5 text-slate-800 dark:text-slate-200"><a href="/productos/{{ p.clave }}/movimientos" class="hover:underline">{{ p.etiqueta }}</a></td>
+                  <td class="px-4 py-2.5 text-right tabular-nums">{{ p.unidades }} u.</td>
+                  <td class="px-6 py-2.5 text-right tabular-nums font-semibold">${{ p.facturado_centavos | dinero_ar }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          {{ ui.estado_vacio("Sin ventas en el período") }}
+        {% endif %}
+      </section>
+    {% endfor %}
+  </div>
+
+  <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900" id="estacionalidad">
+    <p class="font-semibold text-slate-900 dark:text-slate-100">Comportamiento por mes del año</p>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 mb-3">
+      Promedio histórico de cada mes entre los años con ventas (toda la historia, sin filtros). Es una comparación de lo que ya pasó, no un pronóstico.
+      {% if not analisis.estacionalidad.suficiente %}
+        <strong>Historial insuficiente:</strong> hay ventas en {{ analisis.estacionalidad.meses_con_ventas }} mes(es) distintos; se necesitan 12 para comparar un año completo.
+      {% endif %}
+    </p>
+    {% if analisis.estacionalidad.suficiente %}
+      {% set puntos = [] %}
+      {% for m in analisis.estacionalidad.por_mes %}{% set _ = puntos.append((meses[m.mes - 1], m.promedio_centavos, meses[m.mes - 1] ~ ': promedio $' ~ (m.promedio_centavos | dinero_ar) ~ ' en ' ~ m.anios ~ ' año(s)')) %}{% endfor %}
+      {{ g.barras(puntos, id='grafico-estacionalidad', etiqueta_accesible='Promedio de ventas por mes del año') }}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

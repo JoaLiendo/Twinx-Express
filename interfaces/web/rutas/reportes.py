@@ -19,8 +19,9 @@ from domain.ajuste_stock import MOTIVOS_PERDIDA
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, respuesta_csv
+from interfaces.web.utilidades import contexto_base, entero_opcional, respuesta_csv
 from services import (
+    servicio_categorias,
     servicio_deuda_proveedores,
     servicio_exportacion_csv,
     servicio_proveedores,
@@ -154,20 +155,26 @@ def ver_reporte_perdidas(
     fecha_hasta: str | None = None,
     producto_id: str = "",
     motivo: str = "",
+    categoria_id: str = "",
 ):
     reporte = servicio_reportes.generar_reporte_perdidas(
-        **_periodo(fecha_desde, fecha_hasta), producto_id=_id_producto(producto_id), motivo=motivo
+        **_periodo(fecha_desde, fecha_hasta),
+        producto_id=_id_producto(producto_id),
+        motivo=motivo,
+        categoria_id=entero_opcional(categoria_id, "La categoría elegida no es válida."),
     )
     filtros = {
         "fecha_desde": reporte.fecha_desde,
         "fecha_hasta": reporte.fecha_hasta,
         "producto_id": reporte.producto_id or "",
         "motivo": reporte.motivo or "",
+        "categoria_id": reporte.categoria_id or "",
     }
     contexto = {
         **contexto_base(request),
         "reporte": reporte,
         "productos": servicio_reportes.listar_productos_con_perdidas(),
+        "categorias": servicio_categorias.obtener_arbol().en_orden(),
         "motivos": sorted(MOTIVOS_PERDIDA),
         "url_exportar": "/reportes/perdidas/exportar?" + urlencode({k: v for k, v in filtros.items() if v}),
         "seccion": "perdidas",
@@ -177,12 +184,19 @@ def ver_reporte_perdidas(
 
 @router.get("/reportes/perdidas/exportar")
 def exportar_reporte_perdidas(
-    fecha_desde: str | None = None, fecha_hasta: str | None = None, producto_id: str = "", motivo: str = ""
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    producto_id: str = "",
+    motivo: str = "",
+    categoria_id: str = "",
 ):
     """CSV del mismo dataset de la pantalla de pérdidas (mismos filtros y mismo servicio)."""
     return respuesta_csv(
         servicio_exportacion_csv.csv_perdidas(
-            **_periodo(fecha_desde, fecha_hasta), producto_id=_id_producto(producto_id), motivo=motivo or None
+            **_periodo(fecha_desde, fecha_hasta),
+            producto_id=_id_producto(producto_id),
+            motivo=motivo or None,
+            categoria_id=entero_opcional(categoria_id, "La categoría elegida no es válida."),
         ),
         "perdidas",
     )

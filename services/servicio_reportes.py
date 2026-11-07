@@ -31,10 +31,14 @@ from domain.reportes_operativos import (
     ReportePerdidas,
     ResumenSesionCaja,
     resumir_perdidas,
+    resumir_perdidas_por_categoria,
+    resumir_perdidas_por_mes,
     resumir_perdidas_por_motivo,
+    resumir_perdidas_por_producto,
 )
 from domain.venta import ProductoMasVendido, ResumenVenta, Venta
 from excepciones import DatosInvalidosError
+from services import servicio_categorias
 
 LIMITE_PRODUCTOS_MAS_VENDIDOS = 10
 
@@ -406,6 +410,12 @@ def _limites_del_periodo(fecha_desde: str | None, fecha_hasta: str | None) -> tu
     return fecha_desde, fecha_hasta, fecha_desde, fin_exclusivo
 
 
+def limites_del_periodo(fecha_desde: str | None, fecha_hasta: str | None) -> tuple[str, str, str, str]:
+    """Misma convención de período de los reportes operativos, para los demás servicios de solo lectura
+    (analítica V1.17): ver `_limites_del_periodo`."""
+    return _limites_del_periodo(fecha_desde, fecha_hasta)
+
+
 def generar_reporte_caja(fecha_desde: str | None = None, fecha_hasta: str | None = None) -> ReporteCaja:
     """Resumen por sesión de caja (abiertas en el período), con la misma fórmula de efectivo esperado
     que el arqueo y el cierre. No modifica ninguna caja."""
@@ -480,24 +490,30 @@ def generar_reporte_perdidas(
     fecha_hasta: str | None = None,
     producto_id: int | None = None,
     motivo: str | None = None,
+    categoria_id: int | None = None,
 ) -> ReportePerdidas:
     """Pérdidas de stock del período (V1.11-D): ajustes de pérdida con su costo histórico, responsable y
-    estado de reversa, más el total y un resumen por motivo.
+    estado de reversa, más el total y los resúmenes por motivo, producto, categoría y mes (V1.17).
 
     Reglas (ver `domain.ajuste_stock.MOTIVOS_PERDIDA` y `domain.reportes_operativos.resumir_perdidas`):
     STOCK_INICIAL, RECUENTO, REVERSA y OTRO nunca son pérdida; un ajuste revertido se lista con su reversa
     pero no suma; una fila sin costo histórico se cuenta aparte y nunca se valoriza (ni con el costo
-    actual). Mismo rango por defecto que los demás reportes operativos. Dos consultas fijas: la de las
-    filas y ninguna por fila.
+    actual). `categoria_id` incluye sus subcategorías. Mismo rango por defecto que los demás reportes
+    operativos. Una consulta para las filas y ninguna por fila.
 
     Raises:
-        DatosInvalidosError: fechas inválidas o `motivo` que no es de pérdida.
+        DatosInvalidosError: fechas inválidas, `motivo` que no es de pérdida o categoría inexistente.
     """
     motivo = motivo or None
     if motivo is not None and motivo not in MOTIVOS_PERDIDA:
         raise DatosInvalidosError(f"Motivo de pérdida inválido: {motivo!r}.")
+    categoria_ids = None
+    if categoria_id is not None:
+        categoria_ids = servicio_categorias.obtener_arbol().ids_con_descendientes(categoria_id)
+        if not categoria_ids:
+            raise DatosInvalidosError("La categoría elegida no existe.")
     desde, hasta, inicio, fin = _limites_del_periodo(fecha_desde, fecha_hasta)
-    filas = repositorio_ajustes_stock.listar_perdidas_en_rango(inicio, fin, producto_id, motivo)
+    filas = repositorio_ajustes_stock.listar_perdidas_en_rango(inicio, fin, producto_id, motivo, categoria_ids)
     return ReportePerdidas(
         fecha_desde=desde,
         fecha_hasta=hasta,
@@ -506,6 +522,10 @@ def generar_reporte_perdidas(
         filas=filas,
         total=resumir_perdidas(filas),
         por_motivo=resumir_perdidas_por_motivo(filas),
+        categoria_id=categoria_id,
+        por_producto=resumir_perdidas_por_producto(filas),
+        por_categoria=resumir_perdidas_por_categoria(filas),
+        por_mes=resumir_perdidas_por_mes(filas),
     )
 
 

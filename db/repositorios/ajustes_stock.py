@@ -8,6 +8,7 @@ con el descuento/incremento real de `productos.stock_actual` en
 """
 
 import sqlite3
+from collections.abc import Iterable
 
 from db.conexion import obtener_conexion
 from domain.ajuste_stock import MOTIVOS_PERDIDA, AjusteStock, AjusteStockConUsuario
@@ -162,35 +163,48 @@ _FILTRO_PERDIDA = (
 
 
 def listar_perdidas_en_rango(
-    inicio: str, fin_exclusivo: str, producto_id: int | None, motivo: str | None
+    inicio: str,
+    fin_exclusivo: str,
+    producto_id: int | None,
+    motivo: str | None,
+    categoria_ids: Iterable[int] | None = None,
 ) -> list[FilaPerdida]:
     """Ajustes de pérdida (ver `domain.ajuste_stock.MOTIVOS_PERDIDA`) de `[inicio, fin_exclusivo)`, más
-    reciente primero, con producto, responsable y su reversa (si tiene) resueltos en UNA consulta (sin N+1).
-    Las reversas mismas no aparecen (motivo REVERSA): neutralizan a su original vía `reversa_id`."""
-    consulta = f"""
-        SELECT
-            a.id, a.fecha, a.producto_id, p.codigo_barras, p.nombre AS producto_nombre, a.motivo,
-            -a.delta AS cantidad, a.costo_unitario_centavos, u.nombre_completo AS usuario_nombre_completo,
-            a.observaciones, r.id AS reversa_id, r.fecha AS reversa_fecha,
-            ru.nombre_completo AS reversa_usuario_nombre_completo
-        FROM ajustes_stock a
-        JOIN productos p ON p.id = a.producto_id
-        LEFT JOIN usuarios u ON u.id = a.usuario_id
-        LEFT JOIN ajustes_stock r ON r.reversa_de_id = a.id
-        LEFT JOIN usuarios ru ON ru.id = r.usuario_id
-        WHERE {_FILTRO_PERDIDA}
-          AND a.fecha >= :inicio AND a.fecha < :fin
-          AND (:producto_id IS NULL OR a.producto_id = :producto_id)
-          AND (:motivo IS NULL OR a.motivo = :motivo)
-        ORDER BY a.fecha DESC, a.id DESC
-    """
-    parametros = {
+    reciente primero, con producto, categoría, responsable y su reversa (si tiene) resueltos en UNA consulta
+    (sin N+1). Las reversas mismas no aparecen (motivo REVERSA): neutralizan a su original vía `reversa_id`.
+    `categoria_ids` (V1.17) limita a productos de esas categorías (la rama ya resuelta por el servicio)."""
+    filtro_categorias = ""
+    parametros: dict[str, object] = {
         **_PARAMETROS_MOTIVOS_PERDIDA,
         "inicio": inicio,
         "fin": fin_exclusivo,
         "producto_id": producto_id,
         "motivo": motivo,
     }
+    if categoria_ids is not None:
+        ids = sorted(set(categoria_ids))
+        marcadores = ", ".join(f":categoria_{indice}" for indice in range(len(ids))) or "NULL"
+        filtro_categorias = f" AND p.categoria_id IN ({marcadores})"
+        parametros.update({f"categoria_{indice}": valor for indice, valor in enumerate(ids)})
+    consulta = f"""
+        SELECT
+            a.id, a.fecha, a.producto_id, p.codigo_barras, p.nombre AS producto_nombre, a.motivo,
+            -a.delta AS cantidad, a.costo_unitario_centavos, u.nombre_completo AS usuario_nombre_completo,
+            a.observaciones, r.id AS reversa_id, r.fecha AS reversa_fecha,
+            ru.nombre_completo AS reversa_usuario_nombre_completo,
+            p.categoria_id, c.nombre AS categoria_nombre
+        FROM ajustes_stock a
+        JOIN productos p ON p.id = a.producto_id
+        LEFT JOIN categorias c ON c.id = p.categoria_id
+        LEFT JOIN usuarios u ON u.id = a.usuario_id
+        LEFT JOIN ajustes_stock r ON r.reversa_de_id = a.id
+        LEFT JOIN usuarios ru ON ru.id = r.usuario_id
+        WHERE {_FILTRO_PERDIDA}
+          AND a.fecha >= :inicio AND a.fecha < :fin
+          AND (:producto_id IS NULL OR a.producto_id = :producto_id)
+          AND (:motivo IS NULL OR a.motivo = :motivo){filtro_categorias}
+        ORDER BY a.fecha DESC, a.id DESC
+    """
     with obtener_conexion() as conexion:
         filas = conexion.execute(consulta, parametros).fetchall()
     return [
@@ -208,6 +222,8 @@ def listar_perdidas_en_rango(
             reversa_id=fila["reversa_id"],
             reversa_fecha=fila["reversa_fecha"],
             reversa_usuario_nombre_completo=fila["reversa_usuario_nombre_completo"],
+            categoria_id=fila["categoria_id"],
+            categoria_nombre=fila["categoria_nombre"],
         )
         for fila in filas
     ]

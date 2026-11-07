@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "analitica/_graficos.html" as g %}
+{% import "analitica/_filtros.html" as filtros %}
+{% import "reportes/_periodo.html" as periodo %}
+
+{% block titulo %}Precios y costos{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Analítica · Precios y costos</h1>{% endblock %}
+
+{% block content %}
+{% set etiquetas_campo = {'VENTA': 'Precio de venta', 'COSTO': 'Costo'} %}
+{% set etiquetas_origen = {'EDICION': 'Edición', 'COMPRA': 'Compra', 'ANULACION_COMPRA': 'Anulación de compra', 'MASIVO': 'Actualización masiva', 'IMPORTACION': 'Importación', 'LIQUIDACION': 'Liquidación'} %}
+<div class="max-w-6xl mx-auto space-y-6">
+  {% include "analitica/_navegacion.html" %}
+  {% call periodo.formulario("/analitica/precios", analisis.fecha_desde, analisis.fecha_hasta) %}
+    {{ filtros.producto(productos, analisis.producto_id) }}
+    {{ filtros.categoria(categorias, analisis.categoria_id) }}
+    <div>
+      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Cambio relevante (%)</label>
+      <input type="number" name="umbral" min="0" max="1000" step="0.5" value="{{ analisis.umbral | round(1) }}"
+             class="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+    </div>
+  {% endcall %}
+  <p class="text-xs text-slate-500 dark:text-slate-400">
+    Hechos del historial de precios entre {{ analisis.fecha_desde | fecha_corta }} y {{ analisis.fecha_hasta | fecha_corta }}: cada fila es un cambio real registrado
+    (edición, compra, actualización masiva, liquidación). Un producto sin cambios no aparece; los precios anteriores al historial no se reconstruyen.
+  </p>
+
+  <div id="kpis-precios" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    {{ g.kpi("Productos con cambio de precio", analisis.de_venta | length, id="precios-venta") }}
+    {{ g.kpi("Productos con cambio de costo", analisis.de_costo | length, id="precios-costo") }}
+    {{ g.kpi("Cambios relevantes", analisis.relevantes | length, "variación de " ~ (analisis.umbral | porcentaje) ~ " o más", id="precios-relevantes") }}
+    {{ g.kpi("Costo subió sin tocar el precio", analisis.costos_sin_precio | length, "margen erosionado a revisar", id="precios-erosion") }}
+  </div>
+
+  {% if analisis.costos_sin_precio %}
+    <section class="rounded-2xl border border-warning/30 bg-warning/5 p-5" id="costos-sin-precio">
+      <p class="font-semibold text-slate-900 dark:text-slate-100">Costos que subieron sin cambio de precio de venta</p>
+      <ul class="mt-2 divide-y divide-warning/20 text-sm">
+        {% for p in analisis.costos_sin_precio %}
+          <li class="flex flex-wrap items-center justify-between gap-2 py-2" data-producto="{{ p.producto_id }}">
+            <a href="/productos/{{ p.producto_id }}/editar" class="font-medium text-slate-800 dark:text-slate-200 hover:underline">{{ p.producto_nombre }}</a>
+            <span class="tabular-nums text-slate-600 dark:text-slate-400">costo ${{ p.costo_inicial_centavos | dinero_ar }} → ${{ p.costo_final_centavos | dinero_ar }} ({{ g.variacion(p.variacion_costo_porcentual) }}) · precio sigue en ${{ p.precio_venta_centavos | dinero_ar }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800"><p class="font-semibold text-slate-900 dark:text-slate-100">Cambios por mes</p></div>
+      {% if analisis.por_mes %}
+        <table id="tabla-cambios-mes" class="w-full text-sm">
+          <thead><tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <th class="px-4 py-2">Mes</th><th class="px-4 py-2 text-right">Precio ↑</th><th class="px-4 py-2 text-right">Precio ↓</th><th class="px-4 py-2 text-right">Costo ↑</th><th class="px-4 py-2 text-right">Costo ↓</th>
+          </tr></thead>
+          <tbody>
+            {% for m in analisis.por_mes %}
+              <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800" data-mes="{{ m.clave }}">
+                <td class="px-4 py-2 font-medium">{{ m.clave }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ m.subas_venta }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ m.bajas_venta }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ m.subas_costo }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ m.bajas_costo }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        {{ ui.estado_vacio("Sin cambios en el período") }}
+      {% endif %}
+    </section>
+
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800"><p class="font-semibold text-slate-900 dark:text-slate-100">Cambios relevantes ({{ analisis.umbral | porcentaje }} o más)</p></div>
+      {% if analisis.relevantes %}
+        <table id="tabla-relevantes" class="w-full text-sm">
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            {% for e in analisis.relevantes[:15] %}
+              <tr data-producto="{{ e.producto_id }}" data-campo="{{ e.campo }}">
+                <td class="px-6 py-2.5"><span class="font-medium text-slate-800 dark:text-slate-200">{{ e.producto_nombre }}</span><span class="block text-xs text-slate-500">{{ etiquetas_campo[e.campo] }} · {{ e.cambios }} cambio(s)</span></td>
+                <td class="px-4 py-2.5 text-right tabular-nums">${{ e.inicial_centavos | dinero_ar }} → ${{ e.final_centavos | dinero_ar }}</td>
+                <td class="px-6 py-2.5 text-right">{{ g.variacion(e.variacion_porcentual) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        {{ ui.estado_vacio("Sin cambios relevantes", "Ningún producto varió " ~ (analisis.umbral | porcentaje) ~ " o más en el período.") }}
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="flex items-center justify-between">
+    <p class="font-semibold text-slate-900 dark:text-slate-100">Evolución por producto</p>
+    <a href="{{ url_exportar }}" data-accion="exportar-csv" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-medium px-4 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">Exportar CSV</a>
+  </div>
+  {% if analisis.evoluciones %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto">
+        <table id="tabla-evolucion" class="w-full text-sm">
+          <thead><tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <th class="px-4 py-3">Producto</th><th class="px-4 py-3">Categoría</th><th class="px-4 py-3">Campo</th><th class="px-4 py-3 text-right">Cambios</th><th class="px-4 py-3 text-right">Inicial</th><th class="px-4 py-3 text-right">Final</th><th class="px-4 py-3 text-right">Variación</th><th class="px-4 py-3 text-right">Vigente</th>
+          </tr></thead>
+          <tbody>
+            {% for e in analisis.evoluciones %}
+              <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800" data-producto="{{ e.producto_id }}" data-campo="{{ e.campo }}">
+                <td class="px-4 py-2.5 font-medium text-slate-900 dark:text-slate-100"><a href="/productos/{{ e.producto_id }}/historial-precios" class="hover:underline">{{ e.producto_nombre }}</a></td>
+                <td class="px-4 py-2.5 text-slate-500 dark:text-slate-400">{{ e.categoria_nombre or '—' }}</td>
+                <td class="px-4 py-2.5">{{ etiquetas_campo[e.campo] }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ e.cambios }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">${{ e.inicial_centavos | dinero_ar }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">${{ e.final_centavos | dinero_ar }}</td>
+                <td class="px-4 py-2.5 text-right">{{ g.variacion(e.variacion_porcentual) }}<span class="block text-xs text-slate-500 tabular-nums">{{ '+' if e.variacion_centavos > 0 else '' }}${{ e.variacion_centavos | dinero_ar }}</span></td>
+                <td class="px-4 py-2.5 text-right tabular-nums">${{ e.vigente_centavos | dinero_ar }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    {{ ui.estado_vacio("Sin cambios de precio en el período", "El historial no registra cambios para los filtros elegidos.") }}
+  {% endif %}
+
+  {% if analisis.cambios %}
+    <details class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <summary class="cursor-pointer px-6 py-4 font-semibold text-slate-900 dark:text-slate-100">Últimos cambios registrados ({{ analisis.cambios | length }})</summary>
+      <div class="overflow-x-auto border-t border-slate-100 dark:border-slate-800">
+        <table id="tabla-cambios" class="w-full text-sm">
+          <tbody class="divide-y divide-slate-50 dark:divide-slate-800">
+            {% for c in analisis.cambios %}
+              <tr data-cambio="{{ c.id }}">
+                <td class="px-4 py-2 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ c.fecha }}</td>
+                <td class="px-4 py-2 font-medium text-slate-800 dark:text-slate-200">{{ c.producto_nombre }}</td>
+                <td class="px-4 py-2">{{ etiquetas_campo[c.campo] }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">${{ c.precio_anterior_centavos | dinero_ar }} → ${{ c.precio_nuevo_centavos | dinero_ar }}</td>
+                <td class="px-4 py-2 text-right">{{ g.variacion(c.variacion_porcentual) }}</td>
+                <td class="px-4 py-2 text-slate-500 dark:text-slate-400">{{ etiquetas_origen.get(c.origen, c.origen) }}{% if c.usuario_nombre_completo %} · {{ c.usuario_nombre_completo }}{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  {% endif %}
+</div>
+{% endblock %}

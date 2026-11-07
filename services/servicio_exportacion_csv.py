@@ -25,6 +25,7 @@ from domain.dinero import centavos_a_texto
 from domain.movimiento_stock import etiqueta_de_tipo
 from domain.reportes_operativos import FilaPerdida, ProductoRotacion
 from services import (
+    servicio_analitica,
     servicio_auditoria,
     servicio_compras,
     servicio_deuda_proveedores,
@@ -224,12 +225,76 @@ def _fila_perdida(fila: FilaPerdida) -> tuple[str | None, ...]:
 
 
 def csv_perdidas(
-    fecha_desde: str | None, fecha_hasta: str | None, producto_id: int | None, motivo: str | None
+    fecha_desde: str | None,
+    fecha_hasta: str | None,
+    producto_id: int | None,
+    motivo: str | None,
+    categoria_id: int | None = None,
 ) -> bytes:
     """El mismo dataset de `/reportes/perdidas` con sus filtros. Una fila sin costo histórico sale con
     `costo_unitario`/`perdida_a_costo` vacíos y `costo_historico` = DESCONOCIDO: nunca con un costo inventado."""
-    reporte = servicio_reportes.generar_reporte_perdidas(fecha_desde, fecha_hasta, producto_id, motivo)
+    reporte = servicio_reportes.generar_reporte_perdidas(fecha_desde, fecha_hasta, producto_id, motivo, categoria_id)
     return generar_csv(COLUMNAS_PERDIDAS, (_fila_perdida(fila) for fila in reporte.filas))
+
+
+# --- Analítica (V1.17) --------------------------------------------------------------------------------
+
+COLUMNAS_MARGEN = (
+    "grupo", "unidades", "facturado", "costo_referencia", "margen_referencia", "margen_porcentual",
+    "unidades_sin_costo_referencia", "costo_real_conocido", "unidades_costo_real", "unidades_sin_costo_real",
+    "diferencia_real_vs_referencia",
+)
+
+
+def _porcentaje(valor: float | None) -> Numero:
+    return Numero("" if valor is None else f"{valor:.2f}")
+
+
+def csv_margen(
+    fecha_desde: str | None,
+    fecha_hasta: str | None,
+    criterio: str | None,
+    producto_id: int | None,
+    categoria_id: int | None,
+) -> bytes:
+    """El mismo agregado de `/analitica/margen` (mismos filtros y mismo servicio). Un grupo sin costo conocido
+    sale con margen vacío, nunca con 0."""
+    analisis = servicio_analitica.analizar_margen(fecha_desde, fecha_hasta, criterio, producto_id, categoria_id)
+    filas = (
+        (
+            grupo.etiqueta, numero(grupo.unidades), dinero(grupo.facturado_centavos),
+            dinero(grupo.costo_ref_centavos if grupo.unidades_con_costo_ref else None),
+            dinero(grupo.margen_ref_centavos), _porcentaje(grupo.margen_ref_porcentual),
+            numero(grupo.unidades_sin_costo_ref),
+            dinero(grupo.costo_real_centavos if grupo.unidades_costo_real else None),
+            numero(grupo.unidades_costo_real), numero(grupo.unidades_sin_costo_real),
+            dinero(grupo.diferencia_real_vs_ref_centavos),
+        )
+        for grupo in analisis.grupos
+    )
+    return generar_csv(COLUMNAS_MARGEN, filas)
+
+
+COLUMNAS_EVOLUCION_PRECIOS = (
+    "producto_id", "producto", "categoria", "campo", "cambios", "inicial", "final", "variacion", "variacion_porcentual",
+    "vigente",
+)
+
+
+def csv_evolucion_precios(
+    fecha_desde: str | None, fecha_hasta: str | None, producto_id: int | None, categoria_id: int | None
+) -> bytes:
+    """La evolución por producto de `/analitica/precios` (mismos filtros y mismo servicio)."""
+    analisis = servicio_analitica.analizar_precios(fecha_desde, fecha_hasta, producto_id, categoria_id)
+    filas = (
+        (
+            numero(e.producto_id), e.producto_nombre, e.categoria_nombre, e.campo, numero(e.cambios),
+            dinero(e.inicial_centavos), dinero(e.final_centavos), dinero(e.variacion_centavos),
+            _porcentaje(e.variacion_porcentual), dinero(e.vigente_centavos),
+        )
+        for e in analisis.evoluciones
+    )
+    return generar_csv(COLUMNAS_EVOLUCION_PRECIOS, filas)
 
 
 COLUMNAS_AUDITORIA = ("id", "fecha", "usuario_id", "usuario", "accion", "entidad", "entidad_id", "resumen")

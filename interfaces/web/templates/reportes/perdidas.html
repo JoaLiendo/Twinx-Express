@@ -21,6 +21,15 @@
       </select>
     </div>
     <div>
+      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Categoría</label>
+      <select name="categoria_id" class="{{ clases_select }} max-w-[14rem]">
+        <option value="">Todas</option>
+        {% for c in categorias %}
+          <option value="{{ c.categoria.id }}" {{ 'selected' if c.categoria.id == reporte.categoria_id else '' }}>{{ '— ' * (c.nivel - 1) }}{{ c.categoria.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
       <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Motivo</label>
       <select name="motivo" class="{{ clases_select }}">
         <option value="">Todos</option>
@@ -78,6 +87,29 @@
           </tbody>
         </table>
       </div>
+    </div>
+
+    {# V1.17: las mismas pérdidas vigentes vistas por producto, categoría y mes. #}
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4" id="perdidas-agrupadas">
+      {% for titulo, grupos, id in [('Por producto', reporte.por_producto, 'tabla-perdidas-por-producto'), ('Por categoría', reporte.por_categoria, 'tabla-perdidas-por-categoria'), ('Por mes', reporte.por_mes, 'tabla-perdidas-por-mes')] %}
+        <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+          <p class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 font-semibold text-slate-900 dark:text-slate-100">{{ titulo }}</p>
+          <table id="{{ id }}" class="w-full text-sm">
+            <thead><tr class="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-2">{{ titulo[4:] | capitalize }}</th><th class="px-3 py-2 text-right">Unid.</th><th class="px-5 py-2 text-right">A costo</th>
+            </tr></thead>
+            <tbody>
+              {% for grupo in grupos[:8] %}
+                <tr data-clave="{{ grupo.clave }}" class="border-t border-slate-50 dark:border-slate-800">
+                  <td class="px-5 py-2 text-slate-800 dark:text-slate-200 truncate max-w-[12rem]">{{ grupo.etiqueta }}</td>
+                  <td class="px-3 py-2 text-right tabular-nums">{{ grupo.resumen.cantidad }}</td>
+                  <td class="px-5 py-2 text-right tabular-nums">${{ grupo.resumen.valor_conocido_centavos | dinero_ar }}{% if grupo.resumen.filas_costo_desconocido %}<span class="block text-xs text-slate-500">+{{ grupo.resumen.cantidad_costo_desconocido }} u. sin costo</span>{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endfor %}
     </div>
 
     <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">

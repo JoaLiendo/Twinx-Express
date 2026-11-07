@@ -155,17 +155,29 @@ monedas, exportación, multi-sucursal, cálculo de impuestos internos/específic
 (los productos alcanzados se bloquean, nunca se facturan con cero). Para declararla
 lista para producción falta el smoke real contra ARCA homologación con un certificado de homologación.
 
-## V1.17 — Analítica
+## V1.17 — Analítica (en desarrollo, `dev/v1.17`)
 
-- Evolución de precios y costos.
-- Costo real desde partidas.
-- Margen bruto.
-- Ventas por producto/período/temporada.
-- Pérdidas.
-- Deuda.
-- Análisis de proveedores.
-- Reposición sugerida determinística.
-- Dashboard avanzado OWNER.
+Sin migraciones: todo se calcula sobre datos ya persistidos, de solo lectura, solo OWNER. Detalle en `README.md`
+(«Analítica (V1.17)»).
+
+- **V1.17-A (cerrado)**: seguridad y trazabilidad (política mínima de contraseñas, auditoría paginada y exportable,
+  errores web para usuarios) e instancia única por base (`db/instancia_unica.py`).
+- **V1.17-B (cerrado)**: evolución de precios y costos desde el historial real (por producto, por mes, cambios
+  relevantes por umbral, costos que subieron sin ajustar el precio; CSV).
+- **V1.17-C (cerrado)**: costo real desde partidas y margen bruto por producto/categoría/período con tres bases
+  explícitas (referencia, real conocido, desconocido) y diferencia real − referencia sobre las mismas unidades; CSV.
+- **V1.17-D (cerrado)**: ventas por día/semana/mes, comparación con el período anterior y el año anterior, top por
+  facturación y unidades, estacionalidad como promedio histórico (solo con 12 meses distintos con ventas).
+- **V1.17-E (cerrado)**: pérdidas con filtro por categoría y resúmenes por producto, categoría y mes sobre el reporte
+  existente.
+- **V1.17-F (cerrado)**: deuda de clientes por antigüedad (tramos del crédito, strikes y cierres registrados, sin
+  evaluar nada) y a proveedores por vencimiento (FIFO existente), con evolución mensual de cada saldo desde su libro.
+- **V1.17-G (cerrado)**: análisis de proveedores (compras, participación, calificación, reclamos, saldo, costos por
+  producto, dependencia por categoría ≥ 80 %).
+- **V1.17-H (cerrado)**: reposición explicada (rotación 30 días, cobertura, cantidad para 14 días, vencimientos,
+  calificación del proveedor) sin cambiar la regla por mínimo ni generar compras.
+- **V1.17-I (cerrado)**: resumen ejecutivo del dueño con decisiones a revisar hoy.
+- Pendiente de cierre: evolución visual (design system, dashboard, POS, inventario) con auditoría de capturas.
 
 ## V1.18 — Preparación comercial / piloto
 

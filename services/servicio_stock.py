@@ -11,9 +11,13 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
+from datetime import date, timedelta
+
 from db.conexion import ConexionBD, obtener_conexion
 from db.repositorios import ajustes_stock as repositorio_ajustes_stock
+from db.repositorios import analitica as repositorio_analitica
 from db.repositorios import etiquetas as repositorio_etiquetas
+from db.repositorios import evaluaciones_proveedor as repositorio_evaluaciones
 from db.repositorios import partidas as repositorio_partidas
 from db.repositorios import producto_proveedor as repositorio_producto_proveedor
 from db.repositorios import productos as repositorio_productos
@@ -24,6 +28,12 @@ from domain.ajuste_stock import (
     AjusteStock,
     AjusteStockConUsuario,
     validar_motivo_manual,
+)
+from domain.analitica import (
+    DIAS_COBERTURA_REPOSICION,
+    DIAS_ROTACION_REPOSICION,
+    dias_de_cobertura,
+    sugerencia_por_rotacion,
 )
 from domain.dinero import MAXIMO_ENTERO
 from domain.partida import ESTADO_PROXIMO, ORIGEN_AJUSTE, ORIGEN_RECUENTO, ORIGEN_STOCK_INICIAL
@@ -206,10 +216,48 @@ class SugerenciaReposicion:
     proveedor_nombre: str | None = None
     proveedor_activo: bool = True
     costo_es_del_proveedor: bool = False
+    # V1.17: contexto para decidir (nunca decide). Unidades vendidas en los últimos `dias_rotacion`
+    # días, cobertura del stock a ese ritmo, cantidad alternativa para cubrir
+    # `DIAS_COBERTURA_REPOSICION` días, mercadería vencida/próxima en partidas y calificación del
+    # proveedor principal. `explicacion` enumera cómo se calculó cada cifra.
+    unidades_vendidas_periodo: int = 0
+    dias_rotacion: int = DIAS_ROTACION_REPOSICION
+    cobertura_dias: int | None = None
+    sugerida_por_rotacion: int | None = None
+    cantidad_vencida: int = 0
+    cantidad_proxima: int = 0
+    calificacion_proveedor: int | None = None
 
     @property
     def costo_estimado_centavos(self) -> int:
         return self.cantidad_sugerida * self.costo_unitario_centavos
+
+    @property
+    def explicacion(self) -> list[str]:
+        lineas = [
+            f"Por mínimo: {self.stock_minimo} (mínimo) − {self.stock_actual} (stock) = {self.cantidad_sugerida} u."
+        ]
+        if self.unidades_vendidas_periodo > 0:
+            lineas.append(
+                f"Rotación: {self.unidades_vendidas_periodo} u. vendidas en {self.dias_rotacion} días"
+                f" → el stock actual cubre {self.cobertura_dias} día(s);"
+                f" para {DIAS_COBERTURA_REPOSICION} días faltan {self.sugerida_por_rotacion} u."
+            )
+        else:
+            lineas.append(f"Rotación: sin ventas en los últimos {self.dias_rotacion} días.")
+        if self.cantidad_vencida or self.cantidad_proxima:
+            lineas.append(
+                f"Partidas: {self.cantidad_vencida} u. vencida(s) y {self.cantidad_proxima} próxima(s) a vencer"
+                " dentro del stock actual."
+            )
+        lineas.append(
+            "Costo: último costo con el proveedor principal."
+            if self.costo_es_del_proveedor
+            else "Costo: costo vigente del producto."
+        )
+        if self.calificacion_proveedor is not None:
+            lineas.append(f"Proveedor principal calificado con {self.calificacion_proveedor} de 5.")
+        return lineas
 
 
 def listar_reposicion() -> list[SugerenciaReposicion]:
@@ -218,11 +266,24 @@ def listar_reposicion() -> list[SugerenciaReposicion]:
     sugerida `stock_minimo - stock_actual`, su proveedor principal y el último costo con
     él (respaldo: costo vigente del producto). Solo lectura: no crea compras ni
     modifica stock."""
+    productos = repositorio_productos.listar_para_reposicion()
+    if not productos:
+        return []
     principales = repositorio_producto_proveedor.listar_principales_con_costo()
+    hoy = date.today()
+    inicio = (hoy - timedelta(days=DIAS_ROTACION_REPOSICION - 1)).isoformat()
+    fin = (hoy + timedelta(days=1)).isoformat()
+    vendidas = repositorio_analitica.unidades_vendidas_por_producto(inicio, fin)
+    vencimientos = servicio_partidas.resumenes_de_vencimiento(servicio_configuracion.obtener_dias_alerta_vencimiento())
+    calificaciones = repositorio_evaluaciones.calificaciones_actuales(
+        {p.proveedor_id for p in principales.values()}
+    )
     sugerencias = []
-    for producto in repositorio_productos.listar_para_reposicion():
+    for producto in productos:
         principal = principales.get(producto.id)
         ultimo_costo = principal.ultimo_costo_centavos if principal is not None else None
+        unidades = vendidas.get(producto.id, 0)
+        resumen = vencimientos.get(producto.id)
         sugerencias.append(
             SugerenciaReposicion(
                 producto_id=producto.id,
@@ -236,6 +297,14 @@ def listar_reposicion() -> list[SugerenciaReposicion]:
                 proveedor_nombre=principal.proveedor_nombre if principal is not None else None,
                 proveedor_activo=principal.proveedor_activo if principal is not None else True,
                 costo_es_del_proveedor=ultimo_costo is not None,
+                unidades_vendidas_periodo=unidades,
+                cobertura_dias=dias_de_cobertura(producto.stock_actual, unidades, DIAS_ROTACION_REPOSICION),
+                sugerida_por_rotacion=sugerencia_por_rotacion(
+                    producto.stock_actual, unidades, DIAS_ROTACION_REPOSICION, DIAS_COBERTURA_REPOSICION
+                ),
+                cantidad_vencida=resumen.cantidad_vencida if resumen else 0,
+                cantidad_proxima=resumen.cantidad_proxima if resumen else 0,
+                calificacion_proveedor=calificaciones.get(principal.proveedor_id) if principal is not None else None,
             )
         )
     return sugerencias

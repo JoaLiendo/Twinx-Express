@@ -10,7 +10,7 @@
   <div class="flex flex-wrap items-end justify-between gap-4 no-imprimir">
     <p class="text-sm text-slate-500 dark:text-slate-400 max-w-xl">
       Productos con stock mínimo configurado cuyo stock está por debajo del mínimo (incluye los que ya no tienen stock).
-      Se agrupan por proveedor principal. La cantidad sugerida es lo que falta para llegar al mínimo: podés cambiarla y destildar lo que no querés antes de pasar a compra o imprimir. Esta pantalla es de consulta: no registra compras ni modifica el stock.
+      Se agrupan por proveedor principal. La cantidad sugerida es lo que falta para llegar al mínimo; como contexto se muestra la rotación de los últimos 30 días (y cuánto haría falta para cubrir 14 días a ese ritmo), la mercadería vencida o por vencer y la calificación del proveedor. Cada fila explica su cálculo. Podés cambiar cantidades y destildar lo que no querés antes de pasar a compra o imprimir. Esta pantalla es de consulta: no registra compras ni modifica el stock.
     </p>
   </div>
 
@@ -25,7 +25,7 @@
         {% if grupo.proveedor_id is not none %}<input type="hidden" name="proveedor_id" value="{{ grupo.proveedor_id }}" />{% endif %}
         <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-slate-100 dark:border-slate-800">
           <p class="font-semibold text-slate-900 dark:text-slate-100" data-proveedor>
-            {% if grupo.proveedor_nombre %}{{ grupo.proveedor_nombre }}{% if not grupo.proveedor_activo %} {{ ui.badge('Inactivo', 'neutral') }}{% endif %}{% else %}<span class="text-slate-500 dark:text-slate-400">Sin proveedor principal</span>{% endif %}
+            {% if grupo.proveedor_nombre %}{{ grupo.proveedor_nombre }}{% if not grupo.proveedor_activo %} {{ ui.badge('Inactivo', 'neutral') }}{% endif %}{% if grupo.sugerencias[0].calificacion_proveedor is not none %} {{ ui.estrellas(grupo.sugerencias[0].calificacion_proveedor, 'ml-1 text-sm') }}{% endif %}{% else %}<span class="text-slate-500 dark:text-slate-400">Sin proveedor principal</span>{% endif %}
           </p>
           <div class="flex flex-wrap items-center gap-2 no-imprimir">
             {% if grupo.proveedor_id is none or grupo.proveedor_activo %}
@@ -48,6 +48,7 @@
                 <th class="px-4 py-3">Producto</th>
                 <th class="px-4 py-3 text-right">Stock</th>
                 <th class="px-4 py-3 text-right">Mínimo</th>
+                <th class="px-4 py-3 text-right no-imprimir" title="Unidades vendidas en los últimos 30 días y días que cubre el stock actual a ese ritmo">Rotación 30 d.</th>
                 <th class="px-4 py-3 text-right">Comprar</th>
                 <th class="px-4 py-3 text-right">Costo unit.</th>
                 <th class="px-4 py-3 text-right">Subtotal</th>
@@ -60,9 +61,17 @@
                   <td class="px-4 py-3 text-slate-800 dark:text-slate-200">
                     {{ s.nombre }}
                     {% if s.stock_actual == 0 %}{{ ui.badge('Sin stock', 'alerta') }}{% endif %}
+                    {% if s.cantidad_vencida %}{{ ui.badge(s.cantidad_vencida ~ ' vencida(s)', 'alerta') }}{% elif s.cantidad_proxima %}{{ ui.badge(s.cantidad_proxima ~ ' por vencer', 'advertencia') }}{% endif %}
+                    <details class="no-imprimir mt-1 text-xs text-slate-500 dark:text-slate-400" data-explicacion>
+                      <summary class="cursor-pointer select-none hover:text-primary">¿Cómo se calculó?</summary>
+                      <ul class="mt-1 list-disc pl-4 space-y-0.5">{% for linea in s.explicacion %}<li>{{ linea }}</li>{% endfor %}</ul>
+                    </details>
                   </td>
                   <td class="px-4 py-3 text-right tabular-nums {{ 'text-error font-semibold' if s.stock_actual == 0 else '' }}">{{ s.stock_actual }}</td>
                   <td class="px-4 py-3 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ s.stock_minimo }}</td>
+                  <td class="px-4 py-3 text-right tabular-nums no-imprimir text-slate-600 dark:text-slate-400" data-rotacion>
+                    {% if s.unidades_vendidas_periodo %}{{ s.unidades_vendidas_periodo }} u.<span class="block text-xs text-slate-500">cubre {{ s.cobertura_dias }} d.{% if s.sugerida_por_rotacion %} · 14 d.: +{{ s.sugerida_por_rotacion }}{% endif %}</span>{% else %}<span class="text-xs text-slate-400">sin ventas</span>{% endif %}
+                  </td>
                   <td class="px-4 py-3 text-right">
                     <input type="number" min="1" step="1" name="cantidad_{{ s.producto_id }}" value="{{ s.cantidad_sugerida }}" data-cantidad aria-label="Cantidad a comprar de {{ s.nombre }}"
                            class="w-20 rounded-md border border-slate-300 px-2 py-1 text-right text-sm tabular-nums bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />

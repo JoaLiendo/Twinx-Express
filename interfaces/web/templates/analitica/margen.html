@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "analitica/_graficos.html" as g %}
+{% import "analitica/_filtros.html" as filtros %}
+{% import "reportes/_periodo.html" as periodo %}
+
+{% block titulo %}Margen bruto{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Analítica · Margen bruto</h1>{% endblock %}
+
+{% block content %}
+{% set total = analisis.total %}
+<div class="max-w-6xl mx-auto space-y-6">
+  {% include "analitica/_navegacion.html" %}
+  {% call periodo.formulario("/analitica/margen", analisis.fecha_desde, analisis.fecha_hasta) %}
+    {{ filtros.opcion('criterio', 'Agrupar', criterios, analisis.criterio) }}
+    {{ filtros.producto(productos, analisis.producto_id) }}
+    {{ filtros.categoria(categorias, analisis.categoria_id) }}
+  {% endcall %}
+  <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400 space-y-1" id="bases-margen">
+    <p><strong>Cómo se calcula.</strong> Margen bruto = facturación − costo, sobre ventas activas entre {{ analisis.fecha_desde | fecha_corta }} y {{ analisis.fecha_hasta | fecha_corta }} (las anuladas, también por nota de crédito, no cuentan). No es ganancia neta: no descuenta gastos, impuestos ni pérdidas.</p>
+    <p><strong>Costo de referencia:</strong> el costo vigente del producto en el momento de cada venta. <strong>Costo real:</strong> el de las partidas que efectivamente salieron (libro de movimientos, desde la versión 1.12). <strong>Desconocido:</strong> unidades sin costo de referencia (ventas anteriores a ese dato) o sin partida con costo (existencias heredadas); nunca se valorizan con el costo actual.</p>
+  </div>
+
+  <div id="kpis-margen" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    {{ g.kpi("Facturado", "$" ~ (total.facturado_centavos | dinero_ar), total.unidades ~ " unidades", id="margen-facturado") }}
+    {{ g.kpi("Margen bruto (referencia)", ("$" ~ (total.margen_ref_centavos | dinero_ar)) if total.margen_ref_centavos is not none else "—", (total.margen_ref_porcentual | porcentaje) ~ " sobre $" ~ (total.facturado_con_costo_ref_centavos | dinero_ar) ~ " con costo", id="margen-referencia") }}
+    {{ g.kpi("Costo real conocido", "$" ~ (total.costo_real_centavos | dinero_ar), total.unidades_costo_real ~ " u. con partida · " ~ total.unidades_sin_costo_real ~ " u. sin costo real", id="margen-real") }}
+    {{ g.kpi("Real vs. referencia", (("+" if total.diferencia_real_vs_ref_centavos > 0 else "") ~ "$" ~ (total.diferencia_real_vs_ref_centavos | dinero_ar)) if total.diferencia_real_vs_ref_centavos is not none else "—", ("sobre " ~ total.unidades_comparables ~ " u. comparables · " ~ (total.diferencia_real_vs_ref_porcentual | porcentaje)) if total.unidades_comparables else "sin unidades comparables", id="margen-diferencia") }}
+  </div>
+  {% if total.unidades_sin_costo_ref %}
+    <p class="text-xs text-warning" id="aviso-sin-costo-ref">{{ total.unidades_sin_costo_ref }} unidad(es) sin costo de referencia quedan fuera del margen (ventas anteriores a que existiera ese dato).</p>
+  {% endif %}
+
+  <div class="flex items-center justify-between">
+    <p class="text-sm text-slate-600 dark:text-slate-400">{{ analisis.grupos | length }} grupo(s){% if analisis.con_margen_negativo %} · <span class="text-error font-medium">{{ analisis.con_margen_negativo | length }} con margen negativo</span>{% endif %}</p>
+    <a href="{{ url_exportar }}" data-accion="exportar-csv" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-medium px-4 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">Exportar CSV</a>
+  </div>
+
+  {% if analisis.grupos %}
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto">
+        <table id="tabla-margen" class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-4 py-3">{{ {'producto': 'Producto', 'categoria': 'Categoría'}.get(analisis.criterio, 'Período') }}</th>
+              <th class="px-4 py-3 text-right">Unidades</th>
+              <th class="px-4 py-3 text-right">Facturado</th>
+              <th class="px-4 py-3 text-right">Costo ref.</th>
+              <th class="px-4 py-3 text-right">Margen ref.</th>
+              <th class="px-4 py-3 text-right">Margen %</th>
+              <th class="px-4 py-3 text-right">Costo real</th>
+              <th class="px-4 py-3 text-right">Real − ref.</th>
+              <th class="px-4 py-3 text-right">Sin costo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for grupo in analisis.grupos %}
+              <tr data-grupo="{{ grupo.clave }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800 {{ 'bg-error/5' if grupo.margen_ref_centavos is not none and grupo.margen_ref_centavos < 0 else '' }}">
+                <td class="px-4 py-2.5 font-medium text-slate-900 dark:text-slate-100">
+                  {% if analisis.criterio == 'producto' %}<a href="/productos/{{ grupo.clave }}/movimientos" class="hover:underline">{{ grupo.etiqueta }}</a>{% else %}{{ grupo.etiqueta }}{% endif %}
+                </td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ grupo.unidades }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">${{ grupo.facturado_centavos | dinero_ar }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{% if grupo.unidades_con_costo_ref %}${{ grupo.costo_ref_centavos | dinero_ar }}{% else %}—{% endif %}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums font-semibold {{ 'text-error' if grupo.margen_ref_centavos is not none and grupo.margen_ref_centavos < 0 else '' }}">{% if grupo.margen_ref_centavos is not none %}${{ grupo.margen_ref_centavos | dinero_ar }}{% else %}—{% endif %}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{{ grupo.margen_ref_porcentual | porcentaje }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{% if grupo.unidades_costo_real %}${{ grupo.costo_real_centavos | dinero_ar }}<span class="block text-xs text-slate-500">{{ grupo.unidades_costo_real }} u.</span>{% else %}—{% endif %}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">{% if grupo.diferencia_real_vs_ref_centavos is not none %}{{ '+' if grupo.diferencia_real_vs_ref_centavos > 0 else '' }}${{ grupo.diferencia_real_vs_ref_centavos | dinero_ar }}{% else %}—{% endif %}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums text-slate-500">{{ grupo.unidades_sin_costo_real }} u.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    {{ ui.estado_vacio("Sin ventas en el período", "No hay ventas activas para los filtros elegidos.") }}
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "analitica/_graficos.html" as g %}
+
+{% block titulo %}Análisis de deuda{% endblock %}
+{% block header %}<h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">Analítica · Deuda</h1>{% endblock %}
+
+{% block content %}
+{% set clientes = analisis.clientes %}
+{% set etiquetas = {'NORMAL': 'Normal (hasta 30 días)', 'REGULAR': 'Regular (31–45)', 'DEMORADO': 'Demorado (46–59)', 'CRITICA': 'Crítica (60 o más)'} %}
+{% set variantes = {'NORMAL': 'exito', 'REGULAR': 'info', 'DEMORADO': 'advertencia', 'CRITICA': 'alerta'} %}
+<div class="max-w-6xl mx-auto space-y-6">
+  {% include "analitica/_navegacion.html" %}
+  <p class="text-xs text-slate-500 dark:text-slate-400">
+    Cuentas por cobrar (clientes) y cuentas por pagar (proveedores), siempre separadas. La antigüedad de cada obligación de cliente usa los
+    mismos tramos que el estado de crédito; esta pantalla solo lee: no cierra créditos ni registra strikes. La deuda a proveedores se reparte por
+    vencimiento como estimación por antigüedad (FIFO), igual que su reporte. Saldos al {{ clientes.hoy.isoformat() | fecha_corta }}.
+  </p>
+
+  <section class="space-y-4" id="deuda-clientes">
+    <h2 class="font-semibold text-slate-900 dark:text-slate-100">Clientes: ${{ clientes.total_centavos | dinero_ar }} por cobrar</h2>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {% for estado in analisis.estados %}
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900" data-estado="{{ estado }}">
+          {{ ui.badge(etiquetas[estado], variantes[estado]) }}
+          <p class="mt-2 text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">${{ clientes.total_por_estado(estado) | dinero_ar }}</p>
+          <p class="text-xs text-slate-500 dark:text-slate-400">{{ clientes.clientes_en(estado) | length }} cliente(s) con su deuda más vieja acá</p>
+        </div>
+      {% endfor %}
+    </div>
+    {% if clientes.clientes %}
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+        <div class="overflow-x-auto">
+          <table id="tabla-deuda-clientes" class="w-full text-sm">
+            <thead><tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-4 py-3">Cliente</th><th class="px-4 py-3">Estado</th><th class="px-4 py-3 text-right">Deuda</th>
+              {% for estado in analisis.estados %}<th class="px-4 py-3 text-right">{{ estado.capitalize() }}</th>{% endfor %}
+              <th class="px-4 py-3 text-right">Antigüedad</th><th class="px-4 py-3">Crédito</th>
+            </tr></thead>
+            <tbody>
+              {% for c in clientes.clientes %}
+                <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800" data-cliente="{{ c.cliente_id }}" data-estado="{{ c.estado }}">
+                  <td class="px-4 py-2.5 font-medium text-slate-900 dark:text-slate-100"><a href="/clientes/{{ c.cliente_id }}" class="hover:underline">{{ c.cliente_nombre }}</a>{% if not c.activo %} {{ ui.badge('Inactivo', 'neutral') }}{% endif %}</td>
+                  <td class="px-4 py-2.5">{{ ui.badge(c.estado_etiqueta, variantes[c.estado]) }}</td>
+                  <td class="px-4 py-2.5 text-right tabular-nums font-semibold">${{ c.saldo_centavos | dinero_ar }}</td>
+                  {% for estado in analisis.estados %}<td class="px-4 py-2.5 text-right tabular-nums text-slate-600 dark:text-slate-400">{% if c.por_estado.get(estado) %}${{ c.por_estado[estado] | dinero_ar }}{% else %}—{% endif %}</td>{% endfor %}
+                  <td class="px-4 py-2.5 text-right tabular-nums">{{ c.dias_antiguedad }} d.</td>
+                  <td class="px-4 py-2.5 text-xs text-slate-600 dark:text-slate-400">{% if c.credito_cerrado %}Cerrado{% else %}Abierto{% endif %}{% if c.strikes %} · {{ c.strikes }} strike(s){% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% else %}
+      {{ ui.estado_vacio("Sin deuda de clientes", "Ninguna venta a cuenta tiene saldo pendiente.") }}
+    {% endif %}
+    {% if analisis.evolucion_clientes %}
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p class="font-semibold text-slate-900 dark:text-slate-100 mb-1">Evolución del saldo de clientes</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mb-3">Saldo al cierre de cada mes, reconstruido desde el libro de cuenta corriente (cargos menos cobros).</p>
+        {% set puntos = [] %}
+        {% for m in analisis.evolucion_clientes[-24:] %}{% set _ = puntos.append((m.mes, m.saldo_centavos if m.saldo_centavos > 0 else 0, m.mes ~ ': saldo $' ~ (m.saldo_centavos | dinero_ar) ~ ' · cargos $' ~ (m.cargos_centavos | dinero_ar) ~ ' · cobros $' ~ (m.pagos_centavos | dinero_ar))) %}{% endfor %}
+        {{ g.barras(puntos, id='grafico-saldo-clientes', etiqueta_accesible='Saldo mensual de clientes') }}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="space-y-4" id="deuda-proveedores">
+    <h2 class="font-semibold text-slate-900 dark:text-slate-100">Proveedores: ${{ analisis.proveedores_total_centavos | dinero_ar }} por pagar</h2>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {% for situacion, etiqueta, variante in [('vencida', 'Vencida', 'alerta'), ('proxima', 'Próxima (7 días)', 'advertencia'), ('vigente', 'Vigente', 'exito'), ('sin_vencimiento', 'Sin vencimiento', 'neutral')] %}
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900" data-situacion="{{ situacion }}">
+          {{ ui.badge(etiqueta, variante) }}
+          <p class="mt-2 text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">${{ analisis.proveedores_por_situacion(situacion) | dinero_ar }}</p>
+        </div>
+      {% endfor %}
+    </div>
+    {% if analisis.proveedores.filas %}
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+        <div class="overflow-x-auto">
+          <table id="tabla-deuda-proveedores" class="w-full text-sm">
+            <thead><tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-4 py-3">Proveedor</th><th class="px-4 py-3 text-right">Saldo</th><th class="px-4 py-3 text-right">Vencida</th><th class="px-4 py-3 text-right">Próxima</th><th class="px-4 py-3 text-right">Vigente</th><th class="px-4 py-3 text-right">Sin venc.</th><th class="px-4 py-3">Última compra</th><th class="px-4 py-3">Último pago</th>
+            </tr></thead>
+            <tbody>
+              {% for f in analisis.proveedores.filas %}
+                <tr class="border-b border-slate-50 last:border-0 dark:border-slate-800" data-proveedor="{{ f.proveedor_id }}">
+                  <td class="px-4 py-2.5 font-medium text-slate-900 dark:text-slate-100"><a href="/proveedores/{{ f.proveedor_id }}" class="hover:underline">{{ f.nombre }}</a>{% if not f.consistente %} {{ ui.badge('Datos inconsistentes', 'alerta') }}{% endif %}</td>
+                  <td class="px-4 py-2.5 text-right tabular-nums font-semibold">${{ (f.saldo_total_centavos or 0) | dinero_ar }}</td>
+                  {% for valor in [f.vencida_centavos, f.proxima_centavos, f.vigente_centavos, f.sin_vencimiento_centavos] %}
+                    <td class="px-4 py-2.5 text-right tabular-nums text-slate-600 dark:text-slate-400">{% if valor %}${{ valor | dinero_ar }}{% else %}—{% endif %}</td>
+                  {% endfor %}
+                  <td class="px-4 py-2.5 text-slate-500 dark:text-slate-400">{{ (f.ultima_compra[:10] | fecha_corta) if f.ultima_compra else '—' }}</td>
+                  <td class="px-4 py-2.5 text-slate-500 dark:text-slate-400">{{ (f.ultimo_pago[:10] | fecha_corta) if f.ultimo_pago else '—' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% else %}
+      {{ ui.estado_vacio("Sin deuda a proveedores", "Ningún proveedor tiene saldo pendiente.") }}
+    {% endif %}
+    {% if analisis.evolucion_proveedores %}
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p class="font-semibold text-slate-900 dark:text-slate-100 mb-1">Evolución del saldo a proveedores</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mb-3">Saldo al cierre de cada mes, reconstruido desde el libro de cuentas a pagar (cargos menos pagos y reversas).</p>
+        {% set puntos = [] %}
+        {% for m in analisis.evolucion_proveedores[-24:] %}{% set _ = puntos.append((m.mes, m.saldo_centavos if m.saldo_centavos > 0 else 0, m.mes ~ ': saldo $' ~ (m.saldo_centavos | dinero_ar) ~ ' · cargos $' ~ (m.cargos_centavos | dinero_ar) ~ ' · pagos $' ~ (m.pagos_centavos | dinero_ar))) %}{% endfor %}
+        {{ g.barras(puntos, id='grafico-saldo-proveedores', etiqueta_accesible='Saldo mensual a proveedores') }}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

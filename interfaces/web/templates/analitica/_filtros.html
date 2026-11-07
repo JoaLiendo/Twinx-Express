@@ -1,0 +1,37 @@
+{# Selects de producto y categoría compartidos por las pantallas de analítica (V1.17). #}
+{% set clases_select = "rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" %}
+
+{% macro producto(productos, seleccionado) %}
+  <div>
+    <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Producto</label>
+    <select name="producto_id" class="{{ clases_select }} max-w-[16rem]">
+      <option value="">Todos</option>
+      {% for p in productos %}
+        <option value="{{ p.id }}" {{ 'selected' if p.id == seleccionado else '' }}>{{ p.nombre }}</option>
+      {% endfor %}
+    </select>
+  </div>
+{% endmacro %}
+
+{% macro categoria(categorias, seleccionada) %}
+  <div>
+    <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Categoría</label>
+    <select name="categoria_id" class="{{ clases_select }} max-w-[16rem]">
+      <option value="">Todas</option>
+      {% for c in categorias %}
+        <option value="{{ c.categoria.id }}" {{ 'selected' if c.categoria.id == seleccionada else '' }}>{{ '— ' * (c.nivel - 1) }}{{ c.categoria.nombre }}</option>
+      {% endfor %}
+    </select>
+  </div>
+{% endmacro %}
+
+{% macro opcion(nombre, etiqueta, opciones, seleccionada) %}
+  <div>
+    <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{{ etiqueta }}</label>
+    <select name="{{ nombre }}" class="{{ clases_select }}">
+      {% for clave, texto in opciones %}
+        <option value="{{ clave }}" {{ 'selected' if clave == seleccionada else '' }}>{{ texto }}</option>
+      {% endfor %}
+    </select>
+  </div>
+{% endmacro %}
