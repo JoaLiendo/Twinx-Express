@@ -27,9 +27,11 @@ const preguntar = async (page, texto) => {
 test.describe.configure({ mode: 'serial' });
 
 test('el dueño pregunta cuánto vendió hoy y recibe cifras reales con acceso al reporte', async ({ page }) => {
-  const errores = registrarListenersDeErrores(page);
-  // realizarVentaSimple inicia sesión por su cuenta (helpers.js).
+  // realizarVentaSimple inicia sesión por su cuenta (helpers.js). Los listeners se registran después:
+  // en la corrida completa, el spec fiscal deja configurada la facturación y el POS intenta fiscalizar la
+  // venta (422 esperado contra el ARCA falso), algo ajeno a lo que prueba este test.
   await realizarVentaSimple(page);
+  const errores = registrarListenersDeErrores(page);
   await page.goto('/');
 
   await abrirAsistente(page);
@@ -100,7 +102,7 @@ test('con IA local configurada pero apagada, el panel lo dice y la ayuda integra
   await seccion.locator('select[name="motor"]').selectOption('ollama');
   await seccion.locator('input[name="url"]').fill('http://127.0.0.1:9');
   await seccion.locator('input[name="modelo"]').fill('llama3.2:3b');
-  await seccion.getByRole('button', { name: 'Guardar' }).click();
+  await seccion.getByRole('button', { name: 'Aplicar' }).click();
   await expect(page.locator('#toast-container')).toContainText('Asistente');
 
   await abrirAsistente(page);
@@ -117,7 +119,7 @@ test('con IA local configurada pero apagada, el panel lo dice y la ayuda integra
   // Vuelta a la ayuda integrada para no condicionar otros tests.
   await page.goto('/configuracion');
   await seccion.locator('select[name="motor"]').selectOption('integrado');
-  await seccion.getByRole('button', { name: 'Guardar' }).click();
+  await seccion.getByRole('button', { name: 'Aplicar' }).click();
   await expect(page.locator('#toast-container')).toContainText('Asistente');
   errores.afirmarSinErrores();
 });
