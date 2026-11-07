@@ -7,6 +7,18 @@ Formato: una entrada por versión, de la más nueva a la más vieja. Lo que cada
 
 Sin migraciones nuevas (la base sigue en la 047).
 
+**Twinx Asistente (V1.18, rama `feature/v1.18-asistente-ia`)**
+
+- Panel lateral de chat de solo lectura en todas las pantallas (botón *Asistente*), para ambos roles: responde
+  cuánto se vendió, qué se vendió más, qué vence, qué reponer, márgenes negativos, reclamos de proveedores, deuda
+  de clientes y a proveedores, y cómo hacer algo, con accesos a la pantalla relacionada. Historial corto solo en la
+  pestaña del navegador. Las preguntas frecuentes se responden con la *ayuda integrada* (sin IA) y datos reales.
+- Herramientas de consulta con argumentos validados, filas acotadas y permisos por rol decididos en el backend: el
+  cajero no obtiene costos, márgenes, reposición ni proveedores aunque los pida por el chat.
+- Motor de IA local opcional (Ollama en 127.0.0.1, sin dependencias nuevas): detección, modelo, timeout y contexto
+  configurables en *Configuración › Asistente*; conexión exclusivamente local, sin telemetría ni descargas. Con el
+  motor apagado el asistente sigue funcionando y lo dice. Detalle en `docs/ASISTENTE.md`.
+
 **Analítica del dueño (V1.17)**
 
 - Nueva sección *Analítica* (solo OWNER, solo lectura): resumen de los últimos 30 días con decisiones a revisar,

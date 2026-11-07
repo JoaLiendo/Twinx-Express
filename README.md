@@ -914,6 +914,30 @@ POS (V1.17-B): en la búsqueda manual, ↑ ↓ resaltan un producto vendible y E
 después limpia los filtros y por último devuelve el foco al lector. La tabla tiene anchos fijos desde 1280 px para
 que la acción nunca quede recortada.
 
+## Twinx Asistente (V1.18)
+
+Asistente conversacional de **solo lectura** integrado en la web (botón *Asistente* del encabezado, panel lateral en
+todas las pantallas, ambos roles). Diseño completo en `docs/ASISTENTE.md`.
+
+- **Ayuda integrada sin IA**: `domain/asistente.py` reconoce las preguntas frecuentes (ventas de un período, más
+  vendidos, vencimientos, reposición, margen negativo, reclamos, deuda de clientes y a proveedores, «¿cómo hago...?»)
+  y `services/asistente/herramientas.py` las responde reutilizando los servicios existentes. Cada respuesta indica su
+  origen y trae enlaces definidos por el servidor; una respuesta fija nunca se presenta como IA.
+- **Permisos en el backend**: la tabla `PERMISOS` del dominio decide qué herramienta usa cada rol (deny-by-default);
+  `herramientas.ejecutar()` lo verifica siempre, venga el pedido de la ayuda integrada o del modelo. El CASHIER no ve
+  costos, márgenes, reposición, proveedores ni reportes del dueño.
+- **IA local opcional**: `services/asistente/proveedores.py` habla con la API REST de Ollama (`/api/tags`,
+  `/api/chat` con `tools`, sin streaming) usando solo `urllib`; acepta únicamente URLs de loopback, con timeout,
+  `num_ctx`, `num_predict` y `keep_alive` acotados. Se configura en *Configuración › Asistente* (solo OWNER,
+  auditado) y se prueba sin guardar. Twinx no instala Ollama ni modelos; el ejecutable no incrusta ninguno.
+- **Seguridad**: los textos del comercio se sanean antes de entrar al prompt y se declaran datos, no instrucciones; el
+  navegador inserta todo con `textContent` y solo acepta enlaces internos; el historial vive en `sessionStorage` de la
+  pestaña, atado al usuario, y nunca se persiste ni se registra en el log; no hay acciones de escritura.
+- **API**: `GET /api/asistente/estado?pantalla=...` (motor y preguntas sugeridas) y `POST /api/asistente/preguntar`
+  (JSON con `pregunta`, `historial` corto y `pantalla`). Tests: dominio, herramientas y orquestador con proveedor
+  falso, adaptador contra un servidor HTTP falso, API web, JS (`tests_js/asistente.test.js`) y E2E
+  (`tests_e2e/tests/21-asistente.spec.js`).
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base
