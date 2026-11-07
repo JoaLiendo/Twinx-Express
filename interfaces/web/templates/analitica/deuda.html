@@ -7,7 +7,7 @@
 
 {% block content %}
 {% set clientes = analisis.clientes %}
-{% set etiquetas = {'NORMAL': 'Normal (hasta 30 días)', 'REGULAR': 'Regular (31–45)', 'DEMORADO': 'Demorado (46–59)', 'CRITICA': 'Crítica (60 o más)'} %}
+{% set etiquetas = {'NORMAL': 'Normal (0–29 días)', 'REGULAR': 'Regular (30–44)', 'DEMORADO': 'Demorado (45–59)', 'CRITICA': 'Crítica (60 o más)'} %}
 {% set variantes = {'NORMAL': 'exito', 'REGULAR': 'info', 'DEMORADO': 'advertencia', 'CRITICA': 'alerta'} %}
 <div class="max-w-6xl mx-auto space-y-6">
   {% include "analitica/_navegacion.html" %}
@@ -68,6 +68,9 @@
 
   <section class="space-y-4" id="deuda-proveedores">
     <h2 class="font-semibold text-slate-900 dark:text-slate-100">Proveedores: ${{ analisis.proveedores_total_centavos | dinero_ar }} por pagar</h2>
+    {% if analisis.proveedores.cantidad_inconsistentes %}
+      <p class="text-xs text-slate-500 dark:text-slate-400" data-inconsistentes>{{ analisis.proveedores.cantidad_inconsistentes }} proveedor(es) con datos inconsistentes en su cuenta: no se incluyen en estos totales (igual que en el reporte de deuda a proveedores).</p>
+    {% endif %}
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {% for situacion, etiqueta, variante in [('vencida', 'Vencida', 'alerta'), ('proxima', 'Próxima (7 días)', 'advertencia'), ('vigente', 'Vigente', 'exito'), ('sin_vencimiento', 'Sin vencimiento', 'neutral')] %}
         <div class="card p-4" data-situacion="{{ situacion }}">

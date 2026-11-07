@@ -35,7 +35,8 @@ Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert | Format-List Subject, Thumb
 # Firmar y verificar (sello de tiempo incluido: la firma sigue válida cuando el certificado venza):
 powershell -ExecutionPolicy Bypass -File .\Firmar_entregable.ps1 -Huella <THUMBPRINT>
 
-# Alternativa con archivo .pfx (la contraseña se pide en pantalla, nunca va en la línea de comandos):
+# Alternativa con archivo .pfx (la contraseña se pide en pantalla; signtool la recibe como argumento, así que
+# es visible en la lista de procesos mientras firma: preferir -Huella con el certificado importado al almacén):
 powershell -ExecutionPolicy Bypass -File .\Firmar_entregable.ps1 -Pfx C:\ruta\certificado.pfx
 ```
 

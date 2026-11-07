@@ -68,6 +68,22 @@ def test_con_instalacion_existente_delega_en_el_programa_para_actualizar(tmp_pat
     assert "ACTUALIZA" in resultado.stdout
 
 
+def test_un_destino_con_barra_final_llega_entero_al_actualizador(tmp_path):
+    bundle = _bundle_falso(tmp_path / "entregable")
+    destino = tmp_path / "instalacion"
+    destino.mkdir()
+    (destino / "KioscoApp.exe").write_bytes(b"MZ-viejo")
+    registro = tmp_path / "llamada.txt"
+    stub = tmp_path / "actualizador.cmd"
+    stub.write_text(f'@echo off\r\necho %* > "{registro}"\r\nexit /b 0\r\n', encoding="utf-8")
+
+    resultado = _ejecutar(bundle, "-Destino", str(destino) + "\\", "-SinAccesosDirectos", "-EjecutableActualizador", str(stub))
+
+    assert resultado.returncode == 0, resultado.stdout + resultado.stderr
+    # Sin la barra final: "...\" dentro de comillas rompia el argumento al pasar por cmd.
+    assert registro.read_text(encoding="utf-8").strip() == f'--actualizar "{destino}"'
+
+
 def test_si_la_actualizacion_falla_lo_informa_y_termina_con_error(tmp_path):
     bundle = _bundle_falso(tmp_path / "entregable")
     destino = tmp_path / "instalacion"
@@ -82,7 +98,7 @@ def test_si_la_actualizacion_falla_lo_informa_y_termina_con_error(tmp_path):
     assert "no se completo (codigo 3)" in resultado.stdout
 
 
-@pytest.mark.parametrize("contaminante", ["data", "kiosco.db", "clave.pfx"])
+@pytest.mark.parametrize("contaminante", ["data", "kiosco.db", "clave.pfx", "KioscoApp_backup_2026.zip"])
 def test_un_entregable_con_datos_o_secretos_no_se_instala(tmp_path, contaminante):
     bundle = _bundle_falso(tmp_path / "entregable")
     if "." in contaminante:

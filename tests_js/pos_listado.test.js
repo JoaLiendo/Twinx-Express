@@ -8,6 +8,7 @@ const {
   coincide,
   elegirParaEnter,
   moverActivo,
+  LIMITE_VISIBLE,
   textoContador,
 } = require('../interfaces/web/static/js/pos_listado.js');
 
@@ -149,5 +150,11 @@ describe('moverActivo (flechas del teclado, V1.17-B)', () => {
   test('sin filas vendibles no hay activo', () => {
     assert.equal(moverActivo([AGUA], -1, 1), -1);
     assert.equal(moverActivo([], -1, 1), -1);
+  });
+
+  test('no pasa de la última fila mostrada aunque haya más resultados ocultos', () => {
+    const muchos = Array.from({ length: LIMITE_VISIBLE + 5 }, (_, i) => ({ ...COCA, codigo: String(i) }));
+    assert.equal(moverActivo(muchos, LIMITE_VISIBLE - 1, 1), LIMITE_VISIBLE - 1);
+    assert.equal(moverActivo(muchos, -1, -1), LIMITE_VISIBLE - 1);
   });
 });

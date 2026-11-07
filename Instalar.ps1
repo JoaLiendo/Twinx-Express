@@ -98,12 +98,18 @@ foreach ($requerido in @('KioscoApp.exe', '_internal', 'LEEME.txt', 'Restaurar_b
 }
 $prohibidos = @(Get-ChildItem -LiteralPath $origen -Recurse -Force | Where-Object {
     ($_.PSIsContainer -and $_.Name -in @('data', 'backups', 'fiscal_privado', 'imagenes_productos')) -or
-    (-not $_.PSIsContainer -and ($_.Name -like '*.db' -or $_.Name -like '*.db-*' -or $_.Name -like '*.sqlite*' -or $_.Name -like '*.dpapi' -or $_.Name -like '*.pfx' -or $_.Name -like '*.p12' -or $_.Name -like '*.key'))
+    (-not $_.PSIsContainer -and ($_.Name -like '*.db' -or $_.Name -like '*.db-*' -or $_.Name -like '*.sqlite*' -or $_.Name -like '*.dpapi' -or $_.Name -like '*.pfx' -or $_.Name -like '*.p12' -or $_.Name -like '*.key')) -or
+    (-not $_.PSIsContainer -and $_.Name -like '*.zip' -and $_.FullName -ne (Join-Path $origen '_internal\base_library.zip'))
 })
 if ($prohibidos.Count -gt 0) {
     Fallar "Esta carpeta contiene datos o secretos que no pertenecen al programa ($($prohibidos[0].Name)): no se instala. Pedi un entregable limpio."
 }
 $destinoCompleto = [System.IO.Path]::GetFullPath($Destino)
+# Sin barra final: "C:\Kiosco\" entre comillas hace que la barra escape la comilla al pasar por cmd.
+if ($destinoCompleto.Length -gt 3) { $destinoCompleto = $destinoCompleto.TrimEnd('\') }
+# La raiz de una unidad ("D:\") conserva su barra: duplicarla la hace sobrevivir a las comillas de cmd.
+$destinoParaCmd = $destinoCompleto
+if ($destinoParaCmd.EndsWith('\')) { $destinoParaCmd = $destinoParaCmd + '\' }
 if ((Normalizar $origen) -eq (Normalizar $destinoCompleto)) {
     Fallar 'El origen y el destino son la misma carpeta: ejecuta el instalador desde la carpeta descargada o el pendrive, no desde la instalacion.'
 }
@@ -126,7 +132,7 @@ if ($hayInstalacion) {
     $actualizador = if ($EjecutableActualizador) { $EjecutableActualizador } else { $exeOrigen }
     # El programa termina con "Presiona Enter": se le entrega un Enter por la entrada estandar.
     $ErrorActionPreference = 'Continue'
-    cmd /c "echo.| `"$actualizador`" --actualizar `"$destinoCompleto`""
+    cmd /c "echo.| `"$actualizador`" --actualizar `"$destinoParaCmd`""
     $codigo = $LASTEXITCODE
     $ErrorActionPreference = 'Stop'
     if ($codigo -ne 0) {
@@ -142,7 +148,8 @@ if ($hayInstalacion) {
     Get-ChildItem -LiteralPath $origen -Force | Where-Object { $_.Name -ne 'Instalar.ps1' -and $_.Name -ne 'Instalar.bat' } | ForEach-Object {
         Copy-Item -LiteralPath $_.FullName -Destination $destinoCompleto -Recurse -Force
     }
-    # El instalador tambien viaja: desde la instalacion sirve para ver que version hay y reinstalar accesos directos.
+    # El instalador tambien viaja con el programa: documenta como se instalo y sirve para instalar
+    # una copia en otra carpeta o PC (desde la instalacion no se reinstala sobre si misma).
     Copy-Item -LiteralPath (Join-Path $origen 'Instalar.ps1') -Destination $destinoCompleto -Force
     Copy-Item -LiteralPath (Join-Path $origen 'Instalar.bat') -Destination $destinoCompleto -Force
     if (-not (Test-Path -LiteralPath $exeDestino -PathType Leaf)) {

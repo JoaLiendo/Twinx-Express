@@ -442,6 +442,16 @@ class TestResumirPerdidas:
 
         assert [(r.motivo, r.cantidad) for r in resumenes] == [("VENCIMIENTO", 5), ("ROBO", 2)]
 
+    def test_los_agrupados_omiten_grupos_que_solo_tienen_ajustes_revertidos(self):
+        from domain.reportes_operativos import resumir_perdidas_por_mes, resumir_perdidas_por_producto
+
+        vigente = self._fila(cantidad=3)
+        revertida = self._fila(cantidad=9, reversa_id=7)
+        revertida = type(revertida)(**{**revertida.__dict__, "fecha": "2026-03-05 09:00:00", "producto_id": 2, "producto_nombre": "Q"})
+
+        assert [(g.clave, g.resumen.cantidad) for g in resumir_perdidas_por_mes([vigente, revertida])] == [("2026-10", 3)]
+        assert [g.etiqueta for g in resumir_perdidas_por_producto([vigente, revertida])] == ["P"]
+
     def test_motivos_de_perdida(self):
         from domain.ajuste_stock import MOTIVOS_PERDIDA
 

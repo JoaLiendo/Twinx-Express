@@ -169,7 +169,7 @@ def analizar_ventas(
         ),
         top_facturacion=por_producto[:LIMITE_TOP_PRODUCTOS],
         top_unidades=sorted(por_producto, key=lambda g: (-g.unidades, -g.facturado_centavos))[:LIMITE_TOP_PRODUCTOS],
-        estacionalidad=calcular_estacionalidad(repositorio_analitica.ventas_por_mes_historico()),
+        estacionalidad=calcular_estacionalidad(repositorio_analitica.ventas_por_mes_historico(), date.today().strftime("%Y-%m")),
     )
 
 
@@ -316,10 +316,11 @@ class AnalisisDeuda:
 
     @property
     def proveedores_total_centavos(self) -> int:
-        return sum(fila.saldo_total_centavos or 0 for fila in self.proveedores.filas)
+        """Misma cifra que el reporte de deuda a proveedores: solo libros consistentes (ver `cantidad_inconsistentes`)."""
+        return self.proveedores.total_saldo_centavos
 
     def proveedores_por_situacion(self, situacion: str) -> int:
-        return sum(getattr(fila, f"{situacion}_centavos") or 0 for fila in self.proveedores.filas)
+        return getattr(self.proveedores, f"total_{situacion}_centavos")
 
 
 def analizar_deuda(hoy: date | None = None) -> AnalisisDeuda:
@@ -500,7 +501,7 @@ def _decisiones(margen, precios, deuda, proveedores, sin_rotacion, reposicion) -
         DecisionSugerida(
             "deuda-demorada",
             "Clientes demorados",
-            "Entre 46 y 59 días: vender a cuenta requiere autorización del dueño.",
+            "Entre 45 y 59 días: vender a cuenta requiere autorización del dueño.",
             "/analitica/deuda",
             len(deuda.clientes.clientes_en(ESTADO_DEMORADO)),
             "advertencia",

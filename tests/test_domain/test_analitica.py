@@ -44,6 +44,14 @@ class TestPeriodos:
     def test_mismo_periodo_anio_anterior_con_bisiesto(self):
         assert a.mismo_periodo_anio_anterior("2024-02-29", "2024-03-05") == ("2023-02-28", "2023-03-05")
 
+    def test_fechas_extremas_son_un_error_de_datos_no_un_500(self):
+        from excepciones import DatosInvalidosError
+
+        with pytest.raises(DatosInvalidosError):
+            a.periodo_anterior("0001-01-01", "0001-01-05")
+        with pytest.raises(DatosInvalidosError):
+            a.mismo_periodo_anio_anterior("0001-01-01", "0001-01-05")
+
     def test_agrupar_ventas_por_semana(self):
         filas = [
             a.VentasDia("2026-03-02", 2, 5, 1000),
@@ -116,10 +124,18 @@ class TestEstacionalidad:
         enero = estacionalidad.por_mes[0]
         assert (enero.mes, enero.anios, enero.promedio_centavos) == (1, 2, 150)
 
+    def test_excluye_el_mes_en_curso_porque_esta_incompleto(self):
+        meses = [("2025-11", 10, 1_000_000), ("2026-11", 2, 200_000)]
+        [noviembre] = a.calcular_estacionalidad(meses, mes_en_curso="2026-11").por_mes
+        assert (noviembre.anios, noviembre.promedio_centavos) == (1, 1_000_000)
+        # Sin mes en curso declarado (tests o historia cerrada) se promedia todo.
+        [noviembre] = a.calcular_estacionalidad(meses).por_mes
+        assert (noviembre.anios, noviembre.promedio_centavos) == (2, 600_000)
+
 
 class TestPrecios:
-    def _evolucion(self, campo, inicial, final, producto_id=1):
-        return a.EvolucionPrecioProducto(producto_id, "Alfajor", None, None, campo, 1, inicial, final, final)
+    def _evolucion(self, campo, inicial, final, producto_id=1, precio_venta=200):
+        return a.EvolucionPrecioProducto(producto_id, "Alfajor", None, None, campo, 1, inicial, final, final, precio_venta)
 
     def test_variacion_y_relevancia(self):
         evolucion = self._evolucion("VENTA", 200, 250)
@@ -138,6 +154,8 @@ class TestPrecios:
         [erosionado] = a.costos_subieron_sin_precio(evoluciones)
         assert erosionado.producto_id == 1
         assert erosionado.variacion_costo_porcentual == 30
+        # El precio informado es el de venta vigente, no el costo actual del producto.
+        assert (erosionado.costo_final_centavos, erosionado.precio_venta_centavos) == (130, 200)
 
 
 class TestDeudaClientes:

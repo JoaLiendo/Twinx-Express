@@ -239,3 +239,18 @@ class TestResumenEjecutivo:
         assert "deuda-critica" not in claves
         costo = next(d for d in resumen.decisiones if d.clave == "costo-sin-precio")
         assert costo.cantidad == 1 and costo.href.startswith("/analitica/precios")
+
+
+class TestDeudaProveedoresConLibroInconsistente:
+    def test_los_totales_coinciden_con_el_reporte_y_excluyen_libros_inconsistentes(self):
+        from domain.analitica import AnalisisDeudaClientes
+        from domain.deuda_proveedores import FilaDeudaProveedor, ReporteDeudaProveedores
+        from services.servicio_analitica import AnalisisDeuda
+
+        consistente = FilaDeudaProveedor(1, "Alfa", True, True, 1000, 400, 100, 500, 0, None, None)
+        inconsistente = FilaDeudaProveedor(2, "Beta", True, False, 500, None, None, None, None, None, None)
+        reporte = ReporteDeudaProveedores(None, "todas", (consistente, inconsistente))
+        analisis = AnalisisDeuda(AnalisisDeudaClientes(HOY, []), reporte, [], [])
+
+        assert analisis.proveedores_total_centavos == reporte.total_saldo_centavos == 1000
+        assert [analisis.proveedores_por_situacion(s) for s in ("vencida", "proxima", "vigente", "sin_vencimiento")] == [400, 100, 500, 0]

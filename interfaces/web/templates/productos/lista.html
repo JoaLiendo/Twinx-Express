@@ -207,12 +207,12 @@
                     {% endif %}
                     {% if mostrar_inactivos %}
                       <form method="post" action="/productos/{{ producto.id }}/reactivar"
-                            onsubmit="return confirm('¿Reactivar &quot;{{ producto.nombre }}&quot;?');">
+                            onsubmit='return confirm({{ ('¿Reactivar "' ~ producto.nombre ~ '"?')|tojson }});'>
                         <button type="submit" class="btn btn-sm bg-success/10 text-success hover:bg-success/20">Reactivar</button>
                       </form>
                     {% else %}
                       <form method="post" action="/productos/{{ producto.id }}/eliminar"
-                            onsubmit="return confirm('¿Eliminar &quot;{{ producto.nombre }}&quot;? Si tiene ventas registradas se desactivará en vez de borrarse.');">
+                            onsubmit='return confirm({{ ('¿Eliminar "' ~ producto.nombre ~ '"? Si tiene ventas registradas se desactivará en vez de borrarse.')|tojson }});'>
                         <button type="submit" class="btn btn-danger btn-sm" title="Eliminar o dar de baja">Eliminar</button>
                       </form>
                     {% endif %}

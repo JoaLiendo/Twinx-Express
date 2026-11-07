@@ -18,7 +18,9 @@
 
 .PARAMETER Pfx
     Ruta a un archivo .pfx con el certificado y su clave (alternativa a -Huella). La contrasena se pide
-    en pantalla; nunca va por linea de comandos ni queda en ningun archivo.
+    en pantalla y no queda en ningun archivo, pero signtool solo la acepta como argumento (/p), asi que
+    durante la firma es visible en la lista de procesos. Preferir -Huella: importar el .pfx al almacen
+    del usuario y firmar por thumbprint no expone ninguna contrasena.
 
 .PARAMETER ServidorTimestamp
     Servidor RFC 3161 para el sello de tiempo: la firma sigue valida cuando el certificado vence.
@@ -91,7 +93,12 @@ if (-not $SoloVerificar) {
     } else {
         if (-not (Test-Path -LiteralPath $Pfx -PathType Leaf)) { Fallar "No existe el archivo $Pfx." }
         $clave = Read-Host -AsSecureString 'Contrasena del .pfx'
-        $texto = [Runtime.InteropServices.Marshal]::PtrToStringUni([Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($clave))
+        $puntero = [Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($clave)
+        try {
+            $texto = [Runtime.InteropServices.Marshal]::PtrToStringUni($puntero)
+        } finally {
+            [Runtime.InteropServices.Marshal]::ZeroFreeGlobalAllocUnicode($puntero)
+        }
         $argumentos += @('/f', $Pfx, '/p', $texto)
     }
     $argumentos += $exe

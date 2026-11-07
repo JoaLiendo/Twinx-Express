@@ -102,13 +102,20 @@ def _estado_base() -> EstadoBase:
         return EstadoBase(True, tamano, "error", 0, None, False, [], None, {}, error=str(error))
 
 
+# El access log de uvicorn registra cada URL con su query string: ahí viajan búsquedas de clientes y
+# productos, que son datos de negocio. El diagnóstico no lo incluye; los errores de la app ya quedan en
+# los loggers propios.
+_MARCA_ACCESS_LOG = "] uvicorn.access: "
+
+
 def _lineas_del_log(ruta_log: Path, maximo: int) -> list[str]:
-    """Últimas `maximo` líneas del registro, enmascaradas. Un log ilegible devuelve una sola línea que lo dice."""
+    """Últimas `maximo` líneas del registro sin el access log de uvicorn, enmascaradas. Un log ilegible
+    devuelve una sola línea que lo dice."""
     if not ruta_log.is_file():
         return []
     try:
         with ruta_log.open("r", encoding="utf-8", errors="replace") as archivo:
-            lineas = archivo.readlines()
+            lineas = [linea for linea in archivo if _MARCA_ACCESS_LOG not in linea]
     except OSError as error:
         return [f"(no se pudo leer el registro: {error.strerror or error})"]
     return [enmascarar_datos_sensibles(linea.rstrip("\n")) for linea in lineas[-maximo:]]

@@ -27,8 +27,13 @@ def _clases_de_componentes_usadas() -> set[str]:
     return usadas
 
 
-def test_ningun_template_carga_tailwind_desde_un_cdn():
-    con_cdn = [p.name for p in TEMPLATES.rglob("*.html") if "cdn.tailwindcss.com" in p.read_text(encoding="utf-8")]
+HOSTS_CDN = ("cdn.tailwindcss.com", "fonts.googleapis.com", "fonts.gstatic.com", "unpkg.com", "cdn.jsdelivr.net",
+             "cdnjs.cloudflare.com", "@import url(http")
+
+
+def test_ningun_template_css_ni_js_carga_recursos_de_un_cdn():
+    archivos = [*TEMPLATES.rglob("*.html"), CSS, *(RAIZ / "interfaces" / "web" / "static" / "js").glob("*.js")]
+    con_cdn = [p.name for p in archivos if any(host in p.read_text(encoding="utf-8") for host in HOSTS_CDN)]
     assert con_cdn == []
 
 

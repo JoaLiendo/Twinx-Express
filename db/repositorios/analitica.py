@@ -196,7 +196,8 @@ def evolucion_de_precios(
             SELECT l.producto_id, p.nombre AS producto_nombre, p.categoria_id, c.nombre AS categoria_nombre,
                    l.campo, l.cambios,
                    e1.precio_anterior_centavos AS inicial, e2.precio_nuevo_centavos AS final,
-                   CASE l.campo WHEN 'VENTA' THEN p.precio_venta_centavos ELSE p.precio_costo_centavos END AS vigente
+                   CASE l.campo WHEN 'VENTA' THEN p.precio_venta_centavos ELSE p.precio_costo_centavos END AS vigente,
+                   p.precio_venta_centavos AS precio_venta_vigente
             FROM limites l
             JOIN eventos e1 ON e1.id = l.primero
             JOIN eventos e2 ON e2.id = l.ultimo
@@ -217,6 +218,7 @@ def evolucion_de_precios(
             inicial_centavos=fila["inicial"],
             final_centavos=fila["final"],
             vigente_centavos=fila["vigente"],
+            precio_venta_vigente_centavos=fila["precio_venta_vigente"],
         )
         for fila in filas
     ]

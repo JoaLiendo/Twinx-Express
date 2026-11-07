@@ -46,7 +46,7 @@
     <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">Estado de la cuenta</p>
     {% if usuario.activo %}
       <form method="post" action="/empleados/{{ usuario.id }}/desactivar"
-            onsubmit="return confirm('¿Desactivar a &quot;{{ usuario.nombre_completo }}&quot;? No podrá iniciar sesión.');">
+            onsubmit='return confirm({{ ('¿Desactivar a "' ~ usuario.nombre_completo ~ '"? No podrá iniciar sesión.')|tojson }});'>
         <button type="submit" class="rounded-lg bg-error/10 hover:bg-error/20 transition text-error text-sm font-semibold px-5 py-2.5">
           Desactivar usuario
         </button>

@@ -92,6 +92,10 @@ class TestVentas:
         respuesta = solicitud("GET", "/analitica/ventas?granularidad=trimestre", cookies=e.cookies)
         assert respuesta.status == 303 and "tipo=error" in respuesta.header("location")
 
+    def test_fechas_extremas_son_error_claro_no_500(self, e):
+        respuesta = solicitud("GET", "/analitica/ventas?fecha_desde=0001-01-01&fecha_hasta=0001-01-05", cookies=e.cookies)
+        assert respuesta.status == 303 and "tipo=error" in respuesta.header("location")
+
 
 class TestMargen:
     def test_distingue_costo_de_referencia_y_real(self, e):

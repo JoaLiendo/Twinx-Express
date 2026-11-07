@@ -302,8 +302,8 @@ def _comando_de_mantenimiento(argv):
 
 
 def _imprimir_version() -> int:
-    """`KioscoApp.exe --version` (V1.18): identidad y versión por consola, sin tocar datos ni pausar.
-    Lo usa el instalador para comprobar qué versión hay instalada."""
+    """`KioscoApp.exe --version` (V1.18): identidad y versión por consola, sin tocar datos ni pausar,
+    para que el técnico o el soporte comprueben qué versión es un ejecutable sin abrirlo."""
     from version import NOMBRE_APLICACION, VERSION
 
     print(f"{NOMBRE_APLICACION} {VERSION}")

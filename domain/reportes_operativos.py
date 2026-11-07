@@ -218,7 +218,9 @@ def _agrupar_perdidas(filas: list[FilaPerdida], clave_de, etiqueta_de) -> list[G
         clave = clave_de(fila)
         grupos.setdefault(clave, []).append(fila)
         etiquetas.setdefault(clave, etiqueta_de(fila))
-    return [GrupoPerdidas(clave, etiquetas[clave], resumir_perdidas(grupos[clave])) for clave in grupos]
+    resumenes = [GrupoPerdidas(clave, etiquetas[clave], resumir_perdidas(grupos[clave])) for clave in grupos]
+    # Un grupo cuyas pérdidas se revirtieron todas no es una pérdida vigente: no se lista.
+    return [grupo for grupo in resumenes if grupo.resumen.filas_vigentes]
 
 
 def resumir_perdidas_por_producto(filas: list[FilaPerdida]) -> list[GrupoPerdidas]:

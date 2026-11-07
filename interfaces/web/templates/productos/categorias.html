@@ -53,7 +53,7 @@
                   Editar
                 </a>
                 <form method="post" action="/productos/categorias/{{ categoria.id }}/eliminar"
-                      onsubmit="return confirm('¿Eliminar la categoría &quot;{{ categoria.nombre }}&quot;? Si hay productos o subcategorías asociados, se desactivará en vez de borrarse.');">
+                      onsubmit='return confirm({{ ('¿Eliminar la categoría "' ~ categoria.nombre ~ '"? Si hay productos o subcategorías asociados, se desactivará en vez de borrarse.')|tojson }});'>
                   <button type="submit" class="rounded-lg bg-error/10 hover:bg-error/20 transition text-error text-xs font-semibold px-3 py-1.5">
                     Eliminar
                   </button>
@@ -61,7 +61,7 @@
               </div>
             {% else %}
               <form method="post" action="/productos/categorias/{{ categoria.id }}/reactivar"
-                    onsubmit="return confirm('¿Reactivar la categoría &quot;{{ categoria.nombre }}&quot;?');">
+                    onsubmit='return confirm({{ ('¿Reactivar la categoría "' ~ categoria.nombre ~ '"?')|tojson }});'>
                 <button type="submit" class="shrink-0 rounded-lg bg-success/10 hover:bg-success/20 transition text-success text-xs font-semibold px-3 py-1.5">
                   Reactivar
                 </button>
@@ -104,7 +104,7 @@
                 {{ cantidad }} producto{{ 's' if cantidad != 1 else '' }}
               </a>
               <form method="post" action="/productos/etiquetas/{{ etiqueta.id }}/eliminar"
-                    onsubmit="return confirm('¿Eliminar la etiqueta &quot;{{ etiqueta.nombre }}&quot;? Se quitará de {{ cantidad }} producto(s).');">
+                    onsubmit='return confirm({{ ('¿Eliminar la etiqueta "' ~ etiqueta.nombre ~ '"? Se quitará de ' ~ cantidad ~ ' producto(s).')|tojson }});'>
                 <button type="submit" class="rounded-lg bg-error/10 hover:bg-error/20 transition text-error text-xs font-semibold px-3 py-1.5">
                   Eliminar
                 </button>

@@ -70,11 +70,12 @@
 
   /**
    * Navegación con flechas (V1.17-B): índice del producto activo tras moverse `delta` posiciones dentro
-   * de `visibles`, saltando los que no tienen stock. `-1` = ninguno. Desde "ninguno", bajar elige el
-   * primero vendible y subir el último; en los extremos se queda quieto. Sin filas vendibles, `-1`.
+   * de las filas realmente mostradas de `visibles` (las primeras `LIMITE_VISIBLE`; el resto está oculto),
+   * saltando los que no tienen stock. `-1` = ninguno. Desde "ninguno", bajar elige el primero vendible y
+   * subir el último; en los extremos se queda quieto. Sin filas vendibles, `-1`.
    */
   function moverActivo(visibles, indiceActual, delta) {
-    const vendibles = visibles.map((producto, indice) => (producto.stock > 0 ? indice : -1)).filter((i) => i >= 0);
+    const vendibles = visibles.slice(0, LIMITE_VISIBLE).map((producto, indice) => (producto.stock > 0 ? indice : -1)).filter((i) => i >= 0);
     if (!vendibles.length) return -1;
     const posicion = vendibles.indexOf(indiceActual);
     if (posicion === -1) return delta > 0 ? vendibles[0] : vendibles[vendibles.length - 1];

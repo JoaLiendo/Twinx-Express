@@ -132,7 +132,7 @@
           <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
             {% if not proveedor.activo %}
               <form method="post" action="/proveedores/{{ proveedor.id }}/reactivar" class="flex-1"
-                    onsubmit="return confirm('¿Reactivar &quot;{{ proveedor.nombre }}&quot;?');">
+                    onsubmit='return confirm({{ ('¿Reactivar "' ~ proveedor.nombre ~ '"?')|tojson }});'>
                 <button type="submit"
                         class="w-full rounded-lg bg-success/10 hover:bg-success/20 transition text-success text-xs font-semibold px-3 py-2">
                   Reactivar
@@ -150,7 +150,7 @@
                 Editar
               </a>
               <form method="post" action="/proveedores/{{ proveedor.id }}/eliminar" class="flex-1"
-                    onsubmit="return confirm('¿Eliminar &quot;{{ proveedor.nombre }}&quot;? Si tiene compras registradas se desactivará en vez de borrarse.');">
+                    onsubmit='return confirm({{ ('¿Eliminar "' ~ proveedor.nombre ~ '"? Si tiene compras registradas se desactivará en vez de borrarse.')|tojson }});'>
                 <button type="submit"
                         class="w-full rounded-lg bg-error/10 hover:bg-error/20 transition text-error text-xs font-semibold px-3 py-2">
                   Eliminar

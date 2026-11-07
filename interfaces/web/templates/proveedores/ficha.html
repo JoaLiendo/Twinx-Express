@@ -195,7 +195,7 @@
                   </td>
                   <td class="px-5 py-3 text-right">
                     <form method="post" action="/proveedores/{{ proveedor.id }}/productos/{{ item.vinculo.producto_id }}/quitar"
-                          onsubmit="return confirm('¿Quitar el vínculo con &quot;{{ item.producto_nombre }}&quot;?');">
+                          onsubmit='return confirm({{ ('¿Quitar el vínculo con "' ~ item.producto_nombre ~ '"?')|tojson }});'>
                       <button type="submit" class="text-xs font-semibold text-error hover:opacity-80">Quitar</button>
                     </form>
                   </td>

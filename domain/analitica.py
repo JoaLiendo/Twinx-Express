@@ -18,6 +18,8 @@ criterio que `services.servicio_reportes.ResumenRentabilidad`); nunca se acumula
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from excepciones import DatosInvalidosError
+
 from domain.credito import (
     ESTADO_CRITICA,
     ESTADO_DEMORADO,
@@ -75,7 +77,10 @@ def periodo_anterior(fecha_desde: str, fecha_hasta: str) -> tuple[str, str]:
     """El período inmediatamente anterior, de la misma cantidad de días (para comparar)."""
     desde, hasta = date.fromisoformat(fecha_desde), date.fromisoformat(fecha_hasta)
     dias = (hasta - desde).days + 1
-    return (desde - timedelta(days=dias)).isoformat(), (desde - timedelta(days=1)).isoformat()
+    try:
+        return (desde - timedelta(days=dias)).isoformat(), (desde - timedelta(days=1)).isoformat()
+    except OverflowError as error:
+        raise DatosInvalidosError("El período es demasiado antiguo para compararlo con el anterior.") from error
 
 
 def mismo_periodo_anio_anterior(fecha_desde: str, fecha_hasta: str) -> tuple[str, str]:
@@ -83,6 +88,8 @@ def mismo_periodo_anio_anterior(fecha_desde: str, fecha_hasta: str) -> tuple[str
 
     def un_anio_atras(texto: str) -> str:
         valor = date.fromisoformat(texto)
+        if valor.year <= date.min.year:
+            raise DatosInvalidosError("El período es demasiado antiguo para compararlo con el año anterior.")
         try:
             return valor.replace(year=valor.year - 1).isoformat()
         except ValueError:
@@ -274,10 +281,11 @@ class Estacionalidad:
         return self.meses_con_ventas >= MESES_MINIMOS_ESTACIONALIDAD
 
 
-def calcular_estacionalidad(ventas_por_mes: list[tuple[str, int, int]]) -> Estacionalidad:
+def calcular_estacionalidad(ventas_por_mes: list[tuple[str, int, int]], mes_en_curso: str | None = None) -> Estacionalidad:
     """`ventas_por_mes`: `(AAAA-MM, cantidad_ventas, total_centavos)` de toda la historia. Agrupa por mes
     del año y promedia entre los años en que ese mes tuvo ventas: una comparación histórica, nunca una
-    proyección."""
+    proyección. `mes_en_curso` (`AAAA-MM`) se excluye: un mes incompleto hundiría su propio promedio."""
+    ventas_por_mes = [fila for fila in ventas_por_mes if fila[0] != mes_en_curso]
     anios_por_mes: dict[int, set[int]] = {}
     total_por_mes: dict[int, int] = {}
     cantidad_por_mes: dict[int, int] = {}
@@ -324,7 +332,8 @@ def agrupar_margen(lineas: list[LineaVentaDia], criterio: str) -> list[ResumenMa
 class EvolucionPrecioProducto:
     """Cambios de un campo (VENTA o COSTO) de un producto dentro del período: del valor anterior al
     primer cambio hasta el valor del último, y cuántos cambios hubo. El valor vigente es el actual del
-    producto (puede diferir del final si cambió después del período)."""
+    producto (puede diferir del final si cambió después del período); `precio_venta_vigente_centavos` es
+    siempre el precio de venta actual, sea cual sea el campo, para contrastar un costo que subió."""
 
     producto_id: int
     producto_nombre: str
@@ -335,6 +344,7 @@ class EvolucionPrecioProducto:
     inicial_centavos: int
     final_centavos: int
     vigente_centavos: int
+    precio_venta_vigente_centavos: int
 
     @property
     def variacion_centavos(self) -> int:
@@ -408,7 +418,7 @@ def costos_subieron_sin_precio(evoluciones: list[EvolucionPrecioProducto]) -> li
                 variacion_costo_porcentual=variacion,
                 costo_inicial_centavos=evolucion.inicial_centavos,
                 costo_final_centavos=evolucion.final_centavos,
-                precio_venta_centavos=evolucion.vigente_centavos,
+                precio_venta_centavos=evolucion.precio_venta_vigente_centavos,
             )
         )
     return sorted(resultado, key=lambda p: -p.variacion_costo_porcentual)

@@ -18,7 +18,8 @@ def _log_con_secretos(tmp_path, monkeypatch) -> None:
     (directorio / NOMBRE_ARCHIVO_LOG).write_text(
         "2026-11-07 10:00:00 [INFO] lanzador: Twinx Express arrancó\n"
         "2026-11-07 10:01:00 [WARNING] services.servicio_backup: disco casi lleno\n"
-        "2026-11-07 10:02:00 [ERROR] interfaces.web: fallo con token=abc123 y password=hola\n",
+        "2026-11-07 10:02:00 [ERROR] interfaces.web: fallo con token=abc123 y password=hola\n"
+        '2026-11-07 10:03:00 [INFO] uvicorn.access: 127.0.0.1:50000 - "GET /clientes?q=Gomez+Ana HTTP/1.1" 200\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(config, "DIRECTORIO_LOGS", directorio)
@@ -79,5 +80,7 @@ def test_diagnostico_es_un_zip_sanitizado_sin_la_base(base_datos_temporal, tmp_p
         migraciones = zip_diagnostico.read("migraciones.txt").decode("utf-8")
     assert diagnostico["version"] == VERSION and diagnostico["base"]["integridad"] == "ok"
     assert "arrancó" in registro and "abc123" not in registro and "token=***" in registro
+    # El access log lleva búsquedas de clientes y productos en la URL: no viaja en el diagnóstico.
+    assert "uvicorn.access" not in registro and "Gomez" not in registro
     assert migraciones.strip().endswith(".sql")
     assert servicio_soporte.nombre_de_diagnostico().startswith(f"diagnostico_twinx_{VERSION}_")
