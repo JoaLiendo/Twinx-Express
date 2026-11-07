@@ -200,3 +200,24 @@ dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consult
   soporte.
 - **Pedir ayuda**: *Configuración › Soporte* muestra la versión, dónde están los datos y permite descargar un
   diagnóstico (sin datos de negocio ni contraseñas) para enviar al soporte técnico.
+
+## Asistente
+
+**Twinx Asistente** es el panel de chat que se abre con el botón *Asistente* (arriba a la derecha, en cualquier
+pantalla). Es de **solo lectura**: consulta datos ya registrados y explica cómo usar el programa; nunca registra
+ventas, compras, pagos ni cambios de stock o precios.
+
+- **Qué podés preguntar**: cuánto vendiste hoy (o ayer, esta semana, este mes), qué productos se vendieron más,
+  cuáles están por vencer, qué tenés que reponer, qué productos tienen margen negativo, qué proveedores tienen
+  reclamos abiertos, cuánto te deben los clientes, cuánto debés a proveedores y cómo se hace algo (registrar una
+  compra, restaurar un backup, cerrar la caja...). Cada respuesta trae accesos a la pantalla relacionada.
+- **Permisos**: el cajero obtiene solo lo que ve en sus pantallas (ventas de su caja, vencimientos, deuda total de
+  clientes y guías); costos, márgenes, reposición, proveedores y reportes son del dueño, también en el chat.
+- **Sin IA, con datos reales**: las preguntas frecuentes se responden con la *ayuda integrada* (texto del sistema,
+  sin inteligencia artificial). Cada respuesta indica su origen.
+- **IA local opcional** (dueño): si en la computadora hay un motor Ollama (https://ollama.com) con un modelo
+  descargado, en *Configuración › Asistente* se lo puede activar para preguntas libres. La conexión es solo local
+  (127.0.0.1): nada sale de la máquina, no hay suscripciones ni cuentas. Twinx no instala Ollama ni modelos. El
+  panel muestra «IA local conectada», «IA local no disponible» o «Ayuda integrada»; si el motor está apagado, la
+  ayuda integrada sigue funcionando.
+- **Historial**: la conversación se guarda solo en la pestaña del navegador y se borra con *Borrar* o al cerrarla.

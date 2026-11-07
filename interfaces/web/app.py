@@ -32,6 +32,7 @@ from interfaces.web.errores import MENSAJE_500, respuesta_error
 from interfaces.web.plantillas import templates
 from interfaces.web.rutas import (
     analitica,
+    asistente,
     autenticacion,
     auditoria,
     backup,
@@ -175,6 +176,7 @@ app.include_router(inventario.router)
 app.include_router(compras.router)
 app.include_router(reportes.router)
 app.include_router(analitica.router)
+app.include_router(asistente.router)
 app.include_router(reposicion.router)
 app.include_router(auditoria.router)
 app.include_router(configuracion.router)

@@ -215,6 +215,15 @@
             </svg>
           </button>
           {% if usuario_actual %}
+            <button type="button" id="boton-asistente" aria-label="Abrir asistente" aria-controls="asistente-panel" aria-expanded="false"
+                    title="Twinx Asistente"
+                    class="inline-flex items-center gap-1.5 h-11 px-3 rounded-full text-sm font-semibold text-primary bg-primary-subtle/70 hover:bg-primary-subtle transition-colors
+                           dark:text-indigo-200 dark:bg-primary-subtle/60 dark:hover:bg-primary-subtle">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]">
+                <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>
+              </svg>
+              <span class="hidden sm:inline">Asistente</span>
+            </button>
             <a href="/mi-cuenta/password" title="{{ usuario_actual.nombre_completo }} · Cambiar mi contraseña"
                class="inline-flex items-center justify-center w-11 h-11 rounded-full text-slate-700 text-xs font-bold uppercase transition-colors
                       hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
@@ -231,6 +240,37 @@
   </div>
 
   <script src="/static/js/guard_formularios.js"></script>
+
+  {% if usuario_actual %}
+  <!-- Twinx Asistente (V1.18): panel lateral de chat de solo lectura. La lógica vive en static/js/asistente.js;
+       todo lo que muestra se inserta con textContent y los enlaces se validan como rutas internas. -->
+  <div id="asistente-backdrop" class="chat-backdrop hidden"></div>
+  <aside id="asistente-panel" class="chat-panel" role="dialog" aria-modal="false" aria-labelledby="asistente-titulo" aria-hidden="true" hidden
+         data-usuario="{{ usuario_actual.nombre_usuario }}" data-rol="{{ usuario_actual.rol }}">
+    <header class="chat-header">
+      <div class="min-w-0">
+        <h2 id="asistente-titulo" class="font-semibold text-slate-900 dark:text-slate-100 leading-tight">Twinx Asistente</h2>
+        <p id="asistente-estado" class="chat-estado" data-estado="desconocido">Comprobando…</p>
+      </div>
+      <div class="flex items-center gap-1 shrink-0">
+        <button type="button" id="asistente-borrar" class="btn btn-ghost btn-sm" title="Borrar la conversación de esta pestaña">Borrar</button>
+        <button type="button" id="asistente-cerrar" class="btn btn-icon" aria-label="Cerrar asistente">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-5 h-5"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+    </header>
+    <div id="asistente-mensajes" class="chat-mensajes" aria-live="polite"></div>
+    <div id="asistente-sugeridas" class="chat-sugeridas" aria-label="Preguntas sugeridas"></div>
+    <div id="asistente-error" class="alert alert-error hidden mx-4 mb-2" role="alert"></div>
+    <form id="asistente-form" class="chat-form" autocomplete="off">
+      <label for="asistente-input" class="sr-only">Pregunta para el asistente</label>
+      <textarea id="asistente-input" name="pregunta" rows="1" maxlength="500" required placeholder="Preguntale a Twinx… (Enter envía)" class="textarea chat-input"></textarea>
+      <button type="submit" id="asistente-enviar" class="btn btn-primary">Enviar</button>
+    </form>
+    <p class="chat-pie">Solo lectura: no registra ventas ni cambios. Las cifras salen de tus datos; si falta información, lo dice.</p>
+  </aside>
+  <script src="/static/js/asistente.js"></script>
+  {% endif %}
 
   <!-- Toasts -->
   <div id="toast-container" aria-live="polite" class="fixed top-4 right-4 z-50 flex flex-col gap-3 w-[calc(100%-2rem)] sm:w-80 pointer-events-none"></div>

@@ -5,7 +5,7 @@
 
 {% block content %}
 {% set es_owner = usuario_actual and usuario_actual.es_owner %}
-{% set secciones = [('guia-rapida', 'Guía rápida'), ('primeros-pasos', 'Primeros pasos'), ('ventas', 'Ventas'), ('caja', 'Caja'), ('inventario', 'Inventario'), ('compras', 'Compras'), ('proveedores', 'Proveedores'), ('clientes', 'Clientes'), ('reportes', 'Reportes y analítica'), ('backup', 'Backup'), ('restauracion', 'Restauración'), ('problemas', 'Solución de problemas')] %}
+{% set secciones = [('guia-rapida', 'Guía rápida'), ('primeros-pasos', 'Primeros pasos'), ('ventas', 'Ventas'), ('caja', 'Caja'), ('inventario', 'Inventario'), ('compras', 'Compras'), ('proveedores', 'Proveedores'), ('clientes', 'Clientes'), ('reportes', 'Reportes y analítica'), ('backup', 'Backup'), ('restauracion', 'Restauración'), ('problemas', 'Solución de problemas'), ('asistente', 'Asistente')] %}
 <div class="page">
   <div class="grid grid-cols-1 lg:grid-cols-[14rem_1fr] gap-6">
     <nav class="lg:sticky lg:top-4 self-start card p-3" aria-label="Secciones de la ayuda" id="ayuda-indice">
@@ -177,6 +177,18 @@
           <li><strong>La aplicación no arranca o muestra «base de datos dañada»</strong>: no borres nada; restaurá el backup más reciente con <code>Restaurar_backup.bat</code> o contactá al soporte con el registro (<code>%LOCALAPPDATA%\KioscoApp\logs\twinx_express.log</code>).</li>
           <li><strong>Facturación ARCA</strong>: una venta queda «incierta» cuando ARCA no respondió; se concilia sola al reiniciar o desde el panel fiscal. Mientras una esté incierta no se emite la siguiente. No reinstales ni restaures datos sin consultar al soporte.</li>
           <li><strong>Pedir ayuda</strong>: {% if es_owner %}<a href="/soporte" class="text-primary hover:underline">Soporte técnico</a> muestra la versión, dónde están los datos y permite descargar un diagnóstico para enviar{% else %}avisale al dueño: en <em>Soporte técnico</em> puede descargar un diagnóstico para enviar{% endif %}.</li>
+        </ul>
+      </section>
+
+      <section id="asistente" class="card p-6">
+        <h2>Asistente</h2>
+        <p><strong>Twinx Asistente</strong> es el panel de chat que se abre con el botón <em>Asistente</em> (arriba a la derecha, en cualquier pantalla). Es de <strong>solo lectura</strong>: consulta datos ya registrados y explica cómo usar el programa; nunca registra ventas, compras, pagos ni cambios de stock o precios.</p>
+        <ul>
+          <li><strong>Qué podés preguntar</strong>: cuánto vendiste hoy (o ayer, esta semana, este mes), qué productos se vendieron más, cuáles están por vencer, qué tenés que reponer, qué productos tienen margen negativo, qué proveedores tienen reclamos abiertos, cuánto te deben los clientes, cuánto debés a proveedores y cómo se hace algo (registrar una compra, restaurar un backup, cerrar la caja...). Cada respuesta trae accesos a la pantalla relacionada.</li>
+          <li><strong>Permisos</strong>: el cajero obtiene solo lo que ve en sus pantallas (ventas de su caja, vencimientos, deuda total de clientes y guías); costos, márgenes, reposición, proveedores y reportes son del dueño, también en el chat.</li>
+          <li><strong>Sin IA, con datos reales</strong>: las preguntas frecuentes se responden con la <em>ayuda integrada</em> (texto del sistema, sin inteligencia artificial). Cada respuesta indica su origen.</li>
+          <li><strong>IA local opcional</strong> (dueño): si en la computadora hay un motor <a href="https://ollama.com" rel="noopener" class="text-primary hover:underline">Ollama</a> con un modelo descargado, en <em>Configuración › Asistente</em> se lo puede activar para preguntas libres. La conexión es solo local (127.0.0.1): nada sale de la máquina, no hay suscripciones ni cuentas. Twinx no instala Ollama ni modelos. El panel muestra «IA local conectada», «IA local no disponible» o «Ayuda integrada»; si el motor está apagado, la ayuda integrada sigue funcionando.</li>
+          <li><strong>Historial</strong>: la conversación se guarda solo en la pestaña del navegador y se borra con <em>Borrar</em> o al cerrarla.</li>
         </ul>
       </section>
     </article>

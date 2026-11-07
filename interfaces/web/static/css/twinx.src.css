@@ -173,4 +173,42 @@
 
   /* --- Estado vacío ---------------------------------------------------------------------- */
   .empty-state { @apply rounded-xl border border-dashed border-slate-300 bg-white py-14 px-6 text-center dark:border-slate-700 dark:bg-slate-900; }
+
+  /* --- Twinx Asistente (V1.18): panel lateral de chat ------------------------------------ */
+  /* En pantallas chicas ocupa todo el ancho sobre un fondo oscuro; desde md: es una columna fija a la derecha. */
+  .chat-backdrop { @apply fixed inset-0 z-40 bg-slate-900/50 md:hidden; }
+  .chat-panel {
+    @apply fixed inset-y-0 right-0 z-50 flex w-full max-w-full flex-col border-l border-slate-200 bg-white shadow-2xl shadow-slate-900/20
+           md:w-[26rem] dark:border-slate-800 dark:bg-slate-900;
+  }
+  /* El atributo `hidden` tiene que ganarle al `display: flex` del componente: cerrado, el panel no existe. */
+  .chat-panel[hidden] { @apply hidden; }
+  .chat-header { @apply flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800; }
+  .chat-estado { @apply mt-0.5 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400; }
+  .chat-estado::before { content: ''; @apply h-2 w-2 rounded-full bg-slate-400; }
+  .chat-estado[data-estado='ia']::before { @apply bg-success; }
+  .chat-estado[data-estado='sin-ia']::before { @apply bg-warning; }
+  .chat-estado[data-estado='integrado']::before { @apply bg-info; }
+  .chat-estado[data-estado='error']::before { @apply bg-error; }
+  .chat-mensajes { @apply flex-1 space-y-3 overflow-y-auto px-4 py-4; }
+  .chat-vacio { @apply rounded-xl border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300; }
+  .chat-msg { @apply max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm; }
+  .chat-msg p + p, .chat-msg p + .chat-lista, .chat-msg .chat-lista + p { @apply mt-2; }
+  .chat-msg-usuario { @apply ml-auto rounded-br-md bg-primary text-white; }
+  .chat-msg-asistente { @apply mr-auto rounded-bl-md bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100; }
+  .chat-pensando { @apply animate-pulse text-slate-500 dark:text-slate-400; }
+  .chat-lista { @apply list-disc space-y-1 pl-5; }
+  ol.chat-lista { @apply list-decimal; }
+  .chat-acciones { @apply mt-3 flex flex-wrap gap-2; }
+  .chat-aviso { @apply mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning; }
+  .chat-origen { @apply mt-2 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500; }
+  .chat-sugeridas { @apply flex flex-wrap gap-2 px-4 pb-2; }
+  .chat-sugeridas:empty { @apply hidden; }
+  .chat-chip {
+    @apply rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition
+           hover:border-primary hover:text-primary dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-primary;
+  }
+  .chat-form { @apply flex items-end gap-2 border-t border-slate-100 px-4 py-3 dark:border-slate-800; }
+  .chat-input { @apply min-h-[2.75rem] max-h-32 flex-1 resize-none; }
+  .chat-pie { @apply px-4 pb-3 text-[11px] leading-snug text-slate-400 dark:text-slate-500; }
 }

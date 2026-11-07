@@ -87,5 +87,45 @@
       </button>
     </form>
   {% endcall %}
+  {% call ui.card() %}
+    <div id="configuracion-asistente">
+      <p class="font-semibold text-slate-900 dark:text-slate-100 mb-1">Asistente</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
+        Twinx Asistente responde siempre con la <strong>ayuda integrada</strong> (sin IA). Si en esta computadora hay un motor
+        <a href="https://ollama.com" rel="noopener" class="text-primary hover:underline">Ollama</a> con un modelo descargado, podés activarlo
+        para preguntas libres: la conexión es solo local, nada sale de la máquina y Twinx no instala ni descarga nada.
+      </p>
+      <form method="post" action="/configuracion/asistente" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label for="asistente_motor" class="label-lg">Motor</label>
+          <select id="asistente_motor" name="motor" class="select w-full">
+            <option value="integrado" {{ 'selected' if not asistente.usa_ia }}>Solo ayuda integrada (sin IA)</option>
+            <option value="ollama" {{ 'selected' if asistente.usa_ia }}>IA local con Ollama</option>
+          </select>
+        </div>
+        <div>
+          <label for="asistente_modelo" class="label-lg">Modelo de Ollama</label>
+          <input id="asistente_modelo" name="modelo" type="text" maxlength="140" value="{{ asistente.modelo }}" class="input w-full" placeholder="llama3.2:3b" />
+        </div>
+        <div class="sm:col-span-2">
+          <label for="asistente_url" class="label-lg">Dirección del motor (solo local)</label>
+          <input id="asistente_url" name="url" type="text" maxlength="120" value="{{ asistente.url }}" class="input w-full" placeholder="http://127.0.0.1:11434" />
+        </div>
+        <div>
+          <label for="asistente_timeout" class="label-lg">Tiempo máximo de respuesta (segundos)</label>
+          <input id="asistente_timeout" name="timeout_segundos" type="number" min="{{ asistente_limites.timeout[0] }}" max="{{ asistente_limites.timeout[1] }}" step="1" value="{{ asistente.timeout_segundos }}" class="input w-full tabular-nums" />
+        </div>
+        <div>
+          <label for="asistente_num_ctx" class="label-lg">Contexto del modelo (tokens)</label>
+          <input id="asistente_num_ctx" name="num_ctx" type="number" min="{{ asistente_limites.num_ctx[0] }}" max="{{ asistente_limites.num_ctx[1] }}" step="1" value="{{ asistente.num_ctx }}" class="input w-full tabular-nums" />
+          <p class="mt-1 text-xs muted">Más contexto consume más memoria; 4096 alcanza para el asistente.</p>
+        </div>
+        <div class="sm:col-span-2 flex flex-wrap gap-2">
+          <button type="submit" name="accion" value="guardar" class="btn btn-primary">Guardar</button>
+          <button type="submit" name="accion" value="probar" class="btn btn-outline">Probar conexión</button>
+        </div>
+      </form>
+    </div>
+  {% endcall %}
 </div>
 {% endblock %}
