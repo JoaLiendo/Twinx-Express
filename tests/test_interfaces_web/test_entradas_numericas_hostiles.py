@@ -209,6 +209,12 @@ CASOS = [
          "ajuste_id": "", "cantidad": "1", "clave_idempotencia": "k-rec"},
         {"proveedor_id": "entero", "producto_id": "entero", "compra_id": "entero", "ajuste_id": "entero", "cantidad": "entero"},
     ),
+    # V1.17: analítica del dueño (filtros por producto y categoría).
+    ("analitica_ventas", "GET", "/analitica/ventas", {"producto_id": "{pid}", "categoria_id": "{cat}"}, {"producto_id": "entero", "categoria_id": "entero"}),
+    ("analitica_margen", "GET", "/analitica/margen", {"producto_id": "{pid}", "categoria_id": "{cat}"}, {"producto_id": "entero", "categoria_id": "entero"}),
+    ("analitica_margen_exportar", "GET", "/analitica/margen/exportar", {"producto_id": "{pid}", "categoria_id": "{cat}"}, {"producto_id": "entero", "categoria_id": "entero"}),
+    ("analitica_precios", "GET", "/analitica/precios", {"producto_id": "{pid}", "categoria_id": "{cat}"}, {"producto_id": "entero", "categoria_id": "entero"}),
+    ("analitica_precios_exportar", "GET", "/analitica/precios/exportar", {"producto_id": "{pid}", "categoria_id": "{cat}"}, {"producto_id": "entero", "categoria_id": "entero"}),
 ]
 
 # Estado previo que necesitan algunos casos (el escenario base tiene caja abierta e inventario abierto).

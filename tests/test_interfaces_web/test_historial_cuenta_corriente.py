@@ -82,8 +82,8 @@ def test_la_venta_a_cuenta_lleva_el_badge_de_marca_distinto_del_de_los_otros_med
 
     texto = _historial(e)
 
-    assert texto.count("bg-primary-subtle") >= 1  # variante 'marca' de CUENTA_CORRIENTE
-    assert "bg-info/10" in texto  # TARJETA conserva el suyo
+    assert texto.count("badge-marca") >= 1  # variante 'marca' de CUENTA_CORRIENTE
+    assert "badge-info" in texto  # TARJETA conserva el suyo
 
 
 def test_el_filtro_de_medio_de_pago_ofrece_cuenta_corriente_y_filtra(e):

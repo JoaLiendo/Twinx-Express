@@ -143,7 +143,7 @@ def test_el_reporte_web_muestra_cuenta_corriente_como_medio_de_pago_con_su_badge
     respuesta = solicitud("GET", "/reportes?fecha_desde=2000-01-01&fecha_hasta=2099-12-31", cookies=e.co)
 
     assert respuesta.status == 200
-    assert CC in respuesta.texto and "bg-primary-subtle" in respuesta.texto
+    assert CC in respuesta.texto and "badge-marca" in respuesta.texto
 
 
 def test_los_reportes_no_agregan_indicadores_de_deudores_ni_de_cobranzas(e):

@@ -22,7 +22,7 @@ def _crear_usuario_y_loguearse(rol: str, nombre_usuario: str) -> str:
     return servicio_auth.iniciar_sesion(nombre_usuario, "clave-correcta-123").token
 
 
-def _cookies_owner(nombre_usuario: str = "ana") -> dict[str, str]:
+def _cookies_owner(nombre_usuario: str = "ana_login") -> dict[str, str]:
     return {NOMBRE_COOKIE_SESION: _crear_usuario_y_loguearse("OWNER", nombre_usuario)}
 
 
@@ -36,7 +36,7 @@ class TestListadoYDetalle:
     def test_listado_muestra_las_compras_registradas(self, base_datos_temporal):
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
 
         servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)], origen_pago="FUERA_DE_CAJA")
 
@@ -48,7 +48,7 @@ class TestListadoYDetalle:
     def test_ver_detalle_de_una_compra(self, base_datos_temporal):
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
 
         compra = servicio_compras.registrar_compra(
             proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)], observaciones="Entrega parcial",
@@ -76,7 +76,7 @@ class TestHistorial:
     def test_listado_muestra_los_campos_del_historial(self, base_datos_temporal):
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
 
         compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)], origen_pago="FUERA_DE_CAJA")
 
@@ -91,7 +91,7 @@ class TestHistorial:
     def test_listado_muestra_orden_mas_reciente_primero(self, base_datos_temporal):
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
         servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
         ultima = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
@@ -113,7 +113,7 @@ class TestFiltrosDeHistorial:
         proveedor_1, producto = _proveedor_y_producto()
         proveedor_2 = servicio_proveedores.crear_proveedor("Mayorista Norte")
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
         servicio_compras.registrar_compra(proveedor_1.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
         servicio_compras.registrar_compra(proveedor_2.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
@@ -130,7 +130,7 @@ class TestFiltrosDeHistorial:
     def test_filtra_por_rango_de_fechas(self, base_datos_temporal):
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
         compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
         hoy = compra.fecha[:10]
 
@@ -145,7 +145,7 @@ class TestFiltrosDeHistorial:
     def test_combinacion_de_filtros_sin_resultados_muestra_estado_vacio(self, base_datos_temporal):
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
         servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
         respuesta = solicitud(
@@ -175,7 +175,7 @@ class TestDetalleEnriquecido:
     def test_detalle_muestra_usuario_y_unidad_de_medida(self, base_datos_temporal):
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
 
         compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 3, 120)], origen_pago="FUERA_DE_CAJA")
 
@@ -188,7 +188,7 @@ class TestDetalleEnriquecido:
     def test_detalle_conserva_nombre_de_proveedor_inactivo(self, base_datos_temporal):
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
         compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
         servicio_proveedores.eliminar_proveedor(proveedor.id)  # cae a baja lógica (tiene una compra)
 
@@ -200,7 +200,7 @@ class TestDetalleEnriquecido:
     def test_detalle_conserva_nombre_de_producto_inactivo(self, base_datos_temporal):
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
         compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
         servicio_stock.eliminar_producto(producto.id)  # cae a baja lógica (tiene una compra)
 
@@ -215,7 +215,7 @@ class TestInmutabilidad:
         """La anulación (V1.7-B) es la única modificación permitida y tiene sus propios tests."""
         proveedor, producto = _proveedor_y_producto()
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
         compra = servicio_compras.registrar_compra(proveedor.id, usuario.id, [ItemCompra(producto.id, 1, 100)], origen_pago="FUERA_DE_CAJA")
 
         for ruta in (f"/compras/{compra.id}/editar", f"/compras/{compra.id}/eliminar"):
@@ -405,7 +405,7 @@ class TestPermisos:
         proveedor, producto = _proveedor_y_producto()
         owner_id = repositorio_usuarios.crear_usuario(
             Usuario(
-                nombre_usuario="ana",
+                nombre_usuario="ana_login",
                 nombre_completo="Ana",
                 password_hash=servicio_auth.hashear_password("clave-correcta-123", iteraciones=1000),
                 rol="OWNER",
@@ -442,7 +442,7 @@ class TestPermisos:
 
     def test_usuario_desactivado_con_sesion_previa_redirige_a_login(self, base_datos_temporal):
         cookies = _cookies_owner()
-        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana")
+        usuario = repositorio_usuarios.obtener_por_nombre_usuario("ana_login")
         with obtener_conexion() as conexion:
             conexion.execute("UPDATE usuarios SET activo = 0 WHERE id = ?", (usuario.id,))
 
