@@ -177,7 +177,7 @@ Write-Host "  Datos    : $env:LOCALAPPDATA\KioscoApp  (no se tocaron; se crean e
 if ($hayInstalacion) {
     Write-Host '  Se actualizo una instalacion existente. Para volver atras: KioscoApp.exe --versiones / --rollback (ver LEEME.txt).'
 } else {
-    Write-Host '  Primera ejecucion: abri "Twinx Express" (acceso directo) o KioscoApp.exe; se te pedira crear el usuario del dueño.'
+    Write-Host '  Primera ejecucion: abri "Twinx Express" (acceso directo) o KioscoApp.exe; se te pedira crear el usuario del dueno.'
 }
 Write-Host '  Manual: menu Ayuda dentro de la aplicacion, o MANUAL.md en la carpeta del programa.'
 exit 0
