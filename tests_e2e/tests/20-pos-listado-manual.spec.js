@@ -163,7 +163,7 @@ test('agregar desde la lista: botón, fila completa y Enter con resultado único
   // Ambiguo: Enter no agrega nada y avisa.
   await busqueda(page).fill('E2E');
   await busqueda(page).press('Enter');
-  await expect(page.locator('#toast-container')).toContainText('elegí uno de la lista');
+  await expect(page.locator('#toast-container')).toContainText('usá ↑ ↓ para elegir uno');
   await expect(page.locator('#carrito-lista > div')).toHaveCount(2);
 
   // Esc limpia la búsqueda; un segundo Esc devuelve el foco al lector.

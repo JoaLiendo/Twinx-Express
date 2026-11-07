@@ -16,23 +16,23 @@
 
   <div class="flex justify-end">
     <a href="/productos/{{ kardex.producto_id }}/movimientos/exportar?{{ {'fecha_desde': kardex.fecha_desde or '', 'fecha_hasta': kardex.fecha_hasta or ''} | urlencode }}" data-accion="exportar-csv"
-       class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-medium px-4 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">Exportar CSV</a>
+       class="btn btn-outline">Exportar CSV</a>
   </div>
 
   <dl class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-    <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+    <div class="card p-4">
       <dt class="text-xs text-slate-500 dark:text-slate-400">Stock actual</dt>
       <dd id="kardex-stock-actual" class="text-lg font-semibold tabular-nums">{{ kardex.stock_actual }}{% if not kardex.activo %} <span class="text-xs font-normal text-slate-500">(producto inactivo)</span>{% endif %}</dd>
     </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+    <div class="card p-4">
       <dt class="text-xs text-slate-500 dark:text-slate-400">Saldo inicial reconstruido</dt>
       <dd id="kardex-saldo-inicial" class="text-lg font-semibold tabular-nums">{{ kardex.saldo_inicial }}</dd>
     </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+    <div class="card p-4">
       <dt class="text-xs text-slate-500 dark:text-slate-400">Entradas / salidas</dt>
       <dd class="text-lg font-semibold tabular-nums"><span id="kardex-entradas">{{ kardex.total_entradas }}</span> / <span id="kardex-salidas">{{ kardex.total_salidas }}</span></dd>
     </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+    <div class="card p-4">
       <dt class="text-xs text-slate-500 dark:text-slate-400">Saldo final</dt>
       <dd id="kardex-saldo-final" class="text-lg font-semibold tabular-nums">{{ kardex.saldo_final }}</dd>
     </div>
@@ -45,7 +45,7 @@
   </p>
 
   {% if kardex.movimientos %}
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <div class="overflow-x-auto">
         <table id="tabla-movimientos" class="w-full text-sm">
           <thead>

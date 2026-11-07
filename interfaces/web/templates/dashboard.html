@@ -125,7 +125,7 @@
 
   <!-- Indicadores -->
   <div class="grid grid-cols-1 sm:grid-cols-2 {{ 'lg:grid-cols-4' if es_owner else 'lg:grid-cols-2' }} gap-4">
-    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="card p-5">
       <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Ventas de la sesión de caja</p>
       <p class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">${{ arqueo.total_vendido_centavos | dinero_ar }}</p>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ arqueo.cantidad_ventas }} venta{{ 's' if arqueo.cantidad_ventas != 1 else '' }} · caja {{ 'abierta' if caja_abierta else 'cerrada' }}</p>
@@ -158,10 +158,49 @@
     {% endif %}
   </div>
 
+  {% if es_owner and resumen_analitica %}
+    {% set ventas30 = resumen_analitica.ventas %}
+    {% set margen30 = resumen_analitica.margen.total %}
+    <!-- V1.17: analítica del dueño, los mismos datos de /analitica -->
+    <section id="dashboard-analitica" class="card overflow-hidden">
+      <div class="card-header">
+        <div>
+          <p class="card-title">Últimos 30 días</p>
+          <p class="text-xs muted">{{ ventas30.fecha_desde | fecha_corta }} a {{ ventas30.fecha_hasta | fecha_corta }} · comparado con los 30 anteriores</p>
+        </div>
+        <a href="/analitica" class="text-xs font-semibold text-primary hover:text-primary-hover">Ver analítica →</a>
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-slate-800">
+        <div class="p-4" data-indicador="ventas-30">
+          <p class="kpi-label">Ventas</p>
+          <p class="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">${{ ventas30.total_centavos | dinero_ar }}</p>
+          <p class="text-xs muted">{{ ventas30.cantidad_ventas }} venta{{ 's' if ventas30.cantidad_ventas != 1 else '' }} ·
+            {% set variacion = ventas30.comparacion_anterior.variacion_total %}
+            {% if variacion is none %}sin período anterior{% elif variacion >= 0 %}<span class="text-success font-semibold">+{{ variacion | porcentaje }}</span>{% else %}<span class="text-error font-semibold">{{ variacion | porcentaje }}</span>{% endif %}</p>
+        </div>
+        <div class="p-4" data-indicador="margen-30">
+          <p class="kpi-label">Margen bruto</p>
+          <p class="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">{% if margen30.margen_ref_centavos is not none %}${{ margen30.margen_ref_centavos | dinero_ar }}{% else %}—{% endif %}</p>
+          <p class="text-xs muted">{{ margen30.margen_ref_porcentual | porcentaje }} sobre ventas con costo</p>
+        </div>
+        <div class="p-4" data-indicador="deuda-30">
+          <p class="kpi-label">Deuda de clientes</p>
+          <p class="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">${{ resumen_analitica.deuda.clientes.total_centavos | dinero_ar }}</p>
+          <p class="text-xs muted">a proveedores ${{ resumen_analitica.deuda.proveedores_total_centavos | dinero_ar }}</p>
+        </div>
+        <a href="/analitica" class="p-4 block hover:bg-slate-50 dark:hover:bg-slate-800/40 transition" data-indicador="decisiones">
+          <p class="kpi-label">Decisiones a revisar</p>
+          <p class="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">{{ resumen_analitica.decisiones | length }}</p>
+          <p class="text-xs muted truncate">{% if resumen_analitica.decisiones %}{{ resumen_analitica.decisiones[0].titulo }}{% else %}Nada pendiente{% endif %}</p>
+        </a>
+      </div>
+    </section>
+  {% endif %}
+
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
     <!-- Movimientos recientes -->
-    <div class="lg:col-span-2 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="lg:col-span-2 card overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
         <p class="font-semibold text-slate-900 dark:text-slate-100">Movimientos recientes de caja</p>
         <a href="/caja" class="text-xs font-semibold text-primary hover:text-primary-hover">Ver todos →</a>
@@ -186,7 +225,7 @@
     </div>
 
     <!-- Stock crítico -->
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
         <p class="font-semibold text-slate-900 dark:text-slate-100">Productos con stock crítico</p>
       </div>

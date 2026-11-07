@@ -176,8 +176,11 @@ Sin migraciones: todo se calcula sobre datos ya persistidos, de solo lectura, so
   producto, dependencia por categoría ≥ 80 %).
 - **V1.17-H (cerrado)**: reposición explicada (rotación 30 días, cobertura, cantidad para 14 días, vencimientos,
   calificación del proveedor) sin cambiar la regla por mínimo ni generar compras.
-- **V1.17-I (cerrado)**: resumen ejecutivo del dueño con decisiones a revisar hoy.
-- Pendiente de cierre: evolución visual (design system, dashboard, POS, inventario) con auditoría de capturas.
+- **V1.17-I (cerrado)**: resumen ejecutivo del dueño con decisiones a revisar hoy, también en el dashboard.
+- **V1.17-J (cerrado)**: design system compilado y autohospedado (sin CDN: la app abre sin conectividad), capa de
+  componentes unificada en todos los templates, POS con navegación por teclado y tabla sin recortes, productos e
+  inventario con tablas de datos uniformes; auditoría visual con capturas reales antes/después (Brave headless) en
+  1366×768, 1440×900, 1920×1080 y 375×812, claro y oscuro.
 
 ## V1.18 — Preparación comercial / piloto
 

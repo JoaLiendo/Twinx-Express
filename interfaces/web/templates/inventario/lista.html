@@ -15,12 +15,12 @@
     </p>
     {% if abierto %}
       <a href="/inventario/{{ abierto.id }}" id="ir-a-abierto"
-         class="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
+         class="btn btn-primary">
         Ver inventario abierto #{{ abierto.id }}
       </a>
     {% else %}
       <a href="/inventario/nuevo" id="nuevo-inventario"
-         class="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
+         class="btn btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14M5 12h14"/></svg>
         Nuevo inventario
       </a>
@@ -28,11 +28,11 @@
   </div>
 
   {% if inventarios %}
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <div class="overflow-x-auto">
-        <table id="tabla-inventarios" class="w-full text-sm">
+        <table id="tabla-inventarios" class="data-table">
           <thead>
-            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <tr>
               <th class="px-5 py-3">#</th>
               <th class="px-5 py-3">Inicio</th>
               <th class="px-5 py-3">Usuario</th>
@@ -45,8 +45,7 @@
           </thead>
           <tbody>
             {% for item in inventarios %}
-              <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer dark:border-slate-800 dark:hover:bg-slate-800/60"
-                  onclick="window.location.href='/inventario/{{ item.inventario.id }}'">
+              <tr class="cursor-pointer" onclick="window.location.href='/inventario/{{ item.inventario.id }}'">
                 <td class="px-5 py-3.5 tabular-nums text-slate-500 dark:text-slate-400">#{{ item.inventario.id }}</td>
                 <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ item.inventario.fecha_inicio }}</td>
                 <td class="px-5 py-3.5 text-slate-700 dark:text-slate-300">{{ item.usuario_nombre_completo }}</td>

@@ -6,7 +6,7 @@
 
 {% block content %}
 {% set es_owner = usuario_actual and usuario_actual.es_owner %}
-{% set clase_control = "rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" %}
+{% set clase_control = "input" %}
 <div class="max-w-6xl mx-auto space-y-5">
 
   <div class="flex flex-wrap items-center justify-end gap-2 gap-y-2">
@@ -37,7 +37,7 @@
           Excel
         </a>
       </div>
-      <a href="/productos/nuevo" class="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
+      <a href="/productos/nuevo" class="btn btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14M5 12h14"/></svg>
         Nuevo producto
       </a>
@@ -86,7 +86,7 @@
       <span class="hidden lg:block"></span>
     {% endif %}
     <div class="flex items-center gap-2 justify-end">
-      <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">
+      <button type="submit" class="btn btn-dark">
         Buscar
       </button>
       {% if hay_filtros %}
@@ -96,10 +96,10 @@
   </form>
 
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <div class="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden text-sm font-medium" role="group" aria-label="Estado">
-      <a href="/productos" class="px-3.5 py-1.5 {{ 'bg-slate-900 text-white dark:bg-slate-700' if not mostrar_inactivos else 'bg-white text-slate-600 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300' }}">Activos</a>
+    <div class="segmented" role="group" aria-label="Estado">
+      <a href="/productos" class="{{ 'segmented-active' if not mostrar_inactivos else '' }}">Activos</a>
       {% if es_owner %}
-        <a href="/productos?mostrar_inactivos=true" class="px-3.5 py-1.5 border-l border-slate-300 dark:border-slate-700 {{ 'bg-slate-900 text-white dark:bg-slate-700' if mostrar_inactivos else 'bg-white text-slate-600 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300' }}">Dados de baja</a>
+        <a href="/productos?mostrar_inactivos=true" class="{{ 'segmented-active' if mostrar_inactivos else '' }}">Dados de baja</a>
       {% endif %}
     </div>
     <p class="text-sm text-slate-500 dark:text-slate-400" id="cantidad-productos">{{ productos | length }} producto{{ 's' if productos | length != 1 else '' }}</p>
@@ -124,9 +124,9 @@
   {% endif %}
 
   {% if productos %}
-    <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
-      <table class="w-full text-sm" id="tabla-productos">
-        <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+    <div class="card overflow-hidden">
+      <table class="data-table" id="tabla-productos">
+        <thead>
           <tr>
             <th scope="col" class="hidden lg:table-cell px-4 py-3">Código</th>
             <th scope="col" class="px-4 py-3">Producto</th>
@@ -197,29 +197,23 @@
 
 {# Acciones de OWNER: columna propia desde md; debajo del nombre en pantallas chicas. #}
 {% macro acciones(producto) %}
-                  <div class="flex flex-wrap items-center justify-end md:justify-end gap-1.5">
+                  <div class="flex flex-wrap items-center justify-end gap-1 xl:flex-nowrap">
                     {% if not mostrar_inactivos %}
-                      <a href="/productos/{{ producto.id }}/editar" data-accion="editar"
-                         class="text-center rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-xs font-semibold px-3 py-1.5
-                                dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Editar</a>
+                      <a href="/productos/{{ producto.id }}/editar" data-accion="editar" class="btn btn-secondary btn-sm">Editar</a>
                     {% endif %}
-                    <a href="/productos/{{ producto.id }}/movimientos" data-accion="movimientos"
-                       class="text-center rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-xs font-semibold px-3 py-1.5
-                              dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Movimientos</a>
+                    <a href="/productos/{{ producto.id }}/movimientos" data-accion="movimientos" class="btn btn-secondary btn-sm">Movimientos</a>
                     {% if producto.stock_actual > 0 %}
-                      <a href="/productos/{{ producto.id }}/vencimientos" data-accion="vencimientos"
-                         class="text-center rounded-lg bg-slate-100 hover:bg-slate-200 transition text-slate-700 text-xs font-semibold px-3 py-1.5
-                                dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300">Vencimientos</a>
+                      <a href="/productos/{{ producto.id }}/vencimientos" data-accion="vencimientos" class="btn btn-secondary btn-sm">Vencimientos</a>
                     {% endif %}
                     {% if mostrar_inactivos %}
                       <form method="post" action="/productos/{{ producto.id }}/reactivar"
                             onsubmit="return confirm('¿Reactivar &quot;{{ producto.nombre }}&quot;?');">
-                        <button type="submit" class="w-full rounded-lg bg-success/10 hover:bg-success/20 transition text-success text-xs font-semibold px-3 py-1.5">Reactivar</button>
+                        <button type="submit" class="btn btn-sm bg-success/10 text-success hover:bg-success/20">Reactivar</button>
                       </form>
                     {% else %}
                       <form method="post" action="/productos/{{ producto.id }}/eliminar"
                             onsubmit="return confirm('¿Eliminar &quot;{{ producto.nombre }}&quot;? Si tiene ventas registradas se desactivará en vez de borrarse.');">
-                        <button type="submit" class="w-full rounded-lg bg-error/10 hover:bg-error/20 transition text-error text-xs font-semibold px-3 py-1.5">Eliminar</button>
+                        <button type="submit" class="btn btn-danger btn-sm" title="Eliminar o dar de baja">Eliminar</button>
                       </form>
                     {% endif %}
                   </div>

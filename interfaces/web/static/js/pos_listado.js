@@ -68,6 +68,20 @@
     return cantidad === 1 ? '1 producto encontrado' : `${cantidad} productos encontrados`;
   }
 
+  /**
+   * Navegación con flechas (V1.17-B): índice del producto activo tras moverse `delta` posiciones dentro
+   * de `visibles`, saltando los que no tienen stock. `-1` = ninguno. Desde "ninguno", bajar elige el
+   * primero vendible y subir el último; en los extremos se queda quieto. Sin filas vendibles, `-1`.
+   */
+  function moverActivo(visibles, indiceActual, delta) {
+    const vendibles = visibles.map((producto, indice) => (producto.stock > 0 ? indice : -1)).filter((i) => i >= 0);
+    if (!vendibles.length) return -1;
+    const posicion = vendibles.indexOf(indiceActual);
+    if (posicion === -1) return delta > 0 ? vendibles[0] : vendibles[vendibles.length - 1];
+    const nueva = Math.min(vendibles.length - 1, Math.max(0, posicion + delta));
+    return vendibles[nueva];
+  }
+
   const ETIQUETAS_ESTADO = {
     disponible: { texto: 'Disponible', clase: 'text-success' },
     bajo: { texto: 'Stock bajo', clase: 'text-warning' },
@@ -98,6 +112,21 @@
       stockMinimo: Number(fila.dataset.stockMinimo),
     }));
     let visibles = productos;
+    // Producto resaltado con las flechas del teclado (índice dentro de `visibles`; -1 = ninguno).
+    let indiceActivo = -1;
+
+    function marcarActivo(indice) {
+      indiceActivo = indice;
+      const activo = indice >= 0 ? visibles[indice] : null;
+      for (const producto of productos) {
+        producto.fila.toggleAttribute('data-activo', producto === activo);
+        if (producto === activo) producto.fila.setAttribute('aria-selected', 'true');
+        else producto.fila.removeAttribute('aria-selected');
+      }
+      if (activo && typeof activo.fila.scrollIntoView === 'function') {
+        activo.fila.scrollIntoView({ block: 'nearest' });
+      }
+    }
 
     function filtrosActuales() {
       return {
@@ -129,6 +158,8 @@
       if (tablaEl) tablaEl.classList.toggle('hidden', visibles.length === 0);
       if (sinResultadosEl) sinResultadosEl.classList.toggle('hidden', visibles.length > 0);
       if (botonLimpiar) botonLimpiar.classList.toggle('hidden', !hayFiltros(filtros));
+      // Cambió la lista: el resaltado del teclado vuelve a empezar.
+      marcarActivo(-1);
     }
 
     function limpiarFiltros() {
@@ -190,21 +221,28 @@
     if (inputBusqueda) {
       inputBusqueda.addEventListener('input', aplicarFiltros);
       inputBusqueda.addEventListener('keydown', (evento) => {
+        if (evento.key === 'ArrowDown' || evento.key === 'ArrowUp') {
+          evento.preventDefault();
+          marcarActivo(moverActivo(visibles, indiceActivo, evento.key === 'ArrowDown' ? 1 : -1));
+          return;
+        }
         if (evento.key === 'Enter') {
           evento.preventDefault();
-          const elegido = elegirParaEnter(productos, visibles, inputBusqueda.value);
+          // Con un producto resaltado por las flechas, Enter lo agrega; si no, vale la regla de siempre.
+          const elegido = indiceActivo >= 0 ? visibles[indiceActivo] : elegirParaEnter(productos, visibles, inputBusqueda.value);
           if (elegido) {
             agregar(elegido);
             // El texto queda seleccionado: la próxima búsqueda (o escaneo) lo reemplaza.
             inputBusqueda.select();
           } else if (visibles.length > 1) {
-            opciones.avisar(`Hay ${visibles.length} productos con esa búsqueda: elegí uno de la lista o seguí escribiendo.`);
+            opciones.avisar(`Hay ${visibles.length} productos con esa búsqueda: usá ↑ ↓ para elegir uno o seguí escribiendo.`);
           }
           return;
         }
         if (evento.key === 'Escape') {
           evento.preventDefault();
-          if (hayFiltros(filtrosActuales())) limpiarFiltros();
+          if (indiceActivo >= 0) marcarActivo(-1);
+          else if (hayFiltros(filtrosActuales())) limpiarFiltros();
           else if (opciones.alSalir) opciones.alSalir();
         }
       });
@@ -218,7 +256,7 @@
     return { descontarStock };
   }
 
-  const api = { LIMITE_VISIBLE, normalizarTexto, estadoDeStock, coincide, elegirParaEnter, textoContador, iniciar };
+  const api = { LIMITE_VISIBLE, normalizarTexto, estadoDeStock, coincide, elegirParaEnter, moverActivo, textoContador, iniciar };
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   }

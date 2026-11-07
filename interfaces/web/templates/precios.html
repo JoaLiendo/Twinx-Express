@@ -37,7 +37,7 @@
         <div>
           <label for="valor" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Valor</label>
           <input id="valor" name="valor" type="text" inputmode="decimal" required placeholder="10"
-                 class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+                 class="input input-lg" />
         </div>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -68,7 +68,7 @@
   <div>
     <p class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Últimas actualizaciones</p>
     {% if lotes %}
-      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <div class="card overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>

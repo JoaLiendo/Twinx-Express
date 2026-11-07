@@ -7,6 +7,7 @@ const {
   estadoDeStock,
   coincide,
   elegirParaEnter,
+  moverActivo,
   textoContador,
 } = require('../interfaces/web/static/js/pos_listado.js');
 
@@ -127,5 +128,26 @@ describe('textoContador', () => {
     assert.equal(textoContador(1), '1 producto encontrado');
     assert.equal(textoContador(0), '0 productos encontrados');
     assert.equal(textoContador(41), '41 productos encontrados');
+  });
+});
+
+describe('moverActivo (flechas del teclado, V1.17-B)', () => {
+  // COCA (12), AGUA (0: no vendible), ALFAJOR (2), SUELTO (8).
+  test('desde ninguno, bajar elige el primero vendible y subir el último', () => {
+    assert.equal(moverActivo(TODOS, -1, 1), 0);
+    assert.equal(moverActivo(TODOS, -1, -1), 3);
+  });
+
+  test('salta los productos sin stock y se detiene en los extremos', () => {
+    assert.equal(moverActivo(TODOS, 0, 1), 2);
+    assert.equal(moverActivo(TODOS, 2, 1), 3);
+    assert.equal(moverActivo(TODOS, 3, 1), 3);
+    assert.equal(moverActivo(TODOS, 2, -1), 0);
+    assert.equal(moverActivo(TODOS, 0, -1), 0);
+  });
+
+  test('sin filas vendibles no hay activo', () => {
+    assert.equal(moverActivo([AGUA], -1, 1), -1);
+    assert.equal(moverActivo([], -1, 1), -1);
   });
 });

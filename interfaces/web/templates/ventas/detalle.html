@@ -76,7 +76,7 @@
     </div>
   {% endif %}
 
-  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+  <div class="card overflow-hidden">
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
@@ -108,7 +108,7 @@
   </div>
 
   {% if consumos %}
-  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900" id="partidas-consumidas">
+  <div class="card overflow-hidden" id="partidas-consumidas">
     <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
       <p class="font-semibold text-slate-900 dark:text-slate-100">Partidas consumidas</p>
       <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">De qué existencias salió cada unidad (primero lo que vence antes) y su costo real cuando se conoce.</p>
@@ -158,7 +158,7 @@
         </a>
       {% endif %}
       <a href="/ventas/{{ resumen.id }}/ticket" target="_blank" rel="noopener"
-         class="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">
+         class="inline-flex items-center gap-1.5 btn btn-dark">
         Reimprimir ticket
       </a>
     </div>

@@ -5,18 +5,21 @@
   {% set n = puntos | length %}
   {% set maximo = (puntos | map(attribute=1) | max) if n else 0 %}
   {% if n and maximo > 0 %}
+    {# Con pocas barras se limita el ancho de cada una: una sola barra de 600 px no dice nada. #}
     {% set ancho = 600 / n %}
+    {% set ancho_barra = [ancho * 0.7, 64] | min %}
     {% set paso = (n // 12) + 1 %}
     <svg id="{{ id }}" viewBox="0 0 600 {{ alto + 26 }}" class="w-full h-auto text-primary" role="img" aria-label="{{ etiqueta_accesible }}" data-grafico="{{ id }}">
       <line x1="0" y1="{{ alto }}" x2="600" y2="{{ alto }}" class="stroke-slate-200 dark:stroke-slate-700" stroke-width="1"></line>
       {% for etiqueta, valor, titulo in puntos %}
         {% set h = (valor / maximo * alto) if valor > 0 else 0 %}
-        <rect x="{{ '%.1f' | format(loop.index0 * ancho + ancho * 0.15) }}" y="{{ '%.1f' | format(alto - h) }}"
-              width="{{ '%.1f' | format(ancho * 0.7) }}" height="{{ '%.1f' | format(h) }}" rx="2" fill="currentColor" opacity="0.85">
+        {% set centro = loop.index0 * ancho + ancho * 0.5 %}
+        <rect x="{{ '%.1f' | format(centro - ancho_barra / 2) }}" y="{{ '%.1f' | format(alto - h) }}"
+              width="{{ '%.1f' | format(ancho_barra) }}" height="{{ '%.1f' | format(h) }}" rx="3" fill="currentColor" opacity="0.85">
           <title>{{ titulo }}</title>
         </rect>
         {% if loop.index0 % paso == 0 %}
-          <text x="{{ '%.1f' | format(loop.index0 * ancho + ancho * 0.5) }}" y="{{ alto + 18 }}" text-anchor="middle" font-size="11"
+          <text x="{{ '%.1f' | format(centro) }}" y="{{ alto + 18 }}" text-anchor="middle" font-size="11"
                 class="fill-slate-500 dark:fill-slate-400">{{ etiqueta }}</text>
         {% endif %}
       {% endfor %}
@@ -40,10 +43,9 @@
 {% endmacro %}
 
 {% macro kpi(titulo, valor, detalle=none, id=none, href=none) %}
-  {% set clases = "block rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900" ~ (" hover:border-primary/40 transition" if href else "") %}
-  {% if href %}<a href="{{ href }}" {% if id %}id="{{ id }}"{% endif %} class="{{ clases }}">{% else %}<div {% if id %}id="{{ id }}"{% endif %} class="{{ clases }}">{% endif %}
-    <p class="text-sm font-medium text-slate-500 dark:text-slate-400">{{ titulo }}</p>
-    <p class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">{{ valor }}</p>
-    {% if detalle %}<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ detalle }}</p>{% endif %}
+  {% if href %}<a href="{{ href }}" {% if id %}id="{{ id }}"{% endif %} class="kpi">{% else %}<div {% if id %}id="{{ id }}"{% endif %} class="kpi">{% endif %}
+    <p class="kpi-label">{{ titulo }}</p>
+    <p class="kpi-value">{{ valor }}</p>
+    {% if detalle %}<p class="kpi-detail">{{ detalle }}</p>{% endif %}
   {% if href %}</a>{% else %}</div>{% endif %}
 {% endmacro %}

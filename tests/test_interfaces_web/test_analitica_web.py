@@ -50,6 +50,24 @@ class TestPermisos:
         assert 'href="/analitica"' in respuesta.texto
 
 
+class TestDashboard:
+    def test_owner_ve_los_ultimos_30_dias_en_el_dashboard(self, e):
+        respuesta = solicitud("GET", "/", cookies=e.cookies)
+
+        assert respuesta.status == 200
+        assert 'id="dashboard-analitica"' in respuesta.texto
+        # 5 u. a 200 con costo de referencia 130: margen (1000 − 650) / 1000.
+        assert 'data-indicador="margen-30"' in respuesta.texto and "35,0 %" in respuesta.texto
+        assert 'data-indicador="decisiones"' in respuesta.texto
+
+    def test_cashier_no_recibe_margen_ni_deuda_en_el_dashboard(self, e):
+        respuesta = solicitud("GET", "/", cookies=e.cookies_cajero)
+
+        assert respuesta.status == 200
+        assert 'id="dashboard-analitica"' not in respuesta.texto
+        assert "Margen bruto" not in respuesta.texto and "Deuda de clientes" not in respuesta.texto
+
+
 class TestResumen:
     def test_muestra_kpis_y_decisiones(self, e):
         respuesta = solicitud("GET", "/analitica", cookies=e.cookies)

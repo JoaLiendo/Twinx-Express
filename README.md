@@ -868,6 +868,29 @@ Código: `db/repositorios/analitica.py` (consultas agregadas), `domain/analitica
 `services/servicio_analitica.py`, `interfaces/web/rutas/analitica.py`, `interfaces/web/templates/analitica/`. Los
 gráficos son SVG inline sin dependencias.
 
+### Design system y CSS compilado (V1.17-B)
+
+La interfaz ya no carga Tailwind desde un CDN: `interfaces/web/static/css/twinx.css` es un CSS compilado y
+versionado (la aplicación abre sin conectividad y el ejecutable no necesita Node). La fuente es
+`interfaces/web/static/css/twinx.src.css` (tokens de marca claro/oscuro como variables CSS con canales RGB,
+tipografía autohospedada, foco visible, y la capa de componentes: `btn-*`, `card*`, `input`/`select`/`label`,
+`data-table`, `badge-*`, `alert-*`, `nav-pill*`, `segmented`, `kpi*`, `empty-state`) y la configuración está en
+`tailwind.config.js`. Después de tocar clases en templates o JS:
+
+```bash
+npm install          # una vez: trae tailwindcss 3.4 (devDependency)
+npm run build:css    # regenera twinx.css; versionarlo junto con el cambio
+```
+
+`tests/test_interfaces_web/test_css_compilado.py` falla si algún template vuelve a cargar el CDN o usa una clase
+de componente que el CSS compilado no define. Auditoría visual: con un servidor E2E levantado
+(`python -m tests_e2e.servidor_pruebas <db_temporal> 8140`), `node tests_e2e/capturas_visuales.js <carpeta_fuera_del_repo>`
+captura todas las pantallas en 1366×768, 1440×900, 1920×1080 y 375×812, claro y oscuro, con Brave headless (o Chrome).
+
+POS (V1.17-B): en la búsqueda manual, ↑ ↓ resaltan un producto vendible y Enter lo agrega; Esc quita el resaltado,
+después limpia los filtros y por último devuelve el foco al lector. La tabla tiene anchos fijos desde 1280 px para
+que la acción nunca quede recortada.
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base

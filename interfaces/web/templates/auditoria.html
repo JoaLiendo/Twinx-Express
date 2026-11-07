@@ -9,33 +9,33 @@
 
   <form method="get" action="/auditoria" class="flex flex-wrap items-end gap-3">
     <div>
-      <label for="accion" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Acción</label>
+      <label for="accion" class="label">Acción</label>
       <select id="accion" name="accion" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
         <option value="">Todas</option>
         {% for a in acciones %}<option value="{{ a }}" {{ 'selected' if filtro.accion == a else '' }}>{{ a }}</option>{% endfor %}
       </select>
     </div>
     <div>
-      <label for="usuario_id" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Usuario</label>
+      <label for="usuario_id" class="label">Usuario</label>
       <select id="usuario_id" name="usuario_id" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
         <option value="">Todos</option>
         {% for u in usuarios %}<option value="{{ u.id }}" {{ 'selected' if filtro.usuario_id == u.id else '' }}>{{ u.nombre_completo }}</option>{% endfor %}
       </select>
     </div>
     <div>
-      <label for="fecha_desde" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Desde</label>
+      <label for="fecha_desde" class="label">Desde</label>
       <input id="fecha_desde" type="date" name="fecha_desde" value="{{ filtro.fecha_desde }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
     </div>
     <div>
-      <label for="fecha_hasta" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Hasta</label>
+      <label for="fecha_hasta" class="label">Hasta</label>
       <input id="fecha_hasta" type="date" name="fecha_hasta" value="{{ filtro.fecha_hasta }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
     </div>
-    <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">Filtrar</button>
+    <button type="submit" class="btn btn-dark">Filtrar</button>
     <a href="/auditoria/exportar{{ '?' ~ consulta_filtros if consulta_filtros else '' }}" class="rounded-lg border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-300 text-sm font-medium px-4 py-2">Exportar CSV</a>
   </form>
 
   {% if entradas %}
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <p class="sm:hidden text-xs text-slate-400 dark:text-slate-500 px-5 pt-3">Desliza hacia la derecha para ver más →</p>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">

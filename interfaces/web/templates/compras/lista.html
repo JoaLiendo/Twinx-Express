@@ -10,7 +10,7 @@
   <div class="flex flex-wrap items-center justify-between gap-4 gap-y-3">
     <form method="get" action="/compras" class="flex flex-wrap items-end gap-2">
       <div>
-        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Proveedor</label>
+        <label class="label">Proveedor</label>
         <select name="proveedor_id" onchange="this.form.submit()"
                 class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white
                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300
@@ -22,21 +22,21 @@
         </select>
       </div>
       <div>
-        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Desde</label>
+        <label class="label">Desde</label>
         <input type="date" name="fecha_desde" value="{{ fecha_desde }}"
                class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900
                       dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
       </div>
       <div>
-        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Hasta</label>
+        <label class="label">Hasta</label>
         <input type="date" name="fecha_hasta" value="{{ fecha_hasta }}"
                class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900
                       dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
       </div>
       <div>
-        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Estado</label>
+        <label class="label">Estado</label>
         <select name="estado" onchange="this.form.submit()"
                 class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white
                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300
@@ -48,7 +48,7 @@
         </select>
       </div>
       <div>
-        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Producto</label>
+        <label class="label">Producto</label>
         <select name="producto_id" onchange="this.form.submit()"
                 class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white max-w-[14rem]
                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300
@@ -59,7 +59,7 @@
           {% endfor %}
         </select>
       </div>
-      <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">
+      <button type="submit" class="btn btn-dark">
         Filtrar
       </button>
       {% if hay_filtro_activo %}
@@ -69,8 +69,8 @@
 
     <div class="flex items-center gap-2">
     <a href="/compras/exportar{{ '?' ~ consulta_filtros if consulta_filtros else '' }}" data-accion="exportar-csv"
-       class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-medium px-4 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">Exportar CSV</a>
-    <a href="/compras/nueva" class="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
+       class="btn btn-outline">Exportar CSV</a>
+    <a href="/compras/nueva" class="btn btn-primary">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14M5 12h14"/></svg>
       Nueva compra
     </a>
@@ -78,7 +78,7 @@
   </div>
 
   {% if compras %}
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <p class="sm:hidden text-xs text-slate-400 dark:text-slate-500 px-5 pt-3">Desliza hacia la derecha para ver más →</p>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">

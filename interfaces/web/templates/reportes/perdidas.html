@@ -7,12 +7,12 @@
 
 {% block content %}
 {% set etiquetas_motivo = {'VENCIMIENTO': 'Vencimiento', 'ROTURA': 'Rotura', 'ROBO': 'Robo', 'FALLA_FABRICA': 'Falla de fábrica', 'MERMA': 'Merma (histórico)', 'PERDIDA': 'Pérdida (histórico)'} %}
-{% set clases_select = "rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" %}
+{% set clases_select = "input" %}
 <div class="max-w-6xl mx-auto space-y-6">
   {% include "reportes/_navegacion.html" %}
   {% call periodo.formulario("/reportes/perdidas", reporte.fecha_desde, reporte.fecha_hasta) %}
     <div>
-      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Producto</label>
+      <label class="label">Producto</label>
       <select name="producto_id" class="{{ clases_select }}">
         <option value="">Todos</option>
         {% for id_producto, nombre in productos %}
@@ -21,7 +21,7 @@
       </select>
     </div>
     <div>
-      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Categoría</label>
+      <label class="label">Categoría</label>
       <select name="categoria_id" class="{{ clases_select }} max-w-[14rem]">
         <option value="">Todas</option>
         {% for c in categorias %}
@@ -30,7 +30,7 @@
       </select>
     </div>
     <div>
-      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Motivo</label>
+      <label class="label">Motivo</label>
       <select name="motivo" class="{{ clases_select }}">
         <option value="">Todos</option>
         {% for motivo in motivos %}
@@ -49,20 +49,20 @@
 
   <div class="flex justify-end">
     <a href="{{ url_exportar }}" data-accion="exportar-csv"
-       class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition text-slate-700 text-sm font-medium px-4 py-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">Exportar CSV</a>
+       class="btn btn-outline">Exportar CSV</a>
   </div>
 
   {% if reporte.filas %}
     <dl class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-      <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><dt class="text-xs text-slate-500 dark:text-slate-400">Unidades perdidas</dt><dd id="perdidas-cantidad" class="text-lg font-semibold tabular-nums">{{ reporte.total.cantidad }}</dd></div>
-      <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><dt class="text-xs text-slate-500 dark:text-slate-400">Pérdida conocida a costo</dt><dd id="perdidas-valor" class="text-lg font-semibold tabular-nums">${{ reporte.total.valor_conocido_centavos | dinero_ar }}</dd></div>
-      <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><dt class="text-xs text-slate-500 dark:text-slate-400">Con costo histórico desconocido</dt><dd id="perdidas-desconocido" class="text-lg font-semibold tabular-nums">{{ reporte.total.filas_costo_desconocido }} fila(s) · {{ reporte.total.cantidad_costo_desconocido }} u.</dd></div>
+      <div class="card p-4"><dt class="text-xs text-slate-500 dark:text-slate-400">Unidades perdidas</dt><dd id="perdidas-cantidad" class="text-lg font-semibold tabular-nums">{{ reporte.total.cantidad }}</dd></div>
+      <div class="card p-4"><dt class="text-xs text-slate-500 dark:text-slate-400">Pérdida conocida a costo</dt><dd id="perdidas-valor" class="text-lg font-semibold tabular-nums">${{ reporte.total.valor_conocido_centavos | dinero_ar }}</dd></div>
+      <div class="card p-4"><dt class="text-xs text-slate-500 dark:text-slate-400">Con costo histórico desconocido</dt><dd id="perdidas-desconocido" class="text-lg font-semibold tabular-nums">{{ reporte.total.filas_costo_desconocido }} fila(s) · {{ reporte.total.cantidad_costo_desconocido }} u.</dd></div>
     </dl>
     {% if reporte.total.filas_revertidas %}
       <p id="perdidas-revertidas" class="text-xs text-slate-500 dark:text-slate-400">{{ reporte.total.filas_revertidas }} ajuste(s) revertido(s) en el período: se listan pero no suman.</p>
     {% endif %}
 
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <div class="overflow-x-auto">
         <table id="tabla-perdidas-por-motivo" class="w-full text-sm">
           <thead>
@@ -92,7 +92,7 @@
     {# V1.17: las mismas pérdidas vigentes vistas por producto, categoría y mes. #}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4" id="perdidas-agrupadas">
       {% for titulo, grupos, id in [('Por producto', reporte.por_producto, 'tabla-perdidas-por-producto'), ('Por categoría', reporte.por_categoria, 'tabla-perdidas-por-categoria'), ('Por mes', reporte.por_mes, 'tabla-perdidas-por-mes')] %}
-        <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+        <div class="card overflow-hidden">
           <p class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 font-semibold text-slate-900 dark:text-slate-100">{{ titulo }}</p>
           <table id="{{ id }}" class="w-full text-sm">
             <thead><tr class="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
@@ -112,7 +112,7 @@
       {% endfor %}
     </div>
 
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <div class="overflow-x-auto">
         <table id="tabla-perdidas" class="w-full text-sm">
           <thead>

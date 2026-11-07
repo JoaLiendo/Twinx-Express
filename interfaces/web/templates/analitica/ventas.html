@@ -25,7 +25,7 @@
     {{ g.kpi("Facturado", "$" ~ (analisis.total_centavos | dinero_ar), analisis.cantidad_ventas ~ " venta(s)", id="ventas-total") }}
     {{ g.kpi("Unidades", analisis.unidades, "ticket promedio $" ~ (analisis.ticket_promedio_centavos | dinero_ar)) }}
     {% for c in [analisis.comparacion_anterior, analisis.comparacion_anio_anterior] %}
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900" data-comparacion="{{ loop.index }}">
+      <div class="card p-5" data-comparacion="{{ loop.index }}">
         <p class="text-sm font-medium text-slate-500 dark:text-slate-400">{{ c.etiqueta }}</p>
         <p class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">{{ g.variacion(c.variacion_total) }}</p>
         <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ c.fecha_desde | fecha_corta }} a {{ c.fecha_hasta | fecha_corta }}: ${{ c.total_anterior_centavos | dinero_ar }} · {{ c.cantidad_ventas_anterior }} venta(s) · {{ c.unidades_anterior }} u.</p>
@@ -33,7 +33,7 @@
     {% endfor %}
   </div>
 
-  <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+  <section class="card p-6">
     <p class="font-semibold text-slate-900 dark:text-slate-100 mb-3">Evolución {{ {'dia': 'por día', 'semana': 'por semana', 'mes': 'por mes'}[analisis.granularidad] }}</p>
     {% set puntos = [] %}
     {% for p in analisis.periodos %}{% set _ = puntos.append((p.clave[5:] if analisis.granularidad != 'mes' else p.clave, p.total_centavos, p.clave ~ ': $' ~ (p.total_centavos | dinero_ar) ~ ' · ' ~ p.cantidad_ventas ~ ' venta(s) · ' ~ p.unidades ~ ' u.')) %}{% endfor %}
@@ -62,7 +62,7 @@
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     {% for titulo, lista, id in [('Mayor facturación', analisis.top_facturacion, 'top-facturacion'), ('Más unidades vendidas', analisis.top_unidades, 'top-unidades')] %}
-      <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+      <section class="card overflow-hidden">
         <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800"><p class="font-semibold text-slate-900 dark:text-slate-100">{{ titulo }}</p></div>
         {% if lista %}
           <table id="{{ id }}" class="w-full text-sm">
@@ -84,7 +84,7 @@
     {% endfor %}
   </div>
 
-  <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900" id="estacionalidad">
+  <section class="card p-6" id="estacionalidad">
     <p class="font-semibold text-slate-900 dark:text-slate-100">Comportamiento por mes del año</p>
     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 mb-3">
       Promedio histórico de cada mes entre los años con ventas (toda la historia, sin filtros). Es una comparación de lo que ya pasó, no un pronóstico.

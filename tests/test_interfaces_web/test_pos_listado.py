@@ -101,7 +101,7 @@ class TestFormatoDeLista:
         html = _html()
 
         assert 'id="buscar-producto"' in html
-        assert 'placeholder="Buscar por nombre o código de barras..."' in html
+        assert 'placeholder="Buscar por nombre o código (↑ ↓ elige, Enter agrega)"' in html
         for valor in ("con_stock", "bajo", "sin_stock"):
             assert f'<option value="{valor}">' in html
         assert "No encontramos productos con esos filtros." in html

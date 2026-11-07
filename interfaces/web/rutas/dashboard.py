@@ -14,6 +14,7 @@ from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base
 from services import (
+    servicio_analitica,
     servicio_backup,
     servicio_caja,
     servicio_configuracion,
@@ -46,4 +47,6 @@ def ver_dashboard(request: Request, usuario_actual: Usuario = Depends(obtener_us
         contexto["alertas_fiscales"] = servicio_panel.alerta_fiscal()
         # RC4: la misma alerta persistente de backup fallido que muestran Backup y Caja.
         contexto["alerta_backup"] = servicio_backup.alerta_de_backup()
+        # V1.17: los últimos 30 días y las decisiones a revisar, los mismos de /analitica.
+        contexto["resumen_analitica"] = servicio_analitica.resumen_ejecutivo()
     return templates.TemplateResponse(request, "dashboard.html", contexto)

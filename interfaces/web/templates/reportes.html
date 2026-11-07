@@ -72,39 +72,39 @@
 
   <form method="get" action="/reportes" class="flex flex-wrap items-end gap-2">
     <div>
-      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Desde</label>
+      <label class="label">Desde</label>
       <input type="date" name="fecha_desde" value="{{ fecha_desde }}"
              class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900
                     dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                     focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
     </div>
     <div>
-      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Hasta</label>
+      <label class="label">Hasta</label>
       <input type="date" name="fecha_hasta" value="{{ fecha_hasta }}"
              class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900
                     dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                     focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
     </div>
-    <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">
+    <button type="submit" class="btn btn-dark">
       Filtrar
     </button>
   </form>
 
   <!-- Resumen del período -->
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="card p-6">
       <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Ventas del período</p>
       <p class="mt-3 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">{{ reporte.cantidad_ventas }}</p>
     </div>
-    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="card p-6">
       <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Facturación total</p>
       <p class="mt-3 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">${{ reporte.total_facturado_centavos | dinero_ar }}</p>
     </div>
-    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="card p-6">
       <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Ticket promedio</p>
       <p class="mt-3 text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">${{ reporte.ticket_promedio_centavos | dinero_ar }}</p>
     </div>
-    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="card p-6">
       <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Producto más vendido</p>
       {% if reporte.productos_mas_vendidos %}
         <p class="mt-3 text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100 truncate">{{ reporte.productos_mas_vendidos[0].producto_nombre }}</p>
@@ -116,7 +116,7 @@
   </div>
 
   <!-- Rentabilidad del período -->
-  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+  <div class="card overflow-hidden">
     <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
       <p class="font-semibold text-slate-900 dark:text-slate-100">Rentabilidad del período</p>
     </div>
@@ -156,7 +156,7 @@
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
     <!-- Ventas por método de pago -->
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
         <p class="font-semibold text-slate-900 dark:text-slate-100">Ventas por método de pago</p>
       </div>
@@ -179,7 +179,7 @@
     </div>
 
     <!-- Evolución por día -->
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
         <p class="font-semibold text-slate-900 dark:text-slate-100">Evolución de ventas por día</p>
       </div>
@@ -211,7 +211,7 @@
   </div>
 
   <!-- Productos más vendidos -->
-  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+  <div class="card overflow-hidden">
     <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
       <p class="font-semibold text-slate-900 dark:text-slate-100">Productos más vendidos</p>
     </div>
@@ -250,7 +250,7 @@
   </div>
 
   <!-- Ventas por vendedor -->
-  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+  <div class="card overflow-hidden">
     <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
       <p class="font-semibold text-slate-900 dark:text-slate-100">Ventas por vendedor</p>
     </div>
@@ -286,7 +286,7 @@
   </div>
 
   <!-- Anulaciones del período -->
-  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+  <div class="card overflow-hidden">
     <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
       <p class="font-semibold text-slate-900 dark:text-slate-100">Anulaciones del período</p>
     </div>

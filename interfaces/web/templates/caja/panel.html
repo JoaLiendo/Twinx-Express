@@ -64,7 +64,7 @@
   {% else %}
     <!-- Movimientos manuales + cierre -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="card p-6">
         <p class="font-semibold text-slate-900 dark:text-slate-100 mb-4">Registrar ingreso</p>
         <form method="post" action="/caja/ingreso" class="space-y-4">
           <input type="hidden" name="clave_idempotencia" value="{{ clave_ingreso }}" />
@@ -88,7 +88,7 @@
         </form>
       </div>
 
-      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="card p-6">
         <p class="font-semibold text-slate-900 dark:text-slate-100 mb-4">Registrar egreso</p>
         <form method="post" action="/caja/egreso" class="space-y-4">
           <input type="hidden" name="clave_idempotencia" value="{{ clave_egreso }}" />
@@ -112,7 +112,7 @@
         </form>
       </div>
 
-      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="card p-6">
         <p class="font-semibold text-slate-900 dark:text-slate-100 mb-4">Cerrar caja</p>
         <form method="post" action="/caja/cerrar" class="space-y-4">
           <div>
@@ -138,7 +138,7 @@
   {% endif %}
 
   <!-- Historial -->
-  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+  <div class="card overflow-hidden">
     <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
       <p class="font-semibold text-slate-900 dark:text-slate-100">Historial de movimientos</p>
     </div>

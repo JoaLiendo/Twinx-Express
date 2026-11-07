@@ -37,7 +37,7 @@
     </div>
 
     {% if productos %}
-      {% set clase_control = "rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" %}
+      {% set clase_control = "input" %}
       {% set estados_stock = {
         'disponible': ('Disponible', 'text-success'),
         'bajo': ('Stock bajo', 'text-warning'),
@@ -45,7 +45,7 @@
       } %}
       {# Selección manual. La búsqueda y los filtros corren en el navegador (pos_listado.js) sobre estas filas. #}
       <section id="listado-productos" aria-label="Selección manual de productos"
-               class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+               class="card overflow-hidden">
         <div class="p-3 border-b border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_13rem_10rem_auto] gap-2 items-center">
           <div class="relative sm:col-span-2 xl:col-span-1">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
@@ -54,7 +54,7 @@
               <path d="m21 21-4.3-4.3"></path>
             </svg>
             <input type="search" id="buscar-producto" autocomplete="off" spellcheck="false"
-                   placeholder="Buscar por nombre o código de barras..." aria-label="Buscar producto"
+                   placeholder="Buscar por nombre o código (↑ ↓ elige, Enter agrega)" aria-label="Buscar producto"
                    class="pl-9 w-full {{ clase_control }} placeholder:text-slate-400" />
           </div>
           <select id="filtro-categoria" aria-label="Categoría" class="w-full {{ clase_control }}">
@@ -81,16 +81,17 @@
         </p>
 
         <div id="listado-tabla" class="lg:max-h-[calc(100vh-17rem)] overflow-y-auto">
-          {# Anchos fijos en pantallas anchas: las columnas no "saltan" mientras se escribe en la búsqueda. #}
-          <table class="w-full text-sm min-[1600px]:table-fixed">
+          {# Anchos fijos desde xl (el carrito ocupa 24 rem al lado): las columnas no "saltan" mientras se escribe y
+             la acción nunca queda recortada; la categoría tiene columna propia solo desde 2xl. #}
+          <table class="w-full text-sm xl:table-fixed">
             <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
               <tr>
-                <th scope="col" class="hidden 2xl:table-cell min-[1600px]:w-32 px-3 xl:px-4 py-2.5">Código</th>
+                <th scope="col" class="hidden 2xl:table-cell 2xl:w-36 px-3 xl:px-4 py-2.5">Código</th>
                 <th scope="col" class="px-3 xl:px-4 py-2.5">Producto</th>
-                <th scope="col" class="hidden xl:table-cell min-[1600px]:w-[24%] px-3 xl:px-4 py-2.5">Categoría</th>
-                <th scope="col" class="lg:max-xl:hidden min-[1600px]:w-20 px-3 xl:px-4 py-2.5 text-right">Stock</th>
-                <th scope="col" class="min-[1600px]:w-28 px-3 xl:px-4 py-2.5 text-right">Precio</th>
-                <th scope="col" class="min-[1600px]:w-28 px-3 xl:px-4 py-2.5 text-right">Acción</th>
+                <th scope="col" class="hidden 2xl:table-cell 2xl:w-[22%] px-3 xl:px-4 py-2.5">Categoría</th>
+                <th scope="col" class="lg:max-xl:hidden xl:w-24 px-3 xl:px-4 py-2.5 text-right">Stock</th>
+                <th scope="col" class="xl:w-28 px-3 xl:px-4 py-2.5 text-right">Precio</th>
+                <th scope="col" class="xl:w-28 px-3 xl:px-4 py-2.5 text-right">Acción</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -109,12 +110,13 @@
                     {% if sin_stock %}aria-disabled="true"{% endif %}
                     class="group cursor-pointer transition-colors hover:bg-primary-subtle dark:hover:bg-slate-800/60
                            data-[unico]:bg-primary-subtle data-[unico]:shadow-[inset_3px_0_0_var(--color-primary)] dark:data-[unico]:bg-slate-800/70
+                           data-[activo]:bg-primary-subtle data-[activo]:shadow-[inset_3px_0_0_var(--color-primary)] dark:data-[activo]:bg-slate-800/70
                            aria-disabled:cursor-not-allowed aria-disabled:hover:bg-transparent dark:aria-disabled:hover:bg-transparent">
                   <td class="hidden 2xl:table-cell px-3 xl:px-4 py-2.5 font-mono text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap group-aria-disabled:opacity-60">{{ producto.codigo_barras }}</td>
                   {# `break-word` y no `anywhere`: este último achica el ancho mínimo y la tabla aplasta la columna. #}
                   <td class="px-3 xl:px-4 py-2.5 group-aria-disabled:opacity-60">
                     <p class="font-medium text-slate-900 dark:text-slate-100 [overflow-wrap:break-word]">{{ producto.nombre }}</p>
-                    <p class="2xl:hidden mt-0.5 text-xs text-slate-500 dark:text-slate-400 [overflow-wrap:break-word]"><span class="font-mono">{{ producto.codigo_barras }}</span><span class="xl:hidden"> · {{ ruta_categoria }}</span></p>
+                    <p class="2xl:hidden mt-0.5 text-xs text-slate-500 dark:text-slate-400 [overflow-wrap:break-word]"><span class="font-mono">{{ producto.codigo_barras }}</span><span> · {{ ruta_categoria }}</span></p>
                     {# Entre lg y xl la columna del POS es angosta (carrito al lado): el stock va debajo del nombre. #}
                     <p class="hidden lg:max-xl:block mt-0.5 text-xs whitespace-nowrap">
                       <span data-stock-numero class="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{{ producto.stock_actual }}</span>
@@ -122,7 +124,7 @@
                       <span data-stock-estado="{{ estado }}" class="font-medium {{ estados_stock[estado][1] }}">{{ estados_stock[estado][0] }}</span>
                     </p>
                   </td>
-                  <td class="hidden xl:table-cell px-3 xl:px-4 py-2.5 text-slate-600 dark:text-slate-300 group-aria-disabled:opacity-60">{{ ruta_categoria }}</td>
+                  <td class="hidden 2xl:table-cell px-3 xl:px-4 py-2.5 text-slate-600 dark:text-slate-300 group-aria-disabled:opacity-60 truncate">{{ ruta_categoria }}</td>
                   <td class="lg:max-xl:hidden px-3 xl:px-4 py-2.5 text-right whitespace-nowrap">
                     <span data-stock-numero class="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{{ producto.stock_actual }}</span>
                     <span data-stock-estado="{{ estado }}" class="block text-xs font-medium {{ estados_stock[estado][1] }}">{{ estados_stock[estado][0] }}</span>
@@ -212,7 +214,7 @@
       </div>
       <div class="flex flex-col sm:flex-row gap-2">
         <a id="post-venta-imprimir" href="#" target="_blank" rel="noopener"
-           class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2.5">
+           class="btn btn-dark.5">
           Imprimir ticket
         </a>
         <button id="post-venta-nueva-venta" type="button"
@@ -318,7 +320,7 @@
            Estado transitorio de pos.js, nunca viaja en POST /api/ventas. -->
       <div id="bloque-efectivo" class="hidden space-y-2">
         <div>
-          <label for="monto-recibido" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Monto recibido</label>
+          <label for="monto-recibido" class="label">Monto recibido</label>
           <input type="text" inputmode="decimal" id="monto-recibido" placeholder="0.00"
                  class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm bg-white text-slate-900 placeholder:text-slate-400
                         dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100

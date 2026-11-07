@@ -34,7 +34,7 @@
         <a href="/proveedores?{{ {'mostrar_inactivos': 'true', 'q': q, 'categoria_id': categoria_id or '', 'filtro': filtro} | urlencode }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2">Ver dados de baja</a>
       {% endif %}
     </div>
-    <a href="/proveedores/nuevo" class="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
+    <a href="/proveedores/nuevo" class="btn btn-primary">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14M5 12h14"/></svg>
       Nuevo proveedor
     </a>

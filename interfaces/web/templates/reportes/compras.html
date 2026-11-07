@@ -10,7 +10,7 @@
   {% include "reportes/_navegacion.html" %}
   {% call periodo.formulario("/reportes/compras", reporte.fecha_desde, reporte.fecha_hasta) %}
     <div>
-      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Proveedor</label>
+      <label class="label">Proveedor</label>
       <select name="proveedor_id" class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
         <option value="">Todos</option>
         {% for proveedor in proveedores %}
@@ -21,7 +21,7 @@
   {% endcall %}
 
   {% if reporte.filas %}
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <div class="overflow-x-auto">
         <table id="tabla-compras-proveedor" class="w-full text-sm">
           <thead>

@@ -10,14 +10,14 @@
   <div class="flex flex-wrap items-end justify-between gap-4">
     <form method="get" action="/clientes" class="flex flex-wrap items-end gap-2">
       <div>
-        <label for="filtro-q" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Buscar</label>
+        <label for="filtro-q" class="label">Buscar</label>
         <input type="search" id="filtro-q" name="q" value="{{ q }}" placeholder="Nombre o teléfono"
                class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white text-slate-900 placeholder:text-slate-400
                       dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
                       focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
       </div>
       <div>
-        <label for="filtro-estado" class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Estado</label>
+        <label for="filtro-estado" class="label">Estado</label>
         {% set etiquetas_estado = {'activos': 'Activos', 'inactivos': 'Inactivos', 'todos': 'Todos'} %}
         <select id="filtro-estado" name="estado"
                 class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white
@@ -28,12 +28,12 @@
           {% endfor %}
         </select>
       </div>
-      <button type="submit" class="rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 transition text-white text-sm font-medium px-4 py-2">
+      <button type="submit" class="btn btn-dark">
         Filtrar
       </button>
     </form>
 
-    <a href="/clientes/nuevo" class="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary-hover transition text-white text-sm font-semibold px-4 py-2 shadow-sm">
+    <a href="/clientes/nuevo" class="btn btn-primary">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14M5 12h14"/></svg>
       Nuevo cliente
     </a>
@@ -48,7 +48,7 @@
   </div>
 
   {% if clientes %}
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-800 dark:bg-slate-900">
+    <div class="card overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
