@@ -32,7 +32,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Entregable = (Join-Path $PSScriptRoot 'dist\KioscoApp'),
+    [string]$Entregable = '',
     [string]$Huella = '',
     [string]$Pfx = '',
     [string]$ServidorTimestamp = 'http://timestamp.digicert.com',
@@ -48,6 +48,8 @@ function Fallar([string]$mensaje) {
     exit 1
 }
 
+# $PSScriptRoot no esta disponible al evaluar los valores por defecto de los parametros (PowerShell 5.1).
+if (-not $Entregable) { $Entregable = Join-Path $PSScriptRoot 'dist\KioscoApp' }
 $exe = Join-Path $Entregable 'KioscoApp.exe'
 if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
     Fallar "No existe $exe. Construi el entregable primero (Construir_entregable.ps1)."
