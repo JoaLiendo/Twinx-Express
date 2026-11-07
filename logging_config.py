@@ -27,6 +27,11 @@ _PATRON_SENSIBLE = re.compile(
 )
 
 
+def enmascarar_datos_sensibles(texto: str) -> str:
+    """La misma máscara del filtro de log, para texto que sale de la aplicación (diagnóstico de soporte)."""
+    return _PATRON_SENSIBLE.sub(r"\1\2***", texto)
+
+
 class FiltroDeDatosSensibles(logging.Filter):
     """Última defensa: enmascara valores de campos con nombre sensible
     (contraseña, token, cookie, sesión, hash) si algún mensaje llegara a

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Soporte{% endblock %}
+{% block header %}<h1 class="page-title">Soporte técnico</h1>{% endblock %}
+
+{% block content %}
+{% set base = info.base %}
+<div class="page max-w-4xl">
+  <p class="page-intro">
+    Todo lo que el soporte necesita saber de esta instalación, sin datos de negocio ni secretos. Si pedís ayuda,
+    indicá la versión y adjuntá el archivo de diagnóstico.
+  </p>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="soporte-resumen">
+    <div class="kpi"><p class="kpi-label">Versión</p><p class="kpi-value" id="soporte-version">{{ info.version }}</p><p class="kpi-detail">{{ info.aplicacion }} · {{ 'ejecutable' if info.ejecutable else 'modo desarrollo' }}</p></div>
+    <div class="kpi"><p class="kpi-label">Base de datos</p><p class="kpi-value">{% if base.integra %}<span class="text-success">Íntegra</span>{% elif not base.existe %}—{% else %}<span class="text-error">Revisar</span>{% endif %}</p><p class="kpi-detail" id="soporte-integridad">{{ base.integridad }}{% if base.error %} · {{ base.error }}{% endif %}</p></div>
+    <div class="kpi"><p class="kpi-label">Último backup</p><p class="kpi-value text-lg">{{ (info.fecha_ultimo_backup[:16] | replace('T', ' ')) if info.fecha_ultimo_backup else 'Ninguno' }}</p><p class="kpi-detail">{% if info.alerta_backup %}<span class="text-error">Alerta: {{ info.alerta_backup }}</span>{% else %}{{ info.ultimo_backup or 'todavía no se hizo ningún backup' }}{% endif %}</p></div>
+  </div>
+
+  <section class="card overflow-hidden" id="soporte-contacto">
+    <div class="card-header"><p class="card-title">Cómo pedir ayuda</p></div>
+    <div class="card-body text-sm text-slate-700 dark:text-slate-300 space-y-2">
+      <ol class="list-decimal pl-5 space-y-1">
+        <li>Anotá qué estabas haciendo y qué mensaje apareció (una captura de pantalla ayuda).</li>
+        <li>Descargá el archivo de diagnóstico con el botón de abajo: contiene la versión, el estado de la base y los últimos avisos del registro, con los datos sensibles enmascarados. No incluye tus ventas, clientes, productos ni contraseñas.</li>
+        <li>Enviale ese archivo y la descripción al soporte técnico que instaló Twinx Express (Dev's · Agustín y Joaquín Liendo).</li>
+        <li>Si la aplicación no abre, el registro completo está en la carpeta de abajo y los backups en su carpeta: no los borres.</li>
+      </ol>
+      <div class="flex flex-wrap gap-2 pt-2">
+        <a href="/soporte/diagnostico" id="descargar-diagnostico" class="btn btn-primary">Descargar diagnóstico (ZIP)</a>
+        <a href="/ayuda" class="btn btn-outline">Abrir la ayuda</a>
+        <a href="/backup" class="btn btn-outline">Ir a Backup</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="card overflow-hidden" id="soporte-rutas">
+    <div class="card-header"><p class="card-title">Dónde están los datos</p></div>
+    <dl class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+      {% for etiqueta, valor in [('Datos', info.directorio_datos), ('Base de datos', info.ruta_base), ('Backups', info.directorio_backups), ('Registro (log)', info.ruta_log), ('Versiones conservadas', info.directorio_versiones), ('Lock de instancia', info.ruta_lock)] %}
+        <div class="grid grid-cols-1 sm:grid-cols-[12rem_1fr] gap-1 px-5 py-2.5"><dt class="muted">{{ etiqueta }}</dt><dd class="font-mono text-xs break-all text-slate-800 dark:text-slate-200">{{ valor }}</dd></div>
+      {% endfor %}
+    </dl>
+  </section>
+
+  <section class="card overflow-hidden" id="soporte-base">
+    <div class="card-header"><p class="card-title">Estado de la base de datos</p></div>
+    <dl class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+      <div class="grid grid-cols-1 sm:grid-cols-[12rem_1fr] gap-1 px-5 py-2.5"><dt class="muted">Tamaño</dt><dd class="tabular-nums">{{ '%.1f' | format(base.tamano_bytes / 1048576) }} MB</dd></div>
+      <div class="grid grid-cols-1 sm:grid-cols-[12rem_1fr] gap-1 px-5 py-2.5"><dt class="muted">Migraciones</dt><dd>{{ base.migraciones_aplicadas }} aplicadas{% if base.ultima_migracion %} · última: <span class="font-mono text-xs">{{ base.ultima_migracion }}</span>{% endif %}{% if base.migraciones_pendientes %} · <span class="text-warning font-semibold">hay pendientes</span>{% endif %}{% if base.migraciones_desconocidas %} · <span class="text-error font-semibold">base de una versión más nueva ({{ base.migraciones_desconocidas | length }})</span>{% endif %}</dd></div>
+      <div class="grid grid-cols-1 sm:grid-cols-[12rem_1fr] gap-1 px-5 py-2.5"><dt class="muted">Versión que la dejó al día</dt><dd>{{ base.version_registrada or '—' }}</dd></div>
+      <div class="grid grid-cols-1 sm:grid-cols-[12rem_1fr] gap-1 px-5 py-2.5"><dt class="muted">Contenido</dt><dd class="tabular-nums">{% for clave, valor in base.contadores.items() %}{{ clave | replace('_', ' ') }}: {{ valor }}{{ ' · ' if not loop.last else '' }}{% endfor %}</dd></div>
+      <div class="grid grid-cols-1 sm:grid-cols-[12rem_1fr] gap-1 px-5 py-2.5"><dt class="muted">Backups</dt><dd>{% if info.destino_secundario %}segundo destino: <span class="font-mono text-xs">{{ info.destino_secundario }}</span>{% else %}sin segundo destino configurado{% endif %}{% if info.versiones_conservadas %} · versiones con punto de retorno: {{ info.versiones_conservadas | join(', ') }}{% endif %}</dd></div>
+      <div class="grid grid-cols-1 sm:grid-cols-[12rem_1fr] gap-1 px-5 py-2.5"><dt class="muted">Entorno</dt><dd>{{ info.sistema }} · Python {{ info.python }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="card overflow-hidden" id="soporte-registro">
+    <div class="card-header">
+      <p class="card-title">Últimos avisos del registro</p>
+      <span class="text-xs muted">{% if info.log_existe %}{{ '%.1f' | format(info.log_tamano_bytes / 1024) }} KB{% else %}sin archivo de registro{% endif %}</span>
+    </div>
+    {% if info.ultimos_avisos %}
+      <pre class="p-4 text-xs leading-relaxed overflow-x-auto text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-all">{% for linea in info.ultimos_avisos %}{{ linea }}
+{% endfor %}</pre>
+    {% else %}
+      <p class="card-body text-sm muted">No hay advertencias ni errores recientes en el registro.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

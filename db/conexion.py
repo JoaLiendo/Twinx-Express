@@ -216,6 +216,29 @@ def hay_migraciones_pendientes_en_base_existente() -> bool:
     return any(ruta.name not in aplicadas for ruta in DIRECTORIO_MIGRACIONES.glob("*.sql"))
 
 
+def migraciones_aplicadas() -> list[str]:
+    """Nombres de las migraciones registradas en la base activa, en orden (V1.18 soporte). `[]` si la base
+    no existe o todavía no tiene registro. Solo lee."""
+    if not RUTA_BASE_DATOS.is_file():
+        return []
+    with obtener_conexion() as conexion:
+        tiene_registro = conexion.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migraciones'"
+        ).fetchone()
+        if not tiene_registro:
+            return []
+        filas = conexion.execute("SELECT nombre_archivo FROM schema_migraciones ORDER BY nombre_archivo").fetchall()
+    return [fila["nombre_archivo"] for fila in filas]
+
+
+def verificar_integridad() -> str:
+    """`PRAGMA quick_check` sobre la base activa (V1.18 soporte): `"ok"` o el primer problema que informa
+    SQLite. Es la comprobación rápida (no `integrity_check`): alcanza para un diagnóstico sin frenar la app."""
+    with obtener_conexion() as conexion:
+        fila = conexion.execute("PRAGMA quick_check(1)").fetchone()
+    return str(fila[0])
+
+
 def migraciones_desconocidas() -> list[str]:
     """Migraciones registradas en `kiosco.db` que esta versión no trae (V1.15).
 

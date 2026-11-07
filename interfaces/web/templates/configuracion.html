@@ -12,7 +12,19 @@
         <p class="font-semibold text-slate-900 dark:text-slate-100">Backups</p>
         <p class="text-sm text-slate-500 dark:text-slate-400">Estado, backup manual, copia externa y puntos de retorno.</p>
       </div>
-      <a href="/backup" class="shrink-0 rounded-lg border border-slate-300 bg-white px-4 py-2 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50 transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">Ir a Backup</a>
+      <a href="/backup" class="btn btn-outline shrink-0">Ir a Backup</a>
+    </div>
+  {% endcall %}
+  {% call ui.card() %}
+    <div id="config-soporte" class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-w-0">
+        <p class="font-semibold text-slate-900 dark:text-slate-100">Ayuda y soporte técnico</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400">Manual integrado, versión {{ app_version }}, ubicación de los datos, estado de la base y diagnóstico para enviar al soporte.</p>
+      </div>
+      <div class="flex shrink-0 gap-2">
+        <a href="/ayuda" class="btn btn-outline">Ayuda</a>
+        <a href="/soporte" class="btn btn-outline">Soporte</a>
+      </div>
     </div>
   {% endcall %}
   {% call ui.card() %}

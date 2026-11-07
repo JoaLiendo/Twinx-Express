@@ -182,12 +182,23 @@ Sin migraciones: todo se calcula sobre datos ya persistidos, de solo lectura, so
   inventario con tablas de datos uniformes; auditoría visual con capturas reales antes/después (Brave headless) en
   1366×768, 1440×900, 1920×1080 y 375×812, claro y oscuro.
 
-## V1.18 — Preparación comercial / piloto
+## V1.18 — Preparación comercial / piloto (en desarrollo, misma rama que V1.17)
 
-- Instalación.
-- Soporte.
-- Ayuda/manual.
-- Firma del ejecutable.
-- Pruebas de recuperación.
-- Hardening comercial.
-- Release candidate para clientes reales.
+- **V1.18-A Instalación (cerrado)**: `Instalar.bat` / `Instalar.ps1` en el entregable: instalación nueva con accesos
+  directos o actualización por `KioscoApp.exe --actualizar` (backup previo, versión archivada, migración con vuelta
+  atrás); rechaza entregables con datos o secretos; nunca toca `%LOCALAPPDATA%\KioscoApp`. Probado con
+  `tests/test_instalador.py` y con una instalación aislada del ejecutable real (ver `PROGRESS.md`).
+- **V1.18-B Soporte (cerrado)**: `/soporte` (OWNER): versión, rutas, estado de la base (`quick_check`,
+  migraciones), backups, últimos avisos del registro y diagnóstico ZIP sanitizado. `KioscoApp.exe --version`.
+- **V1.18-C Ayuda/manual (cerrado)**: `/ayuda` (ambos roles) y `docs/MANUAL.md` (en el entregable), sincronizados
+  por test; solo funciones comprobadas.
+- **V1.18-D Firma del ejecutable (BLOQUEADO, externo)**: procedimiento y script listos
+  (`docs/FIRMA_EJECUTABLE.md`, `Firmar_entregable.ps1`); falta un certificado de firma de código auténtico (compra y
+  validación de identidad ante una CA). El entregable se distribuye sin firma.
+- **V1.18-E Pruebas de recuperación (cerrado)**: cubiertas por la suite (backup/restore, pre-update, actualización y
+  rollback, migración con crash y reintento, base corrupta al arrancar, instancia única con muerte abrupta del
+  proceso) sobre bases temporales, más la verificación con el ejecutable real.
+- **V1.18-F Hardening comercial (cerrado)**: sin dependencia de red en la interfaz (CSS compilado), arranque y
+  mensajes revisados, versión 1.17.0 en programa y LEEME, instalador con validación del entregable.
+- **V1.18-G Release candidate (parcial)**: entregable instalable, LEEME, manual, changelog, tests y capturas en esta
+  rama. No hay merge a `main` ni tag: V1.16 sigue sin homologación ARCA y el ejecutable sin firma.

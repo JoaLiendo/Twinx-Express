@@ -137,6 +137,29 @@ de `dist\` no forman parte de él.
 `%LOCALAPPDATA%\KioscoApp\data\` y se crean en su primera ejecución. Un `data/`
 embebido dentro del bundle se ignora, nunca se copia a la instalación del cliente.
 
+### Instalación, actualización y soporte (V1.18)
+
+El entregable incluye `Instalar.bat` / `Instalar.ps1` (`tests/test_instalador.py` lo prueba contra carpetas
+temporales):
+
+- **Instalación nueva**: copia la carpeta a `C:\KioscoApp` (parámetro `-Destino`) y crea los accesos directos
+  «Twinx Express» en el Escritorio y en el menú Inicio. No requiere administrador.
+- **Actualización** (ya hay un `KioscoApp.exe` en el destino): no copia nada a mano; ejecuta
+  `KioscoApp.exe --actualizar <destino>` de la versión nueva, que hace el backup `PRE_UPDATE` verificado, archiva la
+  versión instalada para `--rollback`, reemplaza el programa y migra la base (con vuelta atrás automática si la
+  migración falla). Se niega si la aplicación está abierta.
+- Rechaza un entregable que traiga `data\`, bases `.db`, backups o secretos fiscales, y nunca toca
+  `%LOCALAPPDATA%\KioscoApp`.
+
+`KioscoApp.exe --version` imprime la versión sin abrir datos. Dentro de la aplicación: **Ayuda** (manual completo,
+ambos roles; la misma estructura que `docs/MANUAL.md`, que viaja en el entregable y un test mantiene sincronizados)
+y **Configuración › Soporte** (solo OWNER: versión, ubicación de los datos, estado de la base con `quick_check`,
+migraciones, backups, últimos avisos del registro y descarga de un ZIP de diagnóstico sanitizado: sin base de datos,
+sin secretos, sin datos de negocio; el registro va con la misma máscara que aplica `logging_config`).
+
+Firma del ejecutable: ver `docs/FIRMA_EJECUTABLE.md` y `Firmar_entregable.ps1`. **El entregable no está firmado**
+hasta contar con un certificado de firma de código auténtico (requisito externo). Changelog: `docs/CHANGELOG.md`.
+
 ## Imágenes de productos
 
 Cada producto puede tener una imagen opcional (JPG, PNG o WEBP, máximo 2MB,

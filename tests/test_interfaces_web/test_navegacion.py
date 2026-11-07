@@ -12,7 +12,8 @@ _SECCIONES_OWNER_EXCLUSIVAS = {"/pedidos", "/precios", "/proveedores", "/compras
 # 021: Clientes es visible para ambos roles (los dos pueden verlos, crearlos y cobrar; editar/desactivar
 # lo restringe cada ruta, no el menú).
 # V1.4: Inventario es visible para ambos roles (el CASHIER solo cuenta; el resto lo restringen la ruta y el servicio).
-_SECCIONES_CASHIER = {"/", "/ventas", "/caja", "/productos", "/clientes", "/inventario"}
+# V1.18: Ayuda (manual integrado) es visible para ambos roles; Soporte técnico queda fuera del menú (solo OWNER).
+_SECCIONES_CASHIER = {"/", "/ventas", "/caja", "/productos", "/clientes", "/inventario", "/ayuda"}
 
 
 def _hrefs(items):

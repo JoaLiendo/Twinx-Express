@@ -351,8 +351,17 @@ def test_detecta_comandos_de_mantenimiento():
     assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--actualizar", "C:\KioscoApp"]) == ("--actualizar", "C:\KioscoApp")
     assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--rollback", "1.14.0"]) == ("--rollback", "1.14.0")
     assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--versiones"]) == ("--versiones", None)
+    assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--version"]) == ("--version", None)
     assert lanzador._comando_de_mantenimiento(["KioscoApp.exe"]) is None
     assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--rollback"]) is None
+
+
+def test_version_imprime_la_identidad_sin_pausar(capsys):
+    """V1.18: `KioscoApp.exe --version` lo usa el instalador; no puede esperar un Enter ni abrir datos."""
+    from version import NOMBRE_APLICACION, VERSION
+
+    assert lanzador._imprimir_version() == 0
+    assert capsys.readouterr().out.strip() == f"{NOMBRE_APLICACION} {VERSION}"
 
 
 def test_mantenimiento_con_error_de_negocio_da_mensaje_claro_y_codigo_1(monkeypatch, capsys):

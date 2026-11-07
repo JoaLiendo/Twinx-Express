@@ -293,12 +293,21 @@ def _modo_restore(ruta_zip, obtener_ejecutar_restore, aplicacion_en_uso=_puerto_
 
 def _comando_de_mantenimiento(argv):
     """`(comando, argumento)` para `--actualizar <carpeta>`, `--rollback
-    <version>` y `--versiones`; `None` en una ejecución normal."""
+    <version>`, `--versiones` y `--version`; `None` en una ejecución normal."""
     if len(argv) >= 3 and argv[1] in ("--actualizar", "--rollback", "--habilitar-produccion-fiscal"):
         return argv[1], argv[2]
-    if len(argv) >= 2 and argv[1] == "--versiones":
+    if len(argv) >= 2 and argv[1] in ("--versiones", "--version"):
         return argv[1], None
     return None
+
+
+def _imprimir_version() -> int:
+    """`KioscoApp.exe --version` (V1.18): identidad y versión por consola, sin tocar datos ni pausar.
+    Lo usa el instalador para comprobar qué versión hay instalada."""
+    from version import NOMBRE_APLICACION, VERSION
+
+    print(f"{NOMBRE_APLICACION} {VERSION}")
+    return 0
 
 
 def _ejecutar_mantenimiento(comando, argumento, aplicacion_en_uso=_puerto_ocupado):
@@ -357,6 +366,8 @@ if __name__ == "__main__":
     if _ruta_zip_restore is not None:
         sys.exit(_modo_restore(_ruta_zip_restore, _importar_restaurar_desde_backup))
     _mantenimiento = _comando_de_mantenimiento(sys.argv)
+    if _mantenimiento is not None and _mantenimiento[0] == "--version":
+        sys.exit(_imprimir_version())
     if _mantenimiento is not None:
         sys.exit(_ejecutar_mantenimiento(*_mantenimiento))
 

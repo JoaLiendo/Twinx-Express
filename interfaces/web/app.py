@@ -50,6 +50,7 @@ from interfaces.web.rutas import (
     proveedores,
     reportes,
     reposicion,
+    soporte,
     ventas,
 )
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
@@ -177,6 +178,8 @@ app.include_router(analitica.router)
 app.include_router(reposicion.router)
 app.include_router(auditoria.router)
 app.include_router(configuracion.router)
+app.include_router(soporte.router_ayuda)
+app.include_router(soporte.router)
 app.include_router(empleados.router)
 app.include_router(empleados.router_cuenta)
 

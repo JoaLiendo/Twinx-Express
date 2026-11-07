@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block titulo %}Ayuda{% endblock %}
+{% block header %}<h1 class="page-title">Ayuda · Manual de Twinx Express</h1>{% endblock %}
+
+{% block content %}
+{% set es_owner = usuario_actual and usuario_actual.es_owner %}
+{% set secciones = [('guia-rapida', 'Guía rápida'), ('primeros-pasos', 'Primeros pasos'), ('ventas', 'Ventas'), ('caja', 'Caja'), ('inventario', 'Inventario'), ('compras', 'Compras'), ('proveedores', 'Proveedores'), ('clientes', 'Clientes'), ('reportes', 'Reportes y analítica'), ('backup', 'Backup'), ('restauracion', 'Restauración'), ('problemas', 'Solución de problemas')] %}
+<div class="page">
+  <div class="grid grid-cols-1 lg:grid-cols-[14rem_1fr] gap-6">
+    <nav class="lg:sticky lg:top-4 self-start card p-3" aria-label="Secciones de la ayuda" id="ayuda-indice">
+      <p class="px-2 pb-2 text-xs font-semibold uppercase tracking-wide muted">Contenido</p>
+      <ul class="space-y-0.5 text-sm">
+        {% for ancla, titulo in secciones %}
+          <li><a href="#{{ ancla }}" class="block rounded-lg px-2 py-1.5 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">{{ titulo }}</a></li>
+        {% endfor %}
+      </ul>
+      {% if es_owner %}<a href="/soporte" class="btn btn-outline btn-sm mt-3 w-full">Soporte técnico</a>{% endif %}
+    </nav>
+
+    <article class="space-y-6 text-sm leading-relaxed text-slate-700 dark:text-slate-300 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-slate-900 dark:[&_h2]:text-slate-100 [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-200 [&_h3]:mt-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mt-1 [&_p]:mt-2 [&_kbd]:rounded [&_kbd]:border [&_kbd]:border-slate-300 [&_kbd]:px-1.5 [&_kbd]:text-xs [&_kbd]:font-mono dark:[&_kbd]:border-slate-600">
+      <p class="text-xs muted">Versión {{ app_version }}. Este manual describe únicamente lo que la aplicación hace hoy. Los apartados de compras, proveedores, reportes, analítica, backup y configuración son del dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consulta el stock y cuenta inventario.</p>
+
+      <section id="guia-rapida" class="card p-6">
+        <h2>Guía rápida</h2>
+        <ol>
+          <li><strong>Abrir la caja</strong> en <em>Caja</em> con el fondo inicial. Sin caja abierta no se puede vender.</li>
+          <li><strong>Vender</strong> en <em>Ventas</em>: escaneá el código de barras (el cursor ya está en el lector) o buscá por nombre, elegí el medio de pago y tocá <em>Cobrar</em>. Con efectivo, cargá el monto recibido para ver el vuelto.</li>
+          <li><strong>Ingresar mercadería</strong> en <em>Compras › Nueva</em>: proveedor, productos, cantidades, costo y, si corresponde, vencimientos. El stock y el costo se actualizan solos.</li>
+          <li><strong>Cerrar la caja</strong> al final del día: contá el efectivo y confirmá. Se hace un backup automático.</li>
+          <li><strong>Revisar</strong> el <em>Dashboard</em> (stock crítico, vencimientos, últimos 30 días) y, como dueño, <em>Analítica</em> para ver qué conviene revisar.</li>
+        </ol>
+      </section>
+
+      <section id="primeros-pasos" class="card p-6">
+        <h2>Primeros pasos</h2>
+        <h3>Instalación y primer arranque</h3>
+        <ul>
+          <li>La carpeta del programa se instala con <code>Instalar.bat</code> (o copiándola a <code>C:\KioscoApp</code>). Se abre con <code>KioscoApp.exe</code> o con el acceso directo: aparece una ventana negra (no la cierres mientras trabajás) y el navegador con la aplicación.</li>
+          <li>Tus datos no viven en la carpeta del programa: están en <code>%LOCALAPPDATA%\KioscoApp</code> (base de datos, imágenes, backups, registro). Actualizar el programa no los toca.</li>
+          <li>La primera vez se crea el usuario del <strong>dueño</strong>. Después, cada persona entra con su usuario y contraseña (mínimo de seguridad obligatorio).</li>
+        </ul>
+        <h3>Usuarios y permisos</h3>
+        <ul>
+          <li><em>Empleados</em> (dueño): alta de cajeros, cambio de rol, desactivación. Cambiar una contraseña cierra las sesiones de ese usuario en otros navegadores.</li>
+          <li>El cajero no ve costos, márgenes, compras, proveedores, reportes, analítica, auditoría ni configuración.</li>
+          <li><em>Mi cuenta</em> (ícono con la inicial, arriba a la derecha): cambiar la propia contraseña.</li>
+        </ul>
+        <h3>Catálogo</h3>
+        <ul>
+          <li><em>Stock › Nuevo producto</em>: código de barras, nombre, costo, precio, stock inicial, mínimo, categoría (hasta tres niveles), unidad, etiquetas e imagen. También se puede importar un CSV/XLSX desde <em>Stock › Importar</em> y exportar el catálogo.</li>
+          <li><em>Stock › Categorías y etiquetas</em>: árbol de categorías y etiquetas planas.</li>
+          <li>Un producto con precio 0 aparece como «Precio no configurado» y no se puede vender hasta cargarle precio.</li>
+        </ul>
+      </section>
+
+      <section id="ventas" class="card p-6">
+        <h2>Ventas</h2>
+        <ul>
+          <li><strong>Lector de código de barras</strong>: el cursor vuelve solo al campo del lector después de cada acción. Escanear agrega una unidad; escanear de nuevo suma otra.</li>
+          <li><strong>Búsqueda manual</strong>: escribí parte del nombre o del código; <kbd>↑</kbd> <kbd>↓</kbd> resaltan un producto y <kbd>Enter</kbd> lo agrega. Si la búsqueda deja un único resultado, <kbd>Enter</kbd> también lo agrega. <kbd>Esc</kbd> quita el resaltado, luego limpia los filtros y por último vuelve al lector. Los filtros por categoría y por stock no afectan al lector.</li>
+          <li><strong>Carrito</strong>: + y − cambian la cantidad; el tacho quita la línea. No se puede superar el stock disponible ni vender sin stock.</li>
+          <li><strong>Medios de pago</strong>: efectivo (con monto recibido y vuelto), tarjeta, transferencia, otro, y <em>a cuenta</em> para clientes con crédito (ver Clientes). Una venta a cuenta puede ser mixta: parte en efectivo, el resto a cuenta.</li>
+          <li><strong>Mercadería vencida</strong>: si una venta solo se puede completar con unidades vencidas, el sistema pide autorización del dueño (su usuario y contraseña en el puesto del cajero) y lo registra en la auditoría.</li>
+          <li><strong>Después de cobrar</strong>: se puede imprimir el ticket interno y, si la facturación ARCA está configurada, la factura; <em>Nueva venta</em> deja todo listo para el siguiente cliente.</li>
+          <li><strong>Historial</strong> (<em>Ventas › Ver historial</em>): detalle de cada venta, ticket e impresión. El dueño puede <strong>anular</strong> una venta activa con un motivo: el stock vuelve y, si fue en efectivo, se registra el egreso de caja. Las ventas a cuenta no se anulan; las fiscalizadas se cancelan con nota de crédito desde el panel fiscal.</li>
+        </ul>
+      </section>
+
+      <section id="caja" class="card p-6">
+        <h2>Caja</h2>
+        <ul>
+          <li><strong>Abrir</strong> con el fondo inicial. Mientras está abierta se pueden registrar <em>ingresos</em> y <em>egresos</em> manuales con descripción.</li>
+          <li><strong>Arqueo</strong>: en cualquier momento muestra cuánto efectivo debería haber (fondo + ventas en efectivo + cobros + ingresos − egresos − pagos a proveedores desde caja).</li>
+          <li><strong>Cerrar</strong>: contá el efectivo real, el sistema calcula la diferencia y la guarda. Al cerrar se hace un backup automático; si fallara, la caja queda cerrada igual y aparece una alerta hasta que un backup salga bien.</li>
+          <li>Cada sesión de caja queda en <em>Reportes › Caja por sesión</em>.</li>
+        </ul>
+      </section>
+
+      <section id="inventario" class="card p-6">
+        <h2>Inventario</h2>
+        <h3>Stock</h3>
+        <ul>
+          <li><em>Stock</em> lista los productos con filtros por texto, categoría (incluye subcategorías), estado de stock, vencimiento y etiqueta. Desde cada fila: editar, movimientos (kardex), vencimientos y eliminar/dar de baja (un producto con ventas no se borra: se desactiva y se puede reactivar desde «Dados de baja»).</li>
+          <li><strong>Stock mínimo</strong>: por debajo del mínimo el producto aparece como crítico en el dashboard y entra en <em>Reposición</em>.</li>
+          <li><strong>Ajustes de stock</strong> (dueño, desde <em>Movimientos</em>): baja por vencimiento, rotura, robo o falla de fábrica, siempre con motivo; un ajuste erróneo se revierte (una sola vez) y queda trazado. El costo de la pérdida es el de la partida de la que salió.</li>
+        </ul>
+        <h3>Partidas y vencimientos</h3>
+        <ul>
+          <li>Cada ingreso de mercadería crea una partida con su costo y, si se cargó, su vencimiento. Las ventas descuentan primero lo que vence antes (FEFO).</li>
+          <li>El dashboard avisa de productos <em>próximos a vencer</em> (días configurables en <em>Configuración</em>) y <em>vencidos</em>. Desde <em>Vencimientos</em> de un producto se retira la mercadería vencida.</li>
+          <li><em>Precios › Liquidación</em> (dueño) sugiere un precio para lo próximo a vencer; nunca cambia un precio sin confirmación.</li>
+        </ul>
+        <h3>Inventario físico</h3>
+        <ul>
+          <li><em>Inventario › Nuevo</em>: conteo a ciegas (no se ve el stock del sistema mientras se cuenta). El dueño revisa las diferencias y confirma: se generan ajustes con motivo «Ajuste de inventario». Si un producto se movió después de contarlo, hay que volver a contarlo antes de confirmar.</li>
+        </ul>
+        <h3>Reposición</h3>
+        <ul>
+          <li><em>Reposición</em> agrupa por proveedor principal lo que está por debajo del mínimo. Cada fila explica el cálculo («¿Cómo se calculó?»): faltante hasta el mínimo, rotación de los últimos 30 días, cobertura, vencimientos y calificación del proveedor. Podés cambiar cantidades, pasar la lista al formulario de compra o imprimirla. Nunca registra una compra sola.</li>
+        </ul>
+      </section>
+
+      <section id="compras" class="card p-6">
+        <h2>Compras</h2>
+        <ul>
+          <li><em>Compras › Nueva</em>: proveedor, líneas con cantidad y costo unitario, observaciones, condición <strong>contado</strong> (con origen del pago: caja o fuera de caja) o <strong>crédito</strong> (con vencimiento opcional). Cada línea admite vencimiento de la mercadería (una fecha o varias con <code>cantidad@fecha</code>).</li>
+          <li>Al confirmar, el stock sube, el costo vigente del producto pasa a ser el de la compra y queda en el historial de precios. Un reenvío del mismo formulario no duplica la compra.</li>
+          <li>El listado filtra por proveedor, fechas, estado y producto; el detalle muestra líneas, vencimientos y partidas. Una compra se puede <strong>anular</strong> con motivo si el stock todavía lo permite; a crédito, revierte el cargo al proveedor si no hubo pagos posteriores.</li>
+          <li>El precio de venta no cambia solo al comprar: se ajusta en <em>Precios</em> (actualización masiva por categoría, con vista previa) o editando el producto.</li>
+        </ul>
+      </section>
+
+      <section id="proveedores" class="card p-6">
+        <h2>Proveedores</h2>
+        <ul>
+          <li>Ficha con datos de contacto, datos fiscales opcionales (CUIT único), categorías que provee, productos vinculados (y cuál es el principal, con su último costo), compras, saldo y cuenta a pagar.</li>
+          <li><strong>Pagos</strong>: en efectivo desde la caja o por transferencia; nunca más que el saldo. La deuda se reparte por antigüedad como estimación (vencida, próxima, vigente, sin vencimiento).</li>
+          <li><strong>Evaluaciones</strong> de 1 a 5 estrellas con comentario obligatorio (no se editan) y <strong>reclamos</strong> con estados (pendiente, reconocido, resuelto, rechazado) vinculados a una compra o a un ajuste por falla de fábrica.</li>
+          <li>Un proveedor dado de baja conserva su historia y se puede reactivar; no se le pueden cargar compras nuevas.</li>
+        </ul>
+      </section>
+
+      <section id="clientes" class="card p-6">
+        <h2>Clientes</h2>
+        <ul>
+          <li>Persona o empresa (con razón social, CUIT y hasta dos compradores autorizados). Ambos roles pueden crear clientes y cobrar; editar y desactivar es del dueño.</li>
+          <li><strong>Cuenta corriente</strong>: una venta a cuenta carga el saldo; los <em>cobros</em> en efectivo entran a la caja y se imputan a las ventas más viejas (el dueño puede imputar a mano).</li>
+          <li><strong>Crédito</strong>: nadie tiene crédito hasta que el dueño define una política en <em>Configuración</em> (general, por tipo de cliente o individual). El estado se calcula por antigüedad de la deuda: normal, regular (más de 30 días), demorado (más de 45: requiere autorización temporal del dueño para vender a cuenta) y crítica (60 o más: crédito cerrado hasta que el dueño lo reabra). Tres cierres seguidos sin regularizar vetan el crédito.</li>
+          <li>La ficha muestra saldo, estado, movimientos, obligaciones pendientes y el historial de crédito.</li>
+        </ul>
+      </section>
+
+      <section id="reportes" class="card p-6">
+        <h2>Reportes y analítica</h2>
+        <h3>Reportes (dueño)</h3>
+        <ul>
+          <li><em>Ventas</em> por período (facturación, ticket promedio, medios de pago, por día, por vendedor, rentabilidad, anulaciones) y valorización del inventario a costo.</li>
+          <li><em>Caja por sesión</em>, <em>Compras por proveedor</em>, <em>Cuenta corriente</em> (deuda y cobranzas), <em>Deuda a proveedores</em>, <em>Rotación de stock</em> y <em>Pérdidas de stock</em> (por motivo, producto, categoría y mes). Casi todos exportan a CSV.</li>
+          <li><em>Auditoría</em>: quién hizo qué y cuándo, paginada y exportable.</li>
+        </ul>
+        <h3>Analítica (dueño)</h3>
+        <ul>
+          <li><em>Resumen</em>: últimos 30 días contra los 30 anteriores, stock que necesita atención y <strong>decisiones a revisar hoy</strong> (márgenes negativos, costos que subieron sin ajustar el precio, clientes críticos o demorados, proveedores con deuda vencida o con seguimiento, reposición pendiente).</li>
+          <li><em>Ventas</em> por día, semana o mes con comparaciones; <em>Margen bruto</em> por producto, categoría o período distinguiendo costo de referencia, costo real de partidas y unidades sin costo conocido; <em>Precios y costos</em> desde el historial real; <em>Deuda</em> de clientes por antigüedad y a proveedores por vencimiento; <em>Proveedores</em> (compras, calificación, reclamos, costos, dependencia).</li>
+          <li>Todo se calcula con datos registrados. Nada es un pronóstico; el margen bruto no es ganancia neta.</li>
+        </ul>
+      </section>
+
+      <section id="backup" class="card p-6">
+        <h2>Backup</h2>
+        <ul>
+          <li>Se hace un backup <strong>al cerrar la caja</strong>, <strong>al abrir la aplicación</strong> si el último tiene más de 24 horas y <strong>antes de cada actualización</strong>. El dueño puede crear uno cuando quiera en <em>Configuración › Backup</em>.</li>
+          <li>Cada backup es un ZIP con la base de datos y las imágenes, verificado antes de darse por bueno. Se guardan en <code>%LOCALAPPDATA%\KioscoApp\backups</code>: 14 diarios, 8 semanales, 12 mensuales, los últimos 10 manuales y los 3 previos a actualizaciones.</li>
+          <li><strong>Segundo destino</strong> (muy recomendado): una carpeta en otro disco, pendrive o carpeta sincronizada con la nube. Cada backup se copia y se verifica ahí; si el disco no está, el backup principal se hace igual y la página avisa.</li>
+          <li>El material fiscal (certificados y claves) no viaja en los backups: se vuelve a importar en una instalación nueva.</li>
+        </ul>
+      </section>
+
+      <section id="restauracion" class="card p-6">
+        <h2>Restauración, actualización y vuelta atrás</h2>
+        <ul>
+          <li><strong>Restaurar</strong> (con la aplicación cerrada): doble clic en <code>Restaurar_backup.bat</code> y arrastrar el ZIP. Antes de reemplazar nada se guarda una copia de seguridad de los datos actuales; un backup dañado o de una versión más nueva no se restaura. Si hay comprobantes fiscales que el backup no conoce, el restore se bloquea: lo concilia el soporte.</li>
+          <li><strong>Actualizar</strong> (soporte): <code>Instalar.bat</code> desde la carpeta de la versión nueva detecta la instalación y ejecuta la actualización con backup previo verificado, copia de la versión anterior y migración de la base. Si la migración falla, vuelve sola a la versión anterior.</li>
+          <li><strong>Volver a la versión anterior</strong> (soporte): <code>KioscoApp.exe --rollback &lt;versión&gt;</code> desde la copia conservada en <code>%LOCALAPPDATA%\KioscoApp\versiones</code>; restaura el programa y los datos de antes de actualizar. <code>KioscoApp.exe --versiones</code> lista lo conservado.</li>
+        </ul>
+      </section>
+
+      <section id="problemas" class="card p-6">
+        <h2>Solución de problemas</h2>
+        <ul>
+          <li><strong>«Twinx Express ya está abierto»</strong>: hay otra ventana del programa usando la misma base. Usá esa ventana o entrá a <code>http://127.0.0.1:8000</code>. Solo puede correr una instancia por base de datos.</li>
+          <li><strong>El navegador no abre</strong>: con la ventana negra abierta, entrá a <code>http://127.0.0.1:8000</code>. Si el puerto está ocupado por otro programa, cerralo o reiniciá la computadora.</li>
+          <li><strong>«La caja está cerrada»</strong> al vender: abrila en <em>Caja</em>.</li>
+          <li><strong>El lector no agrega productos</strong>: hacé clic en el campo del lector (o <kbd>Esc</kbd> desde la búsqueda) y volvé a escanear; verificá que el producto exista con ese código.</li>
+          <li><strong>Alerta de backup fallido</strong>: revisá espacio en disco y permisos, creá un backup manual desde <em>Backup</em>; si vuelve a fallar, pedí soporte.</li>
+          <li><strong>La aplicación no arranca o muestra «base de datos dañada»</strong>: no borres nada; restaurá el backup más reciente con <code>Restaurar_backup.bat</code> o contactá al soporte con el registro (<code>%LOCALAPPDATA%\KioscoApp\logs\twinx_express.log</code>).</li>
+          <li><strong>Facturación ARCA</strong>: una venta queda «incierta» cuando ARCA no respondió; se concilia sola al reiniciar o desde el panel fiscal. Mientras una esté incierta no se emite la siguiente. No reinstales ni restaures datos sin consultar al soporte.</li>
+          <li><strong>Pedir ayuda</strong>: {% if es_owner %}<a href="/soporte" class="text-primary hover:underline">Soporte técnico</a> muestra la versión, dónde están los datos y permite descargar un diagnóstico para enviar{% else %}avisale al dueño: en <em>Soporte técnico</em> puede descargar un diagnóstico para enviar{% endif %}.</li>
+        </ul>
+      </section>
+    </article>
+  </div>
+</div>
+{% endblock %}

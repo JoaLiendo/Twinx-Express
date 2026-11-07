@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.16.0
+Twinx Express 1.17.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -13,7 +13,17 @@ falta instalar nada mas.
 1) DONDE COLOCAR ESTA CARPETA
 ------------------------------
 
-Colocala en:
+La forma recomendada es el instalador: hace doble clic en
+
+    Instalar.bat
+
+Copia el programa a C:\KioscoApp\, crea los accesos directos en el
+Escritorio y en el menu Inicio ("Twinx Express") y, si ya habia una
+version instalada, la ACTUALIZA de forma segura (backup previo
+verificado y copia de la version anterior; ver el punto 6). Nunca toca
+tus datos.
+
+Si preferis hacerlo a mano, copia esta carpeta completa a:
 
     C:\KioscoApp\
 
@@ -21,6 +31,12 @@ No la pongas dentro de Escritorio, Documentos ni ninguna carpeta que
 se sincronice con OneDrive: puede volverse lenta o dar problemas.
 
 No hace falta ser administrador de la computadora para usarla.
+
+El manual completo esta dentro de la aplicacion (menu "Ayuda") y en el
+archivo MANUAL.md de esta carpeta. Para pedir soporte, el dueño tiene
+la pantalla Configuracion > Soporte, que muestra la version y permite
+descargar un archivo de diagnostico (sin datos de negocio ni
+contraseñas) para enviar.
 
 
 2) COMO ABRIR LA APLICACION
@@ -162,7 +178,8 @@ Pasos:
 
 KioscoApp no se actualiza solo desde Internet. La actualizacion la hace
 el soporte tecnico con la carpeta de la version nueva (por ejemplo en un
-pendrive), con KioscoApp cerrado:
+pendrive), con KioscoApp cerrado: doble clic en Instalar.bat de la
+carpeta nueva (detecta la instalacion y la actualiza) o, a mano:
 
     <carpeta nueva>\KioscoApp.exe --actualizar "C:\KioscoApp"
 

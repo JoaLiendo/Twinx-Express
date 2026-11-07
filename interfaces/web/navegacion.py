@@ -37,6 +37,8 @@ NAV_ITEMS: list[dict[str, object]] = [
     {"href": "/empleados", "etiqueta": "Empleados", "icono": "empleados", "roles": _SOLO_OWNER},
     {"href": "/auditoria", "etiqueta": "Auditoría", "icono": "auditoria", "roles": _SOLO_OWNER},
     {"href": "/configuracion", "etiqueta": "Configuración", "icono": "configuracion", "roles": _SOLO_OWNER},
+    # V1.18: manual integrado para los dos roles; el soporte técnico (solo OWNER) se enlaza desde Ayuda y Configuración.
+    {"href": "/ayuda", "etiqueta": "Ayuda", "icono": "ayuda", "roles": None},
 ]
 
 
