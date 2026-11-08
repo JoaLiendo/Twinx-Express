@@ -30,7 +30,7 @@ así que la integración propuesta trata a `14035b4` como **el corte certificado
 1. **`dev/v1.17` avanza por fast-forward a `14035b4`** (es descendiente directo: `1ff7229` → `e6bce49` → ...).
    Nada se reescribe y la rama queda exactamente en el estado que pasó la suite completa.
 2. **`feature/v1.18-asistente-ia` se mantiene separada** hasta terminar el piloto de Ollama; después se crea
-   `dev/v1.18` desde su commit certificado (hoy `279b429` + las correcciones de la auditoría adversaria).
+   `dev/v1.18` desde su commit certificado (hoy `307815e`: suite completa 6262 tests sin fallos, E2E 58 + 32, build real válido).
 3. `main`, `dev/v1.16` y los tags `v1.16.0-rc*` no se tocan: la 1.16 espera la homologación con ARCA.
 
 ### Comandos (a ejecutar por Joaquín, fuera de Claude)
