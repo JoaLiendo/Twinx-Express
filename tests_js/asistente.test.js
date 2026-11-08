@@ -2,7 +2,14 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { esHrefSeguro, historialParaEnviar, clasificarEstado, bloquesDeTexto, etiquetaOrigen } = require('../interfaces/web/static/js/asistente.js');
+const {
+  esHrefSeguro,
+  historialParaEnviar,
+  clasificarEstado,
+  bloquesDeTexto,
+  etiquetaOrigen,
+  limpiarOtrosHistoriales,
+} = require('../interfaces/web/static/js/asistente.js');
 
 describe('esHrefSeguro', () => {
   test('acepta solo rutas internas', () => {
@@ -11,8 +18,25 @@ describe('esHrefSeguro', () => {
     assert.equal(esHrefSeguro('//evil.example/x'), false);
     assert.equal(esHrefSeguro('https://evil.example'), false);
     assert.equal(esHrefSeguro('javascript:alert(1)'), false);
+    assert.equal(esHrefSeguro('/\\evil.com'), false); // el navegador normaliza "\" a "/" → //evil.com
+    assert.equal(esHrefSeguro('/x\\y'), false);
     assert.equal(esHrefSeguro(''), false);
     assert.equal(esHrefSeguro(null), false);
+  });
+});
+
+describe('limpiarOtrosHistoriales', () => {
+  test('borra los historiales de otros usuarios de la pestaña y deja el propio y lo ajeno al asistente', () => {
+    const datos = { 'twinx-asistente:1': 'a', 'twinx-asistente:2': 'b', 'twinx-theme': 'dark' };
+    const storage = {
+      get length() { return Object.keys(datos).length; },
+      key: (i) => Object.keys(datos)[i],
+      removeItem: (k) => { delete datos[k]; },
+    };
+    assert.equal(limpiarOtrosHistoriales(storage, 'twinx-asistente:2'), 1);
+    assert.deepEqual(Object.keys(datos), ['twinx-asistente:2', 'twinx-theme']);
+    assert.equal(limpiarOtrosHistoriales(storage, null), 1);
+    assert.deepEqual(Object.keys(datos), ['twinx-theme']);
   });
 });
 

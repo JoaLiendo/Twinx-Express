@@ -96,7 +96,7 @@ def guardar_asistente(
     accion: str = Form("guardar"),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
-    """Guarda el motor del asistente o, con , solo comprueba la conexión sin guardar nada.
+    """Guarda el motor del asistente o, con `accion=probar`, solo comprueba la conexión sin guardar nada.
     Una configuración inválida (URL remota, modelo mal escrito, límites fuera de rango) vuelve como toast."""
     try:
         configuracion = configuracion_asistente.validar(motor, url, modelo, timeout_segundos, num_ctx)
@@ -109,6 +109,6 @@ def guardar_asistente(
         tipo = "success" if estado.disponible else "warning"
         return redireccionar_con_mensaje("/configuracion", tipo, f"{estado.etiqueta}. {estado.detalle}")
     configuracion_asistente.guardar(configuracion, usuario_actual.id)
-    motor_asistente.probar_motor(configuracion)  # refresca el estado que ve el panel
+    motor_asistente.probar_motor(configuracion)  # deja en la cache el estado que verá el panel
     detalle = f"IA local {configuracion.modelo} en {configuracion.url}" if configuracion.usa_ia else "ayuda integrada, sin motor de IA"
     return redireccionar_con_mensaje("/configuracion", "success", f"Asistente guardado: {detalle}.")

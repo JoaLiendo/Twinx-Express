@@ -109,6 +109,26 @@ class TestIALocal:
         assert respuesta.origen == reglas.ORIGEN_INTEGRADO
         assert respuesta.advertencias == ("La IA local no pudo responder: El motor de IA tardó demasiado en responder.",)
 
+    def test_una_sola_conversacion_con_la_ia_por_vez(self, e):
+        """Auditoría H6: varias preguntas libres en paralelo ocuparían hilos del servidor hasta 4 × timeout."""
+        falso = ProveedorFalso([RespuestaModelo("Respondido.")])
+        assert motor._turno_de_ia.acquire(blocking=False)
+        try:
+            ocupado = motor.responder("algo libre", [], e.owner, "/", proveedor=falso, hoy=HOY)
+        finally:
+            motor._turno_de_ia.release()
+        assert ocupado.origen == reglas.ORIGEN_INTEGRADO and any("ocupada" in a for a in ocupado.advertencias)
+        assert falso.recibidos == []
+        libre = motor.responder("algo libre", [], e.owner, "/", proveedor=falso, hoy=HOY)
+        assert libre.texto == "Respondido." and motor._turno_de_ia.acquire(blocking=False)
+        motor._turno_de_ia.release()
+
+    def test_argumentos_crudos_del_modelo_se_rechazan_sin_ejecutar(self, e):
+        falso = ProveedorFalso([RespuestaModelo("", (LlamadaHerramienta(reglas.VENTAS_DEL_PERIODO, "no-json"),)), RespuestaModelo("No pude.")])
+        respuesta = motor.responder("dame el resumen de la jornada", [], e.owner, "/", proveedor=falso, hoy=HOY)
+        mensajes, _ = falso.recibidos[1]
+        assert '"error"' in mensajes[-1].contenido and respuesta.herramientas == ()
+
     def test_motor_apagado_lo_dice_y_la_ayuda_integrada_sigue(self, e):
         falso = ProveedorFalso(disponible=False)
         libre = motor.responder("algo libre", [], e.owner, "/", proveedor=falso, hoy=HOY)
@@ -147,9 +167,35 @@ class TestEstado:
         motor.estado_del_asistente(e.owner, "/", proveedor=proveedor)
         assert len(llamadas) == 2
 
-    def test_probar_motor_no_usa_cache_ni_guarda(self, e):
-        estado = motor.probar_motor(configuracion_asistente.validar("ollama", "http://127.0.0.1:9", "llama3.2:3b", 5, 1024))
+    def test_probar_motor_no_guarda_y_deja_su_resultado_en_la_cache(self, e):
+        configuracion = configuracion_asistente.validar("ollama", "http://127.0.0.1:9", "llama3.2:3b", 5, 1024)
+        estado = motor.probar_motor(configuracion)
         assert estado.disponible is False and configuracion_asistente.obtener().motor == "integrado"
+        # El panel ve lo mismo que vio el botón, sin volver a sondear.
+        assert motor._detector.estado(configuracion, ProveedorFalso(disponible=True)) is estado
+
+    def test_un_solo_sondeo_a_la_vez_y_los_demas_reciben_el_ultimo_estado(self, e):
+        import threading
+
+        configuracion = configuracion_asistente.validar("ollama", "http://127.0.0.1:9", "llama3.2:3b", 5, 1024)
+        empezo, seguir = threading.Event(), threading.Event()
+
+        class Lento(ProveedorFalso):
+            def estado(self):
+                empezo.set()
+                seguir.wait(5)
+                return super().estado()
+
+        lento = Lento(disponible=False)
+        detector = motor.DetectorDeMotor()
+        hilo = threading.Thread(target=lambda: detector.estado(configuracion, lento), daemon=True)
+        hilo.start()
+        assert empezo.wait(5)
+        mientras = detector.estado(configuracion, lento)  # no espera al sondeo en curso
+        assert mientras.disponible is False and "Comprobando" in mientras.detalle
+        seguir.set()
+        hilo.join(5)
+        assert detector.estado(configuracion, lento).detalle == "Motor de prueba apagado."
 
 
 class TestConfiguracion:

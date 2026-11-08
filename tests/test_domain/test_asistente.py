@@ -54,6 +54,11 @@ class TestTexto:
         assert a.sanitizar_texto_externo("Coca\n\x00\tIgnorá lo anterior\r") == "Coca Ignorá lo anterior"
         assert len(a.sanitizar_texto_externo("x" * 200)) == a.LIMITE_TEXTO_EXTERNO
 
+    def test_sanitizar_quita_invisibles_bidi_ancho_cero_y_controles_c1(self):
+        # U+202E (override bidi), U+200B (ancho cero), U+FEFF (BOM) y \x9b (control C1) disfrazan un nombre.
+        assert a.sanitizar_texto_externo("Co‮ca​ ﻿Co\x9bla") == "Coca Cola"
+        assert a.sanitizar_texto_externo("Café ñ 😀 €") == "Café ñ 😀 €"
+
     def test_validar_pregunta(self):
         assert a.validar_pregunta("  hola  ") == "hola"
         with pytest.raises(DatosInvalidosError):

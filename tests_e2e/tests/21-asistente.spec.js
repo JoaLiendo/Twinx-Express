@@ -31,6 +31,8 @@ test('el dueño pregunta cuánto vendió hoy y recibe cifras reales con acceso a
   // en la corrida completa, el spec fiscal deja configurada la facturación y el POS intenta fiscalizar la
   // venta (422 esperado contra el ARCA falso), algo ajeno a lo que prueba este test.
   await realizarVentaSimple(page);
+  // La fiscalización que dispara el POS tras cobrar (spec 19) termina antes de empezar a escuchar errores.
+  await page.waitForLoadState('networkidle');
   const errores = registrarListenersDeErrores(page);
   await page.goto('/');
 

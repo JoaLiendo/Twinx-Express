@@ -84,17 +84,32 @@ class DetectorDeMotor:
         self._estado: EstadoMotor | None = None
         self._clave: tuple | None = None
         self._momento = 0.0
+        self._sondeando = False
 
     def estado(self, configuracion: configuracion_asistente.ConfiguracionAsistente, proveedor: ProveedorIA) -> EstadoMotor:
+        """Un solo hilo sondea por vez: mientras tanto, los demás reciben el último estado conocido (o
+        «comprobando») en vez de esperar cada uno su propio timeout de detección."""
         clave = (configuracion.motor, configuracion.url, configuracion.modelo)
         with self._candado:
             vigente = self._estado is not None and self._clave == clave and time.monotonic() - self._momento < self._segundos
             if vigente:
                 return self._estado  # type: ignore[return-value]
-        estado = proveedor.estado()
+            if self._sondeando:
+                return self._estado if self._estado is not None and self._clave == clave else EstadoMotor(
+                    configuracion.motor, False, configuracion.modelo, "Comprobando el motor de IA…"
+                )
+            self._sondeando = True
+        try:
+            estado = proveedor.estado()
+        finally:
+            with self._candado:
+                self._sondeando = False
+        self.recordar(clave, estado)
+        return estado
+
+    def recordar(self, clave: tuple, estado: EstadoMotor) -> None:
         with self._candado:
             self._estado, self._clave, self._momento = estado, clave, time.monotonic()
-        return estado
 
     def olvidar(self) -> None:
         with self._candado:
@@ -102,6 +117,7 @@ class DetectorDeMotor:
 
 
 _detector = DetectorDeMotor()
+_turno_de_ia = threading.Semaphore(1)
 
 
 def _proveedor_y_configuracion(proveedor: ProveedorIA | None) -> tuple[configuracion_asistente.ConfiguracionAsistente, ProveedorIA]:
@@ -117,9 +133,11 @@ def estado_del_asistente(usuario: Usuario, pantalla: str | None, proveedor: Prov
 
 
 def probar_motor(configuracion: configuracion_asistente.ConfiguracionAsistente) -> EstadoMotor:
-    """Prueba una configuración (guardada o no) sin cache: para el botón "Probar conexión"."""
-    _detector.olvidar()
-    return configuracion_asistente.proveedor_para(configuracion).estado()
+    """Prueba una configuración (guardada o no) sin usar la cache y deja el resultado en ella: lo que vio el
+    botón "Probar conexión" o el guardado es lo que verá el panel a continuación."""
+    estado = configuracion_asistente.proveedor_para(configuracion).estado()
+    _detector.recordar((configuracion.motor, configuracion.url, configuracion.modelo), estado)
+    return estado
 
 
 def responder(
@@ -144,12 +162,18 @@ def responder(
     if configuracion.usa_ia or proveedor is not None:
         estado = _detector.estado(configuracion, motor)
         if estado.disponible:
+            # Una sola conversación con el modelo por vez: una pregunta libre puede tardar hasta 4 × timeout y
+            # cada una ocupa un hilo del servidor; sin este tope, varias en paralelo frenarían el POS.
+            if not _turno_de_ia.acquire(blocking=False):
+                return _sin_respuesta(usuario, pantalla, advertencia="La IA local está ocupada con otra pregunta: probá en unos segundos.")
             try:
                 return _responder_con_ia(pregunta, historial, usuario, motor, hoy)
             except MotorIAError as error:
                 logger.warning("El motor de IA falló y se responde con la ayuda integrada: %s", error)
                 _detector.olvidar()
                 return _sin_respuesta(usuario, pantalla, advertencia=f"La IA local no pudo responder: {error}")
+            finally:
+                _turno_de_ia.release()
         return _sin_respuesta(usuario, pantalla, advertencia=f"IA local no disponible: {estado.detalle}")
     return _sin_respuesta(usuario, pantalla)
 
@@ -202,7 +226,7 @@ def _ejecutar_para_el_modelo(
         resultado: ResultadoHerramienta = herramientas.ejecutar(llamada.nombre, llamada.argumentos, usuario, hoy)
     except PermisoDenegadoError:
         advertencias.append(f"El modelo pidió una consulta no permitida para tu rol ({sanitizar_texto_externo(llamada.nombre, 40)}).")
-        logger.warning("El modelo pidió la herramienta %r sin permiso para el rol %s", llamada.nombre, usuario.rol)
+        logger.warning("El modelo pidió la herramienta %r sin permiso para el rol %s", sanitizar_texto_externo(llamada.nombre, 40), usuario.rol)
         return json.dumps({"error": "Herramienta no disponible para este usuario."}, ensure_ascii=False)
     except DatosInvalidosError as error:
         return json.dumps({"error": str(error)}, ensure_ascii=False)

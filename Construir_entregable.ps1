@@ -149,6 +149,7 @@ $requeridosEnEntregable = @(
     @{ Ruta = '_internal\interfaces\web\templates'; Tipo = 'Container' },
     @{ Ruta = '_internal\interfaces\web\static'; Tipo = 'Container' },
     @{ Ruta = '_internal\interfaces\web\static\css\twinx.css'; Tipo = 'Leaf' },
+    @{ Ruta = '_internal\interfaces\web\static\js\asistente.js'; Tipo = 'Leaf' },
     @{ Ruta = '_internal\db\migraciones'; Tipo = 'Container' },
     @{ Ruta = '_internal\db\seed\catalogo_inicial.json'; Tipo = 'Leaf' }
 )

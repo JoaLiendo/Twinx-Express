@@ -64,5 +64,19 @@
     </p>
 
   </div>
+  <script>
+    // Twinx Asistente: la pantalla de login borra cualquier conversación que haya quedado en esta pestaña
+    // (el historial vive solo en sessionStorage y nunca debe sobrevivir a un cambio de usuario).
+    (function () {
+      try {
+        var claves = [];
+        for (var i = 0; i < sessionStorage.length; i += 1) {
+          var clave = sessionStorage.key(i);
+          if (clave && clave.indexOf('twinx-asistente:') === 0) claves.push(clave);
+        }
+        claves.forEach(function (clave) { sessionStorage.removeItem(clave); });
+      } catch (error) { /* sin storage */ }
+    })();
+  </script>
 </body>
 </html>

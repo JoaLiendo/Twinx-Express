@@ -6,10 +6,12 @@ from pydantic import BaseModel, Field
 
 from domain.asistente import LIMITE_HISTORIAL, LIMITE_PREGUNTA, MensajeChat
 from domain.usuario import Usuario
-from interfaces.web.auth import obtener_usuario_actual, requiere_rol
+from interfaces.web.auth import requiere_rol
 from services.asistente import motor
 
-router = APIRouter(prefix="/api/asistente", dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
+router = APIRouter(prefix="/api/asistente")
+# El mismo usuario que autorizó la ruta es el que consulta: se resuelve una sola vez por request.
+_USUARIO = Depends(requiere_rol("OWNER", "CASHIER"))
 
 
 class MensajeEntrada(BaseModel):
@@ -37,12 +39,12 @@ def _estado_a_json(estado: motor.EstadoAsistente) -> dict:
 
 
 @router.get("/estado")
-def estado(pantalla: str | None = Query(default=None, max_length=200), usuario_actual: Usuario = Depends(obtener_usuario_actual)):
+def estado(pantalla: str | None = Query(default=None, max_length=200), usuario_actual: Usuario = _USUARIO):
     return _estado_a_json(motor.estado_del_asistente(usuario_actual, pantalla))
 
 
 @router.post("/preguntar")
-def preguntar(datos: PreguntaEntrada, usuario_actual: Usuario = Depends(obtener_usuario_actual)):
+def preguntar(datos: PreguntaEntrada, usuario_actual: Usuario = _USUARIO):
     historial = [MensajeChat(m.rol, m.texto) for m in datos.historial]
     respuesta = motor.responder(datos.pregunta, historial, usuario_actual, datos.pantalla)
     return {

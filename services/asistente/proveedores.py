@@ -1,11 +1,13 @@
 """Motores de IA del asistente (V1.18): la interfaz común, el adaptador de Ollama local y un proveedor falso
 determinista para los tests.
 
-El adaptador habla con la API REST de Ollama (`/api/tags`, `/api/chat` con `tools`, sin streaming) usando
-solo la biblioteca estándar: no suma dependencias ni servicios. Por diseño solo acepta direcciones de
-loopback: ningún dato del comercio sale de la máquina. No hay telemetría ni claves.
+El adaptador habla con la API REST de Ollama (`/api/tags`, `/api/show`, `/api/chat` con `tools`, sin streaming)
+usando solo la biblioteca estándar: no suma dependencias ni servicios. Por diseño solo acepta direcciones de
+loopback, no usa el proxy del sistema y no sigue redirecciones: ningún dato del comercio sale de la máquina.
+No hay telemetría ni claves.
 """
 
+import http.client
 import json
 import logging
 import re
@@ -22,24 +24,52 @@ from excepciones import MotorIAError
 logger = logging.getLogger(__name__)
 
 URL_OLLAMA_POR_DEFECTO = "http://127.0.0.1:11434"
-HOSTS_LOCALES = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
-TIMEOUT_DETECCION_SEGUNDOS = 2.0
+HOSTS_LOCALES = frozenset({"127.0.0.1", "localhost", "::1"})
+TIMEOUT_DETECCION_SEGUNDOS = 3.0
+# Tope de pedidos de herramientas que se aceptan por turno del modelo: más que eso es un modelo descontrolado.
+MAX_LLAMADAS_POR_TURNO = 3
 # Nombres de modelo de Ollama: `familia:etiqueta`, a veces con un espacio de nombres (`usuario/modelo`).
 _NOMBRE_MODELO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,98}(:[A-Za-z0-9._-]{1,40})?$")
+_CARACTER_RARO = re.compile(r"[\s\x00-\x1f\x7f]")
+
+
+class _SinRedirecciones(urllib.request.HTTPRedirectHandler):
+    """Un 3xx de "Ollama" no se sigue jamás: llevaría la conversación a otro host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D401 - firma de urllib
+        return None
+
+
+# Opener propio: sin proxy (el opener por defecto lee HTTP_PROXY y el proxy de Windows, que NO excluyen
+# 127.0.0.1) y sin redirecciones. Es la garantía técnica de "solo local".
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SinRedirecciones)
 
 
 def validar_url_local(url: str) -> str:
-    """La URL del motor debe ser local (loopback) y http(s) sin ruta ni credenciales. Devuelve la URL sin la
-    barra final."""
-    url = (url or "").strip().rstrip("/")
-    partes = urlparse(url)
-    if partes.scheme not in ("http", "https") or not partes.hostname or partes.username or partes.password:
+    """La URL del motor debe ser http(s) sobre loopback, con puerto válido y sin ruta, credenciales ni
+    caracteres raros. Devuelve la URL normalizada (`esquema://host:puerto`)."""
+    url = (url or "").strip()
+    if not url or _CARACTER_RARO.search(url):
         raise MotorIAError("La dirección del motor debe tener la forma http://127.0.0.1:11434.")
-    if partes.hostname not in HOSTS_LOCALES:
+    try:
+        partes = urlparse(url)
+        puerto = partes.port
+    except ValueError as error:
+        raise MotorIAError("La dirección del motor no es válida.") from error
+    esquema = partes.scheme.lower()
+    host = (partes.hostname or "").lower()
+    if esquema not in ("http", "https") or not host or partes.username or partes.password:
+        raise MotorIAError("La dirección del motor debe tener la forma http://127.0.0.1:11434.")
+    if host not in HOSTS_LOCALES:
         raise MotorIAError("El asistente solo se conecta a un motor local (127.0.0.1 o localhost).")
-    if partes.path not in ("", "/") or partes.query or partes.fragment:
+    if partes.path not in ("", "/") or partes.params or partes.query or partes.fragment:
         raise MotorIAError("La dirección del motor no lleva ruta: solo esquema, host y puerto.")
-    return url
+    if puerto is None:
+        puerto = 443 if esquema == "https" else 80
+    if not 1 <= puerto <= 65535:
+        raise MotorIAError("El puerto del motor debe estar entre 1 y 65535.")
+    host_url = f"[{host}]" if ":" in host else host
+    return f"{esquema}://{host_url}:{puerto}"
 
 
 def validar_nombre_modelo(nombre: str) -> str:
@@ -51,8 +81,11 @@ def validar_nombre_modelo(nombre: str) -> str:
 
 @dataclass(frozen=True)
 class LlamadaHerramienta:
+    """`argumentos` llega tal cual lo mandó el modelo: si no es un objeto, `herramientas.validar_argumentos`
+    lo rechaza. Nunca se reemplaza en silencio por `{}`."""
+
     nombre: str
-    argumentos: dict
+    argumentos: object
 
 
 @dataclass(frozen=True)
@@ -91,6 +124,33 @@ class ProveedorIntegrado:
         raise MotorIAError("No hay un motor de IA configurado.")
 
 
+def _nombres_de_modelos(datos: dict) -> list[str]:
+    modelos = datos.get("models")
+    if not isinstance(modelos, list):
+        raise MotorIAError("La respuesta del motor de IA no tiene la forma esperada.")
+    return [str(m.get("name") or m.get("model") or "") for m in modelos if isinstance(m, dict)]
+
+
+def _llamadas_de(mensaje: dict) -> tuple[LlamadaHerramienta, ...]:
+    """Las `tool_calls` del turno, con tipos verificados y acotadas a `MAX_LLAMADAS_POR_TURNO`."""
+    crudas = mensaje.get("tool_calls") or []
+    if not isinstance(crudas, list):
+        raise MotorIAError("La respuesta del motor de IA no tiene la forma esperada.")
+    llamadas = []
+    for llamada in crudas[:MAX_LLAMADAS_POR_TURNO]:
+        funcion = llamada.get("function") if isinstance(llamada, dict) else None
+        if not isinstance(funcion, dict) or not isinstance(funcion.get("name"), str):
+            continue
+        argumentos = funcion.get("arguments")
+        if isinstance(argumentos, str):
+            try:
+                argumentos = json.loads(argumentos)
+            except ValueError:
+                pass  # queda el texto crudo y la validación de argumentos lo rechaza
+        llamadas.append(LlamadaHerramienta(funcion["name"], {} if argumentos is None else argumentos))
+    return tuple(llamadas)
+
+
 @dataclass(frozen=True)
 class ProveedorOllama:
     """Adaptador de la API local de Ollama. `num_ctx` y `num_predict` acotan la memoria y el tiempo de
@@ -105,19 +165,20 @@ class ProveedorOllama:
     temperatura: float = 0.1
 
     def estado(self) -> EstadoMotor:
-        """Consulta `/api/tags` con un timeout corto: conectado solo si el servidor responde y el modelo está
-        descargado. Nunca lanza: el estado es información, no un error."""
+        """Conectado solo si el servidor responde, el modelo está descargado y admite herramientas (`tools`,
+        según `/api/show`; un Ollama viejo sin ese dato se acepta). Nunca lanza: el estado es información."""
         try:
-            respuesta = self._get("/api/tags", TIMEOUT_DETECCION_SEGUNDOS)
+            disponibles = _nombres_de_modelos(self._get("/api/tags", TIMEOUT_DETECCION_SEGUNDOS))
+            if self.modelo not in disponibles and f"{self.modelo}:latest" not in disponibles:
+                lista = ", ".join(m for m in disponibles[:5] if m) or "ninguno"
+                return EstadoMotor(MODO_OLLAMA, False, self.modelo, f"Ollama responde pero el modelo {self.modelo} no está descargado (hay: {lista}).")
+            detalle = self._post("/api/show", {"model": self.modelo}, TIMEOUT_DETECCION_SEGUNDOS)
         except MotorIAError as error:
             return EstadoMotor(MODO_OLLAMA, False, self.modelo, str(error))
-        disponibles = [m.get("name") or m.get("model") for m in respuesta.get("models", []) if isinstance(m, dict)]
-        if self.modelo in disponibles or f"{self.modelo}:latest" in disponibles:
-            return EstadoMotor(MODO_OLLAMA, True, self.modelo, f"Ollama en {self.url}.")
-        lista = ", ".join(str(m) for m in disponibles[:5]) or "ninguno"
-        return EstadoMotor(
-            MODO_OLLAMA, False, self.modelo, f"Ollama responde pero el modelo {self.modelo} no está descargado (hay: {lista})."
-        )
+        capacidades = detalle.get("capabilities")
+        if isinstance(capacidades, list) and "tools" not in capacidades:
+            return EstadoMotor(MODO_OLLAMA, False, self.modelo, f"El modelo {self.modelo} no admite herramientas (tools): elegí otro.")
+        return EstadoMotor(MODO_OLLAMA, True, self.modelo, f"Ollama en {self.url}.")
 
     def conversar(self, mensajes: list[MensajeModelo], herramientas: list[dict]) -> RespuestaModelo:
         cuerpo = {
@@ -130,21 +191,12 @@ class ProveedorOllama:
         if herramientas:
             cuerpo["tools"] = herramientas
         datos = self._post("/api/chat", cuerpo, self.timeout_segundos)
-        mensaje = datos.get("message") or {}
-        llamadas = []
-        for llamada in mensaje.get("tool_calls") or []:
-            funcion = (llamada or {}).get("function") or {}
-            nombre = funcion.get("name")
-            argumentos = funcion.get("arguments")
-            if isinstance(argumentos, str):
-                try:
-                    argumentos = json.loads(argumentos)
-                except ValueError:
-                    argumentos = {}
-            if isinstance(nombre, str):
-                llamadas.append(LlamadaHerramienta(nombre, argumentos if isinstance(argumentos, dict) else {}))
+        mensaje = datos.get("message")
+        if not isinstance(mensaje, dict):
+            raise MotorIAError("La respuesta del motor de IA no tiene la forma esperada.")
         texto = mensaje.get("content") if isinstance(mensaje.get("content"), str) else ""
-        return RespuestaModelo(texto, tuple(llamadas), datos.get("model") or self.modelo)
+        modelo = datos.get("model") if isinstance(datos.get("model"), str) else self.modelo
+        return RespuestaModelo(texto, _llamadas_de(mensaje), modelo)
 
     # -- HTTP ---------------------------------------------------------------------------------------
 
@@ -159,39 +211,48 @@ class ProveedorOllama:
         return self._solicitar(solicitud, timeout)
 
     def _solicitar(self, solicitud: urllib.request.Request, timeout: float) -> dict:
-        """Una llamada HTTP a Ollama traducida a `MotorIAError` con un mensaje para el usuario. Se registra
-        el motivo técnico, nunca el contenido de la conversación."""
+        """Una llamada HTTP a Ollama traducida a `MotorIAError` con un mensaje para el usuario. El log guarda
+        solo el código y la ruta: nunca el cuerpo, que puede repetir texto del modelo o del comercio."""
+        ruta = solicitud.selector
         try:
-            with urllib.request.urlopen(solicitud, timeout=timeout) as respuesta:  # noqa: S310 - URL validada como loopback
+            with _OPENER.open(solicitud, timeout=timeout) as respuesta:
                 crudo = respuesta.read()
         except urllib.error.HTTPError as error:
-            detalle = _detalle_de_error_http(error)
-            logger.warning("Ollama respondió %s en %s: %s", error.code, solicitud.selector, detalle)
+            cuerpo = _cuerpo_de_error(error)
+            logger.warning("Ollama respondió %s en %s", error.code, ruta)
             if error.code == 404:
                 raise MotorIAError(f"Ollama no encuentra el modelo {self.modelo}: descargalo con `ollama pull`.") from error
+            if error.code == 400 and "does not support tools" in cuerpo:
+                raise MotorIAError(f"El modelo {self.modelo} no admite herramientas (tools): elegí otro.") from error
             raise MotorIAError(f"El motor de IA respondió con un error ({error.code}).") from error
-        except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError) as error:
-            motivo = getattr(error, "reason", error)
-            if isinstance(motivo, (socket.timeout, TimeoutError)) or "timed out" in str(motivo):
-                logger.warning("Ollama no respondió a tiempo (%ss) en %s", timeout, solicitud.selector)
+        except (socket.timeout, TimeoutError) as error:
+            logger.warning("Ollama no respondió a tiempo (%ss) en %s", timeout, ruta)
+            raise MotorIAError("El motor de IA tardó demasiado en responder.") from error
+        except urllib.error.URLError as error:
+            motivo = error.reason
+            if isinstance(motivo, (socket.timeout, TimeoutError)):
+                logger.warning("Ollama no respondió a tiempo (%ss) en %s", timeout, ruta)
                 raise MotorIAError("El motor de IA tardó demasiado en responder.") from error
-            logger.info("Ollama no está disponible en %s: %s", self.url, motivo)
+            logger.info("Ollama no está disponible en %s: %s", self.url, type(motivo).__name__)
             raise MotorIAError("No hay un motor de IA local escuchando.") from error
+        except (http.client.HTTPException, ConnectionError, OSError, ValueError) as error:
+            logger.warning("Respuesta inválida o conexión cortada de Ollama en %s: %s", ruta, type(error).__name__)
+            raise MotorIAError("El motor de IA cortó la conexión o respondió mal.") from error
         try:
             datos = json.loads(crudo.decode("utf-8"))
         except ValueError as error:
             raise MotorIAError("La respuesta del motor de IA no se pudo interpretar.") from error
         if not isinstance(datos, dict):
             raise MotorIAError("La respuesta del motor de IA no tiene la forma esperada.")
-        if "error" in datos and isinstance(datos["error"], str):
-            raise MotorIAError(f"El motor de IA informó un error: {datos['error'][:120]}")
+        if isinstance(datos.get("error"), str):
+            raise MotorIAError("El motor de IA informó un error.")
         return datos
 
 
-def _detalle_de_error_http(error: urllib.error.HTTPError) -> str:
+def _cuerpo_de_error(error: urllib.error.HTTPError) -> str:
     try:
         return error.read(400).decode("utf-8", errors="replace")
-    except OSError:
+    except (OSError, http.client.HTTPException):
         return ""
 
 

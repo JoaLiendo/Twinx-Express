@@ -113,9 +113,11 @@ class TestPanel:
             assert 'id="asistente-panel"' in html and "/static/js/asistente.js" in html, ruta
             assert 'id="boton-asistente"' in html
 
-    def test_el_login_no_tiene_panel(self, base_datos_temporal):
-        html = solicitud("GET", "/login").texto
+    def test_el_login_no_tiene_panel_y_borra_el_historial_de_la_pestana(self, e):
+        html = solicitud("GET", "/login").texto  # con usuarios creados: sin ellos /login redirige a la configuración inicial
         assert 'id="asistente-panel"' not in html
+        # Cambio de usuario en la misma pestaña: lo que el anterior conversó no sobrevive al login.
+        assert "sessionStorage.removeItem" in html and "twinx-asistente:" in html
 
 
 class TestConfiguracion:

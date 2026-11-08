@@ -117,7 +117,6 @@ def resolver_periodo(clave: str | None, hoy: date) -> Periodo:
 
 # --- Texto ------------------------------------------------------------------------------------------
 
-_CONTROLES = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _ESPACIOS = re.compile(r"\s+")
 
 
@@ -129,9 +128,11 @@ def normalizar(texto: str) -> str:
 
 def sanitizar_texto_externo(texto: object, limite: int = LIMITE_TEXTO_EXTERNO) -> str:
     """Nombres de productos, clientes o proveedores antes de entrar a un prompt o a una respuesta: sin
-    caracteres de control ni saltos de línea (un nombre no puede "escribir" instrucciones en otra línea)
-    y acotados. No se interpreta nada: es contenido, nunca una instrucción."""
-    plano = _ESPACIOS.sub(" ", _CONTROLES.sub("", str(texto))).strip()
+    caracteres de control ni de formato invisible (saltos de línea, overrides bidi, ancho cero: un nombre no
+    puede "escribir" instrucciones en otra línea ni disfrazarse) y acotados. No se interpreta nada: es
+    contenido, nunca una instrucción."""
+    sin_controles = "".join(c for c in str(texto) if unicodedata.category(c) not in ("Cc", "Cf") or c in "\t\n\r")
+    plano = _ESPACIOS.sub(" ", sin_controles).strip()
     return plano if len(plano) <= limite else plano[: limite - 1] + "…"
 
 

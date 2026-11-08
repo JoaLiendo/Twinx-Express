@@ -2,8 +2,8 @@
 //
 // Seguridad de la vista: todo lo que viene del servidor o del usuario se inserta con `textContent`
 // (nunca `innerHTML`); los enlaces solo se aceptan si son rutas internas (`esHrefSeguro`). El historial
-// vive en `sessionStorage` de esta pestaña, atado al usuario de la sesión, y se borra al cambiar de usuario
-// o con el botón "Borrar": nunca se guarda en el servidor.
+// vive en `sessionStorage` de esta pestaña, atado al usuario de la sesión; al iniciar con otro usuario se borra el del
+// anterior, la página de login lo borra siempre y el botón "Borrar" lo borra a mano: nunca se guarda en el servidor.
 (function (global) {
   'use strict';
 
@@ -11,9 +11,21 @@
   const MAX_HISTORIAL_ENVIADO = 10;
   const CLAVE_STORAGE = 'twinx-asistente';
 
-  /** Solo rutas internas absolutas (`/reportes?...`), nunca `//host`, `http:` ni `javascript:`. */
+  /** Solo rutas internas absolutas (`/reportes?...`), nunca `//host`, `/\host` (el navegador lo lee como `//`),
+   *  `http:` ni `javascript:`. */
   function esHrefSeguro(href) {
-    return typeof href === 'string' && /^\/(?!\/)[^\s]*$/.test(href);
+    return typeof href === 'string' && /^\/(?![\/\\])[^\s\\]*$/.test(href);
+  }
+
+  /** Borra todo historial guardado en esta pestaña salvo el de `claveActual` (o todos, si es null). */
+  function limpiarOtrosHistoriales(storage, claveActual) {
+    const aBorrar = [];
+    for (let i = 0; i < storage.length; i += 1) {
+      const clave = storage.key(i);
+      if (clave && clave.indexOf(CLAVE_STORAGE + ':') === 0 && clave !== claveActual) aBorrar.push(clave);
+    }
+    aBorrar.forEach((clave) => storage.removeItem(clave));
+    return aBorrar.length;
   }
 
   /** Los últimos mensajes con la forma que espera el servidor: solo rol y texto. */
@@ -75,6 +87,12 @@
     const enviarBtn = documento.getElementById('asistente-enviar');
     const usuario = panel.dataset.usuario || '';
     const clave = CLAVE_STORAGE + ':' + usuario;
+    // Cambio de usuario en la misma pestaña: lo que quedó del anterior se borra, no solo se ignora.
+    try {
+      limpiarOtrosHistoriales(global.sessionStorage, clave);
+    } catch (error) {
+      /* sin storage */
+    }
 
     let mensajes = cargarHistorial();
     let abierto = false;
@@ -269,7 +287,6 @@
       panel.setAttribute('aria-hidden', abierto ? 'false' : 'true');
       if (backdrop) backdrop.classList.toggle('hidden', !abierto);
       if (boton) boton.setAttribute('aria-expanded', abierto ? 'true' : 'false');
-      documento.body.classList.toggle('chat-abierto', abierto);
       if (abierto) {
         renderizarTodo();
         if (!estadoCargado) cargarEstado();
@@ -311,7 +328,7 @@
     return { alternar, enviar, cargarEstado };
   }
 
-  const api = { esHrefSeguro, historialParaEnviar, clasificarEstado, bloquesDeTexto, etiquetaOrigen, iniciar };
+  const api = { esHrefSeguro, historialParaEnviar, clasificarEstado, bloquesDeTexto, etiquetaOrigen, limpiarOtrosHistoriales, iniciar };
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   } else {
