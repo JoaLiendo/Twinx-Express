@@ -18,6 +18,13 @@ Sin migraciones nuevas (la base sigue en la 047).
 - Motor de IA local opcional (Ollama en 127.0.0.1, sin dependencias nuevas): detección, modelo, timeout y contexto
   configurables en *Configuración › Asistente*; conexión exclusivamente local, sin telemetría ni descargas. Con el
   motor apagado el asistente sigue funcionando y lo dice. Detalle en `docs/ASISTENTE.md`.
+- Auditoría adversaria del asistente: el adaptador de Ollama ya no usa el proxy del sistema ni sigue
+  redirecciones (garantía técnica de «solo local»), valida puertos y caracteres de la URL, tolera respuestas
+  malformadas o cortadas sin dar 500, limita a tres las llamadas por turno y rechaza argumentos que no son un
+  objeto; una sola conversación con la IA por vez y un solo sondeo del motor a la vez; el historial de la pestaña
+  se borra al cambiar de usuario y en el login; el saneado quita caracteres invisibles (bidi, ancho cero). Detección
+  de la capacidad `tools` del modelo por `/api/show`. Plan y script del piloto en `docs/PILOTO_OLLAMA.md` y
+  `scripts/piloto_ollama.py`; integración propuesta en `docs/INTEGRACION_V1.17_V1.18.md`.
 
 **Analítica del dueño (V1.17)**
 

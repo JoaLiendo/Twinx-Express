@@ -98,12 +98,28 @@ El modelo nunca ve las herramientas que el rol no puede usar, y aunque las nombr
 
 ## Seguridad
 
+- Solo local, de verdad: el adaptador usa un *opener* propio sin proxy (el de urllib por defecto manda incluso
+  `127.0.0.1` por `HTTP_PROXY` o el proxy de Windows) y sin seguir redirecciones; la URL se valida con puerto
+  1–65535 y sin caracteres raros. Antes de dar el motor por disponible consulta `/api/show`: un modelo sin la
+  capacidad `tools` no sirve y se informa.
+- Una conversación con la IA por vez (semáforo): una pregunta libre puede tardar hasta 4 × timeout y ocupar un
+  hilo del servidor; la segunda en paralelo recibe «la IA está ocupada» y la ayuda integrada. A lo sumo tres
+  llamadas a herramientas por turno del modelo; argumentos que no son un objeto se rechazan, no se vacían.
+- Un solo sondeo del motor a la vez: mientras uno comprueba, los demás reciben el último estado conocido.
 - Sesión y rol: las rutas exigen sesión; el rol se lee de la cookie en el servidor.
 - Prompt: los nombres de productos, clientes y proveedores se sanean (sin saltos de línea ni caracteres de
   control, 80 caracteres) y el sistema le indica al modelo que son datos, no instrucciones.
 - Salida: el navegador nunca interpreta HTML de la respuesta; las acciones son enlaces internos validados.
-- Historial: solo en `sessionStorage` de la pestaña, atado al usuario; nunca se persiste en el servidor ni
-  se registra en el log (el log guarda errores del motor, no conversaciones).
+- Prompt y textos: se quitan caracteres de control y de formato invisible (bidi, ancho cero), no solo los
+  saltos de línea.
+- Historial: solo en `sessionStorage` de la pestaña, atado al id de usuario; al iniciar el panel con otro
+  usuario se borra el del anterior y la página de login borra todos; nunca se persiste en el servidor ni se
+  registra en el log (el log guarda códigos HTTP y rutas del motor, nunca cuerpos ni conversaciones).
+- Riesgos aceptados y documentados: (1) la app no tiene tokens CSRF y confía en `SameSite=Lax`; otro origen
+  del mismo host (`http://127.0.0.1:<otro puerto>`) podría enviar el formulario de configuración del asistente,
+  igual que cualquier otro formulario del dueño; (2) un cajero puede crear un cliente con un nombre que intente
+  dar instrucciones al modelo: llega saneado y acotado, no hay herramientas de escritura ni enlaces fabricados
+  por el modelo, así que solo puede afectar la redacción de una respuesta de IA, nunca la ayuda integrada.
 - Secretos: la configuración del asistente no guarda claves; el material fiscal y las contraseñas quedan
   fuera de toda herramienta.
 
