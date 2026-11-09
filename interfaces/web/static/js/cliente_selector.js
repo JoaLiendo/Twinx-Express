@@ -145,6 +145,10 @@
       obtener: function () {
         return seleccionado;
       },
+      /** Preselecciona un cliente ya resuelto por el servidor (POS abierto desde un pedido). */
+      seleccionar: function (cliente) {
+        seleccionar(cliente);
+      },
       /** Total del carrito, para el saldo estimado. */
       establecerTotal: function (centavos) {
         totalCentavos = centavos;

@@ -18,6 +18,9 @@
   // exclusivamente cobrar(), en los mismos puntos donde ya administraba
   // establecerEstadoProcesando().
   let cobroEnCurso = false;
+  // Cierre operativo (051): pedido que esta venta concreta (`{pedido_id, items, cliente}`), si el POS se
+  // abrió desde /pedidos/{id}/vender. Se manda en el cobro y se descarta al confirmarse la venta.
+  let pedidoPrecarga = null;
 
   const listaCarritoEl = document.getElementById('carrito-lista');
   const vacioEl = document.getElementById('carrito-vacio');
@@ -575,6 +578,9 @@
           ...(clienteElegido ? { cliente_id: clienteElegido.id } : {}),
           ...(clienteElegido && creditoPos ? creditoPos.datosVenta() : {}),
           ...(autorizacionVencidos || {}),
+          // 051: la venta de un pedido queda asociada al pedido y, si lo tenía, a su cliente (también al contado).
+          ...(pedidoPrecarga ? { pedido_id: pedidoPrecarga.pedido_id } : {}),
+          ...(pedidoPrecarga && pedidoPrecarga.cliente && !clienteElegido ? { cliente_id: pedidoPrecarga.cliente.id } : {}),
         }),
       });
       autorizacionVencidos = null; // vale para un solo intento: un reintento la vuelve a pedir
@@ -614,7 +620,11 @@
       }
 
       const destino = clienteElegido ? ` a cuenta de ${clienteElegido.nombre}` : '';
-      mostrarToast(`Venta #${datos.id} registrada${destino}. Total: ${formatearCentavos(datos.total_centavos)}.`, 'success');
+      const desdePedido = pedidoPrecarga ? ` Pedido #${pedidoPrecarga.pedido_id} convertido.` : '';
+      mostrarToast(`Venta #${datos.id} registrada${destino}. Total: ${formatearCentavos(datos.total_centavos)}.${desdePedido}`, 'success');
+      pedidoPrecarga = null; // el pedido ya quedó convertido: una venta nueva no lo vuelve a tocar
+      const avisoPedido = document.getElementById('pedido-precarga');
+      if (avisoPedido) avisoPedido.remove();
       if (selectorCliente) selectorCliente.reiniciar();
       if (creditoPos) creditoPos.reiniciar();
       claveIdempotenciaActual = null; // el intento terminó bien: el próximo cobro arranca uno nuevo
@@ -707,4 +717,39 @@
 
   renderizarCarrito();
   if (inputCodigo) inputCodigo.focus();
+
+  // Cierre operativo (051): el POS abierto desde un pedido precarga el carrito con lo pedido (hasta donde
+  // el stock de ahora lo permite) y, si el pedido tiene cliente, lo deja elegido. Nada se registra hasta
+  // "Cobrar"; el servidor vuelve a validar stock y precio y deja el pedido convertido en esa misma venta.
+  (function precargarPedido() {
+    const contenedor = document.getElementById('pedido-precarga');
+    if (!contenedor) return;
+    let precarga;
+    try {
+      precarga = JSON.parse(contenedor.dataset.precarga || '{}');
+    } catch (error) {
+      return;
+    }
+    if (!precarga || !precarga.pedido_id) return;
+    pedidoPrecarga = precarga;
+    (precarga.items || []).forEach((item) => {
+      const fila = document.querySelector(`[data-producto-fila][data-id="${item.producto_id}"]`);
+      if (!fila) return;
+      const producto = {
+        id: Number(fila.dataset.id),
+        nombre: fila.dataset.nombre,
+        precio: Number(fila.dataset.precio),
+        stock: Number(fila.dataset.stock),
+      };
+      for (let i = 0; i < item.cantidad; i += 1) {
+        const antes = carrito.get(producto.id) ? carrito.get(producto.id).cantidad : 0;
+        agregarAlCarrito(producto);
+        const despues = carrito.get(producto.id) ? carrito.get(producto.id).cantidad : 0;
+        if (despues === antes) break; // sin stock para más unidades: el aviso ya se mostró
+      }
+    });
+    if (precarga.cliente && selectorCliente) {
+      selectorCliente.seleccionar(precarga.cliente);
+    }
+  })();
 })();

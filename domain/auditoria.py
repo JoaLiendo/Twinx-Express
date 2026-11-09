@@ -93,6 +93,10 @@ ACCIONES_VALIDAS = frozenset(
         "GASTO_ANULADO",
         # Migración 049: comprobante del proveedor en una compra.
         "COMPROBANTE_COMPRA_MODIFICADO",
+        # Migración 051: pedidos de clientes.
+        "PEDIDO_TOMADO",
+        "PEDIDO_CONVERTIDO",
+        "PEDIDO_CANCELADO",
         "VENTA_ANULADA",
         "CAJA_APERTURA",
         "CAJA_CIERRE",

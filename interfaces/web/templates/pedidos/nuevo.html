@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% macro linea_pedido(producto_id=none, cantidad=none) %}
+  <div class="linea-pedido grid grid-cols-12 gap-2 items-start rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+    <div class="col-span-8 sm:col-span-8">
+      <label class="label">Producto</label>
+      <select name="producto_id" required class="linea-producto input">
+        <option value="">Seleccionar...</option>
+        {% for producto in productos %}
+          <option value="{{ producto.id }}" data-precio="{{ producto.precio_venta_centavos }}" data-stock="{{ producto.stock_actual }}" {{ 'selected' if producto.id == producto_id else '' }}>{{ producto.nombre }} — ${{ producto.precio_venta_centavos | dinero_ar }} (stock {{ producto.stock_actual }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-span-3 sm:col-span-3">
+      <label class="label">Cantidad</label>
+      <input type="number" name="cantidad" min="1" step="1" required{% if cantidad %} value="{{ cantidad }}"{% endif %} class="linea-cantidad input tabular-nums" />
+    </div>
+    <div class="col-span-1 flex items-end justify-end h-full pb-1">
+      <button type="button" class="boton-quitar-linea text-slate-300 hover:text-error dark:text-slate-600 dark:hover:text-error" aria-label="Quitar línea">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+  </div>
+{% endmacro %}
+
+{% block titulo %}Nuevo pedido{% endblock %}
+{% block header %}<h1 class="page-title">Nuevo pedido de cliente</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <div class="card p-5 sm:p-8">
+    <div class="mb-5 alert alert-info"><p>Tomar un pedido <strong>no reserva ni descuenta stock</strong> ni cobra nada. Al venderlo desde el POS se validan de nuevo el stock y los precios de ese momento.</p></div>
+
+    <form method="post" action="/pedidos/nuevo" class="space-y-5" id="form-nuevo-pedido">
+      <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia }}" />
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="label-lg">Cliente <span class="muted font-normal">(opcional)</span></label>
+          <select name="cliente_id" id="select-cliente" class="input input-lg">
+            <option value="">Sin cliente registrado</option>
+            {% for c in clientes %}
+              <option value="{{ c.id }}" {{ 'selected' if cliente_id == c.id else '' }}>{{ c.nombre }}{% if c.telefono %} · {{ c.telefono }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="label-lg">Fecha de entrega <span class="muted font-normal">(opcional)</span></label>
+          <input type="date" name="fecha_entrega" min="{{ hoy }}" class="input input-lg" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="bloque-contacto">
+        <div>
+          <label class="label-lg">Nombre de contacto <span id="contacto-requerido" class="text-error font-normal">(obligatorio sin cliente)</span></label>
+          <input type="text" name="contacto_nombre" id="input-contacto" maxlength="120" placeholder="Quién retira" class="input input-lg" />
+        </div>
+        <div>
+          <label class="label-lg">Teléfono <span class="muted font-normal">(opcional)</span></label>
+          <input type="text" name="contacto_telefono" maxlength="30" class="input input-lg" />
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="label-lg mb-0">Productos</label>
+          <button type="button" id="boton-agregar-linea" class="btn btn-secondary btn-sm">+ Agregar línea</button>
+        </div>
+        <div id="lineas-pedido" class="space-y-3">{{ linea_pedido() }}</div>
+        <template id="plantilla-linea-pedido">{{ linea_pedido() }}</template>
+        <p class="mt-2 text-xs muted">Los precios se muestran como referencia (los vigentes hoy). Cada producto va una sola vez.</p>
+      </div>
+
+      <div>
+        <label class="label-lg">Notas <span class="muted font-normal">(opcional)</span></label>
+        <textarea name="notas" rows="3" maxlength="1000" placeholder="Ej.: pasa a buscar el viernes a la tarde" class="input input-lg"></textarea>
+      </div>
+
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="btn btn-primary">Tomar pedido</button>
+        <a href="/pedidos" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/pedido_form.js"></script>
+{% endblock %}

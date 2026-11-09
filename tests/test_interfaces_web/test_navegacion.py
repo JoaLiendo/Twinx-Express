@@ -8,19 +8,20 @@ pura sobre la lista `NAV_ITEMS`.
 
 from interfaces.web.navegacion import NAV_ITEMS, navegacion_visible_para
 
-_SECCIONES_OWNER_EXCLUSIVAS = {"/pedidos", "/precios", "/proveedores", "/compras", "/reportes", "/empleados", "/fiscal"}
+_SECCIONES_OWNER_EXCLUSIVAS = {"/precios", "/proveedores", "/compras", "/reportes", "/empleados", "/fiscal"}
 # 021: Clientes es visible para ambos roles (los dos pueden verlos, crearlos y cobrar; editar/desactivar
 # lo restringe cada ruta, no el menú).
 # V1.4: Inventario es visible para ambos roles (el CASHIER solo cuenta; el resto lo restringen la ruta y el servicio).
 # V1.18: Ayuda (manual integrado) es visible para ambos roles; Soporte técnico queda fuera del menú (solo OWNER).
-_SECCIONES_CASHIER = {"/", "/ventas", "/caja", "/productos", "/clientes", "/inventario", "/ayuda"}
+# Cierre operativo (051): Pedidos de clientes es real y visible para ambos roles.
+_SECCIONES_CASHIER = {"/", "/ventas", "/pedidos", "/caja", "/productos", "/clientes", "/inventario", "/ayuda"}
 
 
 def _hrefs(items):
     return {item["href"] for item in items}
 
 
-_PROXIMAMENTE = {"/pedidos"}
+_PROXIMAMENTE: set[str] = set()  # 051: Pedidos dejó de ser un cascarón; no queda ninguna sección "próximamente"
 
 
 def test_owner_ve_toda_la_navegacion_con_funcionalidad_real():
@@ -30,7 +31,7 @@ def test_owner_ve_toda_la_navegacion_con_funcionalidad_real():
 
 
 def test_las_secciones_proximamente_no_aparecen_en_ningun_menu():
-    """V1.1: Pedidos sigue siendo un cascarón sin funcionalidad (Precios es real desde V1.2)."""
+    """Ninguna sección marcada `proximamente` se ofrece en un menú (hoy no queda ninguna)."""
     for rol in ("OWNER", "CASHIER", None):
         assert _hrefs(navegacion_visible_para(rol)).isdisjoint(_PROXIMAMENTE)
     assert _PROXIMAMENTE <= _hrefs(NAV_ITEMS)  # siguen definidas, solo ocultas

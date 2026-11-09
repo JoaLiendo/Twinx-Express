@@ -29,6 +29,7 @@ from db.repositorios import partidas as repositorio_partidas
 from db.repositorios import productos as repositorio_productos
 from db.repositorios import usuarios as repositorio_usuarios
 from db.repositorios import ventas as repositorio_ventas
+from services import servicio_pedidos
 from domain.cliente import Cliente
 from domain.dinero import centavos_a_texto
 from domain.producto import Producto
@@ -122,6 +123,7 @@ def registrar_venta(
     autorizado_por_id: int | None = None,
     pago_contado_centavos: int = 0,
     comprador: CompradorVenta | None = None,
+    pedido_id: int | None = None,
 ) -> Venta:
     """Registra una venta con sus líneas de detalle y descuenta stock.
 
@@ -374,6 +376,10 @@ def registrar_venta(
                     f"Venta #{venta.id} con mercadería vencida: {detalle_vencidas}. Autorizó {autorizador.nombre_completo}"
                     f" (registró el usuario {usuario_id})",
                 )
+            # Cierre operativo (051): la venta que concreta un pedido lo deja CONVERTIDO en esta misma transacción;
+            # un pedido que ya no está pendiente aborta la venta (nunca dos ventas por el mismo pedido).
+            if pedido_id is not None:
+                servicio_pedidos.convertir_en_conexion(conexion, pedido_id, venta.id, usuario_id)
             if es_venta_a_cuenta:
                 # El comprador va antes del CARGO: el libro rechaza el cargo de una empresa sin comprador.
                 if comprador is not None:

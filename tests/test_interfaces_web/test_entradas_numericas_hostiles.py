@@ -43,7 +43,7 @@ TABLAS = (
     "movimientos_proveedor", "ajustes_stock", "auditoria", "inventarios", "inventario_lineas", "productos",
     "clientes", "proveedores", "producto_proveedor", "historial_precios", "lotes_precios",
     "proveedor_categorias", "evaluaciones_proveedor", "reclamos_proveedor", "reclamos_proveedor_cambios",
-    "documentos_proveedor", "gastos",
+    "documentos_proveedor", "gastos", "pedidos", "pedido_lineas",
 )
 
 
@@ -171,6 +171,14 @@ CASOS = [
         {"valor": "monto"},
     ),
     ("caja_abrir", "POST", "/caja/abrir", {"monto_inicial": "1.00", "descripcion": ""}, {"monto_inicial": "monto"}),
+    # Cierre operativo (051): pedidos de clientes.
+    (
+        "pedido_nuevo",
+        "POST",
+        "/pedidos/nuevo",
+        {"cliente_id": "", "contacto_nombre": "Juan", "contacto_telefono": "", "notas": "", "fecha_entrega": "", "producto_id": "{pid}", "cantidad": "1", "clave_idempotencia": "k-pedido"},
+        {"cantidad": "entero", "producto_id": "entero", "cliente_id": "entero"},
+    ),
     # Cierre operativo (048): gastos.
     (
         "gasto_nuevo",
@@ -262,6 +270,10 @@ RUTAS_CON_ID = [
     ("POST", "/gastos/{id}/editar"),
     ("GET", "/gastos/{id}/anular"),
     ("POST", "/gastos/{id}/anular"),
+    ("GET", "/pedidos/{id}"),
+    ("GET", "/pedidos/{id}/cancelar"),
+    ("POST", "/pedidos/{id}/cancelar"),
+    ("GET", "/pedidos/{id}/vender"),
     ("GET", "/proveedores/{id}"),
     ("GET", "/proveedores/{id}/editar"),
     ("GET", "/proveedores/{id}/pagos/nuevo"),

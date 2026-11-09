@@ -436,6 +436,8 @@ def test_migracion_desde_base_completamente_vacia_aplica_todo(tmp_path, monkeypa
             " AND name NOT LIKE 'trg_compras_%'"
             # Cierre operativo (048): gastos operativos.
             " AND name NOT LIKE 'trg_gastos_%'"
+            # Cierre operativo (051): pedidos de clientes.
+            " AND name NOT LIKE 'trg_pedidos_%' AND name NOT LIKE 'trg_pedido_lineas_%'"
         ).fetchall()
         assert len(triggers_019_020) == 20
     finally:

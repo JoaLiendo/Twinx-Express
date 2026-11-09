@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block titulo %}Cancelar pedido{% endblock %}
+{% block header %}<h1 class="page-title">Cancelar pedido #{{ pedido.id }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <div class="card p-5 sm:p-8">
+    <div class="mb-5 alert alert-warning"><p>El pedido queda <strong>CANCELADO</strong> con el motivo, la fecha y tu usuario. No hay stock ni dinero que devolver: un pedido nunca los movió. No se puede deshacer; si hace falta, se toma un pedido nuevo.</p></div>
+    <dl class="grid grid-cols-2 gap-4 text-sm mb-6">
+      <div><dt class="label">Para</dt><dd class="font-medium text-slate-900 dark:text-slate-100">{{ pedido.para_quien }}</dd></div>
+      <div><dt class="label">Líneas</dt><dd class="font-medium text-slate-900 dark:text-slate-100">{{ pedido.cantidad_lineas }} · ${{ pedido.total_al_pedir_centavos | dinero_ar }} al pedir</dd></div>
+    </dl>
+    <form method="post" action="/pedidos/{{ pedido.id }}/cancelar" class="space-y-5" id="form-cancelar-pedido"
+          onsubmit="return confirm('¿Confirmás cancelar este pedido?');">
+      <div>
+        <label class="label-lg">Motivo</label>
+        <textarea name="motivo" rows="3" required maxlength="300" class="input input-lg" placeholder="Ej.: el cliente no lo retiró, cargado por error"></textarea>
+      </div>
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="rounded-lg bg-error hover:bg-error/90 transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">Cancelar pedido</button>
+        <a href="/pedidos/{{ pedido.id }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Volver</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

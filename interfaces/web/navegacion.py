@@ -20,7 +20,8 @@ _SOLO_OWNER = ("OWNER",)
 NAV_ITEMS: list[dict[str, object]] = [
     {"href": "/", "etiqueta": "Dashboard", "icono": "dashboard", "roles": None},
     {"href": "/ventas", "etiqueta": "Ventas", "icono": "ventas", "roles": None},
-    {"href": "/pedidos", "etiqueta": "Pedidos", "icono": "pedidos", "roles": _SOLO_OWNER, "proximamente": True},
+    # Cierre operativo (051): pedidos de clientes; los toman y venden ambos roles.
+    {"href": "/pedidos", "etiqueta": "Pedidos", "icono": "pedidos", "roles": None},
     {"href": "/precios", "etiqueta": "Precios", "icono": "precios", "roles": _SOLO_OWNER},
     {"href": "/caja", "etiqueta": "Caja", "icono": "caja", "roles": None},
     {"href": "/clientes", "etiqueta": "Clientes", "icono": "clientes", "roles": None},

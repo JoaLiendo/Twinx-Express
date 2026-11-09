@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Pedido #{{ pedido.id }}{% endblock %}
+{% block header %}<h1 class="page-title">Pedido #{{ pedido.id }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <a href="/pedidos" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver a pedidos</a>
+    <div class="flex items-center gap-2">
+      {{ ui.badge(pedido.estado_etiqueta, {'PENDIENTE': 'advertencia', 'CONVERTIDO': 'exito', 'CANCELADO': 'neutral'}[pedido.estado]) }}
+      {% if pedido.pendiente %}
+        <a href="/pedidos/{{ pedido.id }}/vender" class="btn btn-primary" id="boton-vender-pedido" {{ 'aria-disabled="true"' | safe if not caja_abierta else '' }}>Vender en el POS</a>
+        <a href="/pedidos/{{ pedido.id }}/cancelar" class="btn btn-danger" id="boton-cancelar-pedido">Cancelar pedido</a>
+      {% elif pedido.venta_id %}
+        <a href="/ventas/{{ pedido.venta_id }}" class="btn btn-outline" id="enlace-venta-pedido">Ver venta #{{ pedido.venta_id }}</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if pedido.estado == 'CANCELADO' %}
+    <div class="alert alert-neutral" id="aviso-cancelado"><p>Cancelado el {{ pedido.cancelado_en }} por {{ pedido.cancelado_por_nombre }}: <strong>{{ pedido.motivo_cancelacion }}</strong>.</p></div>
+  {% elif pedido.estado == 'CONVERTIDO' %}
+    <div class="alert alert-success" id="aviso-convertido"><p>Vendido el {{ pedido.convertido_en }} en la venta #{{ pedido.venta_id }}.</p></div>
+  {% elif not caja_abierta %}
+    <div class="alert alert-warning" id="aviso-caja-cerrada-pedido"><p>La caja está cerrada: abrila antes de vender este pedido.</p></div>
+  {% endif %}
+
+  <div class="card p-6">
+    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+      <div>
+        <dt class="label">Para</dt>
+        <dd class="font-medium text-slate-900 dark:text-slate-100" id="pedido-para">{% if pedido.cliente_id %}<a href="/clientes/{{ pedido.cliente_id }}" class="text-primary hover:underline">{{ pedido.cliente_nombre }}</a>{% else %}{{ pedido.contacto_nombre }}{% if pedido.contacto_telefono %} · {{ pedido.contacto_telefono }}{% endif %}{% endif %}</dd>
+      </div>
+      <div><dt class="label">Entrega</dt><dd class="text-slate-800 dark:text-slate-200">{{ pedido.fecha_entrega | fecha_corta if pedido.fecha_entrega else 'Sin fecha' }}</dd></div>
+      <div><dt class="label">Tomado</dt><dd class="text-slate-600 dark:text-slate-400">{{ pedido.fecha_creacion }} · {{ pedido.usuario_nombre }}</dd></div>
+      <div class="sm:col-span-2"><dt class="label">Notas</dt><dd class="text-slate-800 dark:text-slate-200 whitespace-pre-line">{{ pedido.notas or '—' }}</dd></div>
+    </dl>
+  </div>
+
+  <div class="card overflow-hidden">
+    <div class="card-header"><p class="card-title">Productos pedidos</p><p class="text-xs muted">El stock no está reservado: se valida al vender.</p></div>
+    <div class="table-wrap">
+      <table class="data-table" id="tabla-lineas-pedido">
+        <thead>
+          <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <th class="px-5 py-3">Producto</th>
+            <th class="px-5 py-3 text-right">Cantidad</th>
+            <th class="px-5 py-3 text-right">Precio al pedir</th>
+            <th class="px-5 py-3 text-right">Precio vigente</th>
+            <th class="px-5 py-3 text-right">Stock hoy</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in lineas %}
+            <tr data-linea="{{ l.producto_id }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+              <td class="px-5 py-3 font-medium text-slate-800 dark:text-slate-200">{{ l.producto_nombre }}{% if not l.producto_activo %} {{ ui.badge('Dado de baja', 'alerta') }}{% endif %}</td>
+              <td class="px-5 py-3 text-right tabular-nums">{{ l.cantidad }}</td>
+              <td class="px-5 py-3 text-right tabular-nums text-slate-600 dark:text-slate-400">${{ l.precio_unitario_centavos | dinero_ar }}</td>
+              <td class="px-5 py-3 text-right tabular-nums {{ 'text-warning font-semibold' if l.precio_cambio else '' }}">${{ l.precio_vigente_centavos | dinero_ar }}{% if l.precio_cambio %} <span class="text-xs">(cambió)</span>{% endif %}</td>
+              <td class="px-5 py-3 text-right tabular-nums {{ 'text-error font-semibold' if l.sin_stock_suficiente else '' }}">{{ l.stock_actual }}{% if l.sin_stock_suficiente %} <span class="text-xs">(falta)</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t border-slate-200 dark:border-slate-700 font-semibold">
+            <td class="px-5 py-3" colspan="2">Total</td>
+            <td class="px-5 py-3 text-right tabular-nums">${{ pedido.total_al_pedir_centavos | dinero_ar }}</td>
+            <td class="px-5 py-3 text-right tabular-nums" id="total-vigente">${{ total_vigente_centavos | dinero_ar }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  {% if pedido.pendiente and hay_avisos %}
+    <p class="text-xs text-warning" id="aviso-cambios-pedido">Hay productos con precio distinto, sin stock suficiente o dados de baja: al vender rige el precio actual y el stock real del momento.</p>
+  {% endif %}
+</div>
+{% endblock %}

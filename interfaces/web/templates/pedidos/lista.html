@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Pedidos{% endblock %}
+{% block header %}<h1 class="page-title">Pedidos de clientes</h1>{% endblock %}
+
+{% block content %}
+<div class="page">
+  <p class="page-intro">Lo que un cliente encarga para retirar o recibir después. Un pedido no reserva ni descuenta stock ni cobra: al venderlo desde el POS se vuelven a validar el stock y los precios de ese momento.</p>
+
+  <div class="flex flex-wrap items-center justify-between gap-4 gap-y-3">
+    <form method="get" action="/pedidos" class="flex flex-wrap items-end gap-2" id="filtros-pedidos">
+      <div>
+        <label class="label">Estado</label>
+        <select name="estado" class="input" onchange="this.form.submit()">
+          <option value="">Todos</option>
+          {% for clave, etiqueta in estados %}
+            <option value="{{ clave }}" {{ 'selected' if estado == clave else '' }}>{{ etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label">Buscar</label>
+        <input type="search" name="q" value="{{ q }}" placeholder="Cliente, contacto, nota o N°" class="input max-w-[14rem]" />
+      </div>
+      <button type="submit" class="btn btn-dark">Filtrar</button>
+      {% if hay_filtro_activo %}
+        <a href="/pedidos" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2 py-2">Quitar filtros</a>
+      {% endif %}
+    </form>
+    <a href="/pedidos/nuevo" class="btn btn-primary" id="boton-nuevo-pedido">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14M5 12h14"/></svg>
+      Nuevo pedido
+    </a>
+  </div>
+
+  <p class="text-sm text-slate-600 dark:text-slate-400" id="pedidos-pendientes">{{ listado.pendientes }} pedido(s) pendiente(s)</p>
+
+  {% if listado.pedidos %}
+    <div class="card overflow-hidden">
+      <div class="table-wrap">
+        <table class="data-table" id="tabla-pedidos">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-3">N°</th>
+              <th class="px-5 py-3">Tomado</th>
+              <th class="px-5 py-3">Para</th>
+              <th class="px-5 py-3">Entrega</th>
+              <th class="px-5 py-3">Estado</th>
+              <th class="px-5 py-3 text-right">Líneas</th>
+              <th class="px-5 py-3 text-right">Al pedir</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in listado.pedidos %}
+              <tr data-pedido="{{ p.id }}" data-estado="{{ p.estado }}" class="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer dark:border-slate-800 dark:hover:bg-slate-800/60 {{ 'opacity-60' if p.estado == 'CANCELADO' else '' }}"
+                  onclick="window.location.href='/pedidos/{{ p.id }}'">
+                <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">#{{ p.id }}</td>
+                <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ p.fecha_creacion[:16] }}</td>
+                <td class="px-5 py-3.5 font-medium text-slate-800 dark:text-slate-200">{{ p.para_quien }}{% if p.cliente_id is none and p.contacto_telefono %} <span class="text-xs text-slate-400">· {{ p.contacto_telefono }}</span>{% endif %}</td>
+                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{{ p.fecha_entrega | fecha_corta if p.fecha_entrega else '—' }}</td>
+                <td class="px-5 py-3.5 whitespace-nowrap">{{ ui.badge(p.estado_etiqueta, {'PENDIENTE': 'advertencia', 'CONVERTIDO': 'exito', 'CANCELADO': 'neutral'}[p.estado]) }}</td>
+                <td class="px-5 py-3.5 text-right tabular-nums text-slate-600 dark:text-slate-400">{{ p.cantidad_lineas }}</td>
+                <td class="px-5 py-3.5 text-right tabular-nums font-semibold text-slate-900 dark:text-slate-100">${{ p.total_al_pedir_centavos | dinero_ar }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if listado.total_paginas > 1 %}
+      {% set base_enlace = '/pedidos?' ~ (consulta_filtros ~ '&' if consulta_filtros else '') ~ 'pagina=' %}
+      <nav class="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400" aria-label="Paginación">
+        <span>{{ listado.cantidad }} pedidos · página {{ listado.pagina }} de {{ listado.total_paginas }}</span>
+        <span class="flex gap-4">
+          {% if listado.pagina > 1 %}<a href="{{ base_enlace }}{{ listado.pagina - 1 }}" class="font-medium text-primary hover:text-primary-hover">← Anterior</a>{% endif %}
+          {% if listado.pagina < listado.total_paginas %}<a href="{{ base_enlace }}{{ listado.pagina + 1 }}" class="font-medium text-primary hover:text-primary-hover">Siguiente →</a>{% endif %}
+        </span>
+      </nav>
+    {% endif %}
+  {% else %}
+    {{ ui.estado_vacio("No se encontraron pedidos con esos filtros." if hay_filtro_activo else "Todavía no hay pedidos.", none if hay_filtro_activo else "Tomá el primer pedido con «Nuevo pedido»; se vende después desde el POS.") }}
+  {% endif %}
+</div>
+{% endblock %}

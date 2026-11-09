@@ -9,6 +9,15 @@
   <!-- Lector + selección manual (lista de productos) -->
   <div class="flex-1 min-w-0 w-full space-y-4 pb-24 lg:pb-0">
 
+    {% if pedido_precarga %}
+      {# Cierre operativo (051): el POS abrió desde un pedido. El carrito se precarga en el navegador; nada se registró todavía. #}
+      <div id="pedido-precarga" role="status" data-precarga='{{ pedido_precarga_json | e }}'
+           class="rounded-xl border border-primary/30 bg-primary-subtle px-4 py-3 text-sm text-slate-800 dark:text-slate-100 space-y-1">
+        <p class="font-semibold">Vendiendo el pedido #{{ pedido.id }} de {{ pedido.para_quien }}. El carrito se cargó con lo pedido; el stock y los precios son los de ahora.</p>
+        {% for aviso in pedido_precarga.avisos %}<p class="text-xs text-warning" data-aviso-pedido>{{ aviso }}</p>{% endfor %}
+        <p class="text-xs muted">Al cobrar, el pedido queda convertido en la venta. <a href="/pedidos/{{ pedido.id }}" class="underline">Volver al pedido</a></p>
+      </div>
+    {% endif %}
     {% if not caja_abierta %}
       <div id="aviso-caja-cerrada" role="alert"
            class="rounded-xl border border-error/30 bg-error/5 px-4 py-3 text-sm text-error flex flex-wrap items-center justify-between gap-2">

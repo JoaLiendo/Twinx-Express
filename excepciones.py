@@ -529,3 +529,11 @@ class ComprobanteProveedorDuplicadoError(DatosInvalidosError):
 
 class DniClienteDuplicadoError(ErrorAplicacion):
     """Ya existe un cliente con ese DNI (migración 050): probablemente la misma persona cargada dos veces."""
+
+
+class PedidoNoEncontradoError(ErrorAplicacion):
+    """No existe un pedido de cliente con el id solicitado (migración 051)."""
+
+
+class PedidoNoPendienteError(ErrorAplicacion):
+    """El pedido ya fue convertido en venta o cancelado: no admite otra conversión ni cambios."""

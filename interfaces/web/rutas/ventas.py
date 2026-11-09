@@ -52,9 +52,9 @@ router = APIRouter(dependencies=[Depends(requiere_rol("OWNER", "CASHIER"))])
 _SOLO_OWNER = Depends(requiere_rol("OWNER"))
 
 
-@router.get("/ventas")
-def panel_ventas(request: Request):
-    """POS. Entrega el catálogo activo completo: la búsqueda y los filtros de la selección manual corren en
+def contexto_pos(request: Request) -> dict:
+    """Contexto del POS (también lo usa `rutas.pedidos.vender_pedido`). Entrega el catálogo activo completo:
+    la búsqueda y los filtros de la selección manual corren en
     el navegador (`static/js/pos_listado.js`) para no recargar la página ni perder el carrito. Cada producto
     lleva solo lo que el cajero necesita para vender: nunca costos."""
     productos = servicio_stock.listar_todos()
@@ -79,7 +79,12 @@ def panel_ventas(request: Request):
         "metodos_autorizacion": METODOS_AUTORIZACION_EXCEPCIONAL,
         "fiscal_activo": servicio_panel.fiscalizacion_activa(),
     }
-    return templates.TemplateResponse(request, "ventas/pos.html", contexto)
+    return contexto
+
+
+@router.get("/ventas")
+def panel_ventas(request: Request):
+    return templates.TemplateResponse(request, "ventas/pos.html", contexto_pos(request))
 
 
 @router.post("/api/ventas", response_model=VentaSalida)
@@ -112,6 +117,7 @@ def api_registrar_venta(
         autorizado_por_id=autorizado_por_id,
         pago_contado_centavos=datos.pago_contado_centavos,
         comprador=comprador,
+        pedido_id=datos.pedido_id,
     )
     return VentaSalida(
         id=venta.id,

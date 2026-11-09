@@ -37,6 +37,8 @@ class VentaEntrada(BaseModel):
     comprador_excepcional_nombre: str | None = Field(default=None, max_length=120)
     comprador_excepcional_metodo: str | None = Field(default=None, max_length=20)
     comprador_excepcional_detalle: str | None = Field(default=None, max_length=250)
+    # Cierre operativo (051): pedido de cliente que esta venta concreta (queda CONVERTIDO en la misma transacción).
+    pedido_id: int | None = None
 
     @property
     def indica_comprador(self) -> bool:
