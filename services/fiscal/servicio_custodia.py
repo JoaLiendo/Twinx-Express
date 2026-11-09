@@ -142,7 +142,7 @@ def verificar_al_iniciar() -> None:
         return
     logger.critical("Arranque bloqueado: la base actual perdió historia fiscal conocida: %s", describir(faltante))
     raise HistoriaFiscalPerdidaError(
-        "La base de datos actual NO contiene comprobantes fiscales que esta instalación ya había informado a "
+        "La base de datos actual NO contiene comprobantes fiscales que esta instalación ya había informado (o enviado sin respuesta) a "
         f"ARCA ({describir(faltante)}). Probablemente se reemplazó la base por una copia anterior fuera del "
         "procedimiento seguro (restore con una versión vieja del programa o copia manual de la carpeta data). "
         f"Twinx Express no inicia para no volver a numerar sobre una secuencia perdida. {_PROCEDIMIENTO}"

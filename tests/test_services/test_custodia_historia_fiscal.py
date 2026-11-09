@@ -4,7 +4,6 @@ no arranca sobre esa base, sin inventar nada y con salida auditada para el técn
 
 import asyncio
 import json
-import sqlite3
 
 import pytest
 
@@ -14,7 +13,7 @@ import interfaces.web.app as modulo_app
 import services.servicio_backup as modulo_servicio_backup
 from db.repositorios import auditoria as repositorio_auditoria
 from domain.fiscal.historia import ComprobanteConocido, HistoriaFiscal
-from excepciones import HistoriaFiscalPerdidaError
+from excepciones import ErrorBaseDatos, HistoriaFiscalPerdidaError
 from services.fiscal import servicio_custodia
 from tests import utilidades_fiscales as uf
 
@@ -82,20 +81,31 @@ class TestCustodia:
         # La base sigue AUTORIZADA pero la custodia dice INCIERTO: eso es conocimiento nuevo, no pérdida.
         servicio_custodia._escribir(degradada)
         servicio_custodia.verificar_al_iniciar()
-        # Al revés (custodia AUTORIZADO, base INCIERTO) sí se perdió el CAE conocido.
-        servicio_custodia._escribir(custodiada)
-        with modulo_conexion.obtener_conexion() as conexion:
-            conexion.execute("PRAGMA foreign_keys = OFF")
-        con = sqlite3.connect(modulo_conexion.RUTA_BASE_DATOS)
-        try:
-            con.execute("UPDATE comprobantes_fiscales SET estado = 'INCIERTO', codigo_autorizacion = NULL, vencimiento_autorizacion = NULL, fecha_proceso = NULL")
-            con.commit()
-        except sqlite3.DatabaseError:
-            con.close()
-            pytest.skip("la base no admite degradar un autorizado por SQL directo (trigger): la custodia se prueba con la base vacía")
-        con.close()
-        with pytest.raises(HistoriaFiscalPerdidaError):
+        # La base nunca degrada un autorizado (trigger de la 041): solo se ve así si la reemplazan por una copia.
+        with pytest.raises(ErrorBaseDatos):
+            with modulo_conexion.obtener_conexion() as conexion:
+                conexion.execute("UPDATE comprobantes_fiscales SET estado = 'INCIERTO'")
+
+    def test_una_copia_donde_el_autorizado_todavia_era_incierto_bloquea(self, con_comprobante, tmp_path, monkeypatch):
+        """Custodia con el CAE del comprobante 7; la base es reemplazada por una copia de antes de la
+        conciliación, donde ese mismo número figuraba INCIERTO y sin CAE: se perdió el CAE conocido."""
+        base_correcta = modulo_conexion.RUTA_BASE_DATOS
+        servicio_custodia.registrar_historia_actual()
+        _reemplazar_base_por_una_vacia(tmp_path, monkeypatch)
+        from db.repositorios import caja as repositorio_caja
+        from domain.caja import MovimientoCaja
+
+        repositorio_caja.registrar_movimiento(MovimientoCaja(tipo="APERTURA", monto_centavos=0))
+        uf.guardar_perfil_validado()
+        venta = uf.vender([(uf.producto(12100, uf.IVA_21), 1)])
+        comprobante_id = uf.insertar(uf.nuevo_comprobante_para_venta(venta.id))
+        uf.transicionar(comprobante_id, "ENVIANDO", numero=7, fecha_comprobante="2026-11-01")
+        uf.transicionar(comprobante_id, "INCIERTO")
+        with pytest.raises(HistoriaFiscalPerdidaError, match="1 comprobante\\(s\\) autorizado\\(s\\) con CAE"):
             servicio_custodia.verificar_al_iniciar()
+        # Recuperada la base correcta, arranca otra vez.
+        monkeypatch.setattr(modulo_conexion, "RUTA_BASE_DATOS", base_correcta)
+        servicio_custodia.verificar_al_iniciar()
 
     def test_el_tecnico_acepta_la_perdida_y_queda_auditado(self, con_comprobante, tmp_path, monkeypatch):
         servicio_custodia.registrar_historia_actual()

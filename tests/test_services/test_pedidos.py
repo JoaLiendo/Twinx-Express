@@ -21,7 +21,11 @@ from excepciones import (
 )
 from services import servicio_caja, servicio_clientes, servicio_pedidos, servicio_stock, servicio_ventas
 from tests.test_interfaces_web._asgi_cliente import solicitud
-from tests.utilidades_clientes import usuario_logueado
+from tests.utilidades_clientes import crear_usuario, usuario_logueado
+
+
+def crear_cajera():
+    return crear_usuario("cajera_pedidos", "CASHIER")
 
 
 @pytest.fixture
@@ -163,11 +167,30 @@ class TestConversion:
 
     def test_precarga_del_pos_avisa_cambios_sin_modificar_nada(self, e):
         pedido = _tomar(e, items=[ItemPedido(e.p.id, 2), ItemPedido(e.p2.id, 5)])
-        servicio_stock.actualizar_precio_venta(e.p.id, 300, e.owner.id) if hasattr(servicio_stock, "actualizar_precio_venta") else None
+        # Entre el pedido y la venta sube el precio del alfajor (250 → 300) y la gaseosa no alcanza.
+        servicio_stock.actualizar_producto(e.p.id, e.p.codigo_barras, e.p.nombre, 100, 300, 0, usuario_id=e.owner.id)
         precarga = servicio_pedidos.preparar_precarga_pos(pedido.id)
         assert [i["producto_id"] for i in precarga.items_vendibles] == [e.p.id, e.p2.id]
+        assert any("Alfajor: el precio cambió de $2,50 a $3,00" in a for a in precarga.avisos)
         assert any("Gaseosa: se pidieron 5 y hay 2" in a for a in precarga.avisos)
         assert servicio_pedidos.obtener_pedido(pedido.id).pendiente and _stock(e.p2.id) == 2
+        # La venta cobra el precio vigente (no el congelado en el pedido) y valida el stock real.
+        with pytest.raises(StockInsuficienteError):
+            servicio_ventas.registrar_venta([ItemVenta(e.p.id, 2), ItemVenta(e.p2.id, 5)], "EFECTIVO", usuario_id=e.owner.id, pedido_id=pedido.id)
+        venta = servicio_ventas.registrar_venta([ItemVenta(e.p.id, 2), ItemVenta(e.p2.id, 2)], "EFECTIVO", usuario_id=e.owner.id, pedido_id=pedido.id)
+        assert venta.total_centavos == 2 * 300 + 2 * 500
+        assert servicio_pedidos.obtener_pedido(pedido.id).venta_id == venta.id
+        assert [l.precio_unitario_centavos for l in servicio_pedidos.listar_lineas(pedido.id)] == [250, 500]  # lo pedido no se reescribe
+
+    def test_cashier_toma_cancela_y_vende_y_la_venta_queda_del_cliente(self, e):
+        cajera = crear_cajera()
+        pedido = servicio_pedidos.registrar_pedido(usuario_id=cajera.id, items=[ItemPedido(e.p.id, 1)], cliente_id=e.cliente.id)
+        venta = servicio_ventas.registrar_venta([ItemVenta(e.p.id, 1)], "EFECTIVO", usuario_id=cajera.id, cliente_id=e.cliente.id, pedido_id=pedido.id)
+        assert servicio_pedidos.obtener_pedido(pedido.id).estado == "CONVERTIDO"
+        with obtener_conexion() as conexion:
+            assert conexion.execute("SELECT cliente_id FROM ventas WHERE id = ?", (venta.id,)).fetchone()[0] == e.cliente.id
+        otro = servicio_pedidos.registrar_pedido(usuario_id=cajera.id, items=[ItemPedido(e.p.id, 1)], contacto_nombre="Juan")
+        assert servicio_pedidos.cancelar_pedido(otro.id, usuario_id=cajera.id, motivo="No vino").estado == "CANCELADO"
 
 
 class TestWeb:
