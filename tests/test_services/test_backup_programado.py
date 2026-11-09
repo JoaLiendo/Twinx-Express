@@ -113,3 +113,35 @@ class TestEjecucion:
         detener.set()
         hilo.join(timeout=2)
         assert not hilo.is_alive() and len(llamadas) >= 2
+
+    def test_no_consulta_la_base_antes_del_primer_intervalo_y_se_detiene(self, base_datos_temporal, tmp_path, monkeypatch):
+        """Esperar primero: un arranque corto (o un test) nunca toca la base después de detenerse."""
+        llamadas = []
+        monkeypatch.setattr(programado, "ejecutar_si_corresponde", lambda *a, **k: llamadas.append(1))
+        hilo = programado.HiloBackupProgramado(tmp_path, ControlEscrituras(), intervalo=30)
+        assert hilo.activo
+        hilo.detener(espera=2)
+        assert not hilo.activo and llamadas == []
+
+    def test_el_lifespan_no_deja_el_hilo_vivo_al_cerrar(self, base_datos_temporal, monkeypatch):
+        import asyncio
+
+        import interfaces.web.app as modulo_app
+
+        creados = []
+        original = programado.iniciar
+
+        def espia(*args, **kwargs):
+            creados.append(original(*args, **kwargs))
+            return creados[-1]
+
+        monkeypatch.setattr(programado, "iniciar", espia)
+        monkeypatch.setattr(modulo_backup, "ejecutar_backup_automatico_si_corresponde", lambda *a, **k: None)
+
+        async def _arrancar_y_cerrar():
+            async with modulo_app.lifespan(modulo_app.app):
+                assert creados[-1].activo and sum(h.activo for h in creados) == 1  # nunca dos hilos a la vez
+
+        asyncio.run(_arrancar_y_cerrar())
+        asyncio.run(_arrancar_y_cerrar())
+        assert len(creados) == 2 and not any(h.activo for h in creados)

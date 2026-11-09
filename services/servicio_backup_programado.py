@@ -101,18 +101,38 @@ def ejecutar_si_corresponde(directorio_destino: Path, control_escrituras, ahora:
 
 
 def bucle(directorio_destino: Path, control_escrituras, detener: threading.Event, intervalo: float = INTERVALO_SONDEO_SEGUNDOS) -> None:
-    """Hilo daemon del proceso: sondea cada `intervalo` segundos hasta que `detener` se active. Cualquier
-    excepción inesperada se registra y el bucle sigue (nunca tumba la aplicación)."""
-    while not detener.is_set():
+    """Hilo daemon del proceso: espera `intervalo` segundos y recién entonces consulta, hasta que `detener`
+    se active. Esperar primero evita competir con la migración y el backup de arranque, y garantiza que un
+    arranque corto (o un test) nunca toque la base después de detenerse. Cualquier excepción inesperada se
+    registra y el bucle sigue (nunca tumba la aplicación)."""
+    while not detener.wait(intervalo):
         try:
             ejecutar_si_corresponde(directorio_destino, control_escrituras)
         except Exception:  # noqa: BLE001 - límite exterior de un hilo sin llamador: solo se registra
             logger.exception("Error inesperado en el backup programado")
-        detener.wait(intervalo)
 
 
-def iniciar(directorio_destino: Path, control_escrituras) -> threading.Event:
-    """Arranca el hilo y devuelve el evento para detenerlo al cerrar la aplicación."""
-    detener = threading.Event()
-    threading.Thread(target=bucle, args=(directorio_destino, control_escrituras, detener), daemon=True, name="backup-programado").start()
-    return detener
+class HiloBackupProgramado:
+    """El hilo del backup programado de una ejecución de la aplicación (uno por lifespan)."""
+
+    def __init__(self, directorio_destino: Path, control_escrituras, intervalo: float = INTERVALO_SONDEO_SEGUNDOS) -> None:
+        self._detener = threading.Event()
+        self._hilo = threading.Thread(
+            target=bucle, args=(directorio_destino, control_escrituras, self._detener, intervalo),
+            daemon=True, name="backup-programado",
+        )
+        self._hilo.start()
+
+    @property
+    def activo(self) -> bool:
+        return self._hilo.is_alive()
+
+    def detener(self, espera: float = 5.0) -> None:
+        """Pide el fin del hilo y lo espera hasta `espera` segundos (un backup en curso termina solo)."""
+        self._detener.set()
+        self._hilo.join(espera)
+
+
+def iniciar(directorio_destino: Path, control_escrituras) -> HiloBackupProgramado:
+    """Arranca el hilo; el lifespan lo detiene al cerrar la aplicación."""
+    return HiloBackupProgramado(directorio_destino, control_escrituras)
