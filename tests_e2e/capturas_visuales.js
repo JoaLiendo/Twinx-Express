@@ -51,6 +51,16 @@ const PANTALLAS = [
   ['analitica', '/analitica'],
   ['analitica-margen', '/analitica/margen'],
   ['reposicion', '/reposicion'],
+  // Cierre operativo: gastos, resultado, pedidos, comprobantes fiscales y reporte por cliente.
+  ['gastos', '/gastos'],
+  ['gastos-nuevo', '/gastos/nuevo'],
+  ['analitica-resultado', '/analitica/resultado'],
+  ['pedidos', '/pedidos'],
+  ['pedidos-nuevo', '/pedidos/nuevo'],
+  ['fiscal', '/fiscal'],
+  ['fiscal-listado', '/fiscal/listado'],
+  ['reportes-clientes', '/reportes/clientes'],
+  ['backup', '/backup'],
 ];
 
 async function login(page) {

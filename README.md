@@ -938,6 +938,34 @@ todas las pantallas, ambos roles). Diseño completo en `docs/ASISTENTE.md`.
   falso, adaptador contra un servidor HTTP falso, API web, JS (`tests_js/asistente.test.js`) y E2E
   (`tests_e2e/tests/21-asistente.spec.js`).
 
+## Cierre operativo (1.18.0, piloto no fiscal)
+
+Rama `feature/cierre-roadmap-operativo`, migraciones 048–051. Cierra los pendientes del roadmap sin rediseñar lo
+ya terminado; detalle por bloque en `docs/ROADMAP.md` y novedades en `docs/CHANGELOG.md`.
+
+- **Gastos operativos** (`domain/gasto.py`, `db/repositorios/gastos.py`, `services/servicio_gastos.py`,
+  `interfaces/web/rutas/gastos.py`, migración 048): categorías fijas, importes en centavos, medio de pago;
+  `EFECTIVO_CAJA` crea el EGRESO de caja en la misma transacción (un egreso respalda a lo sumo un gasto, trigger),
+  reenvío idempotente, lo económico inmutable, anulación con motivo y reintegro opcional (INGRESO vinculado). Solo
+  OWNER. **Resultado operativo estimado** (`domain/resultado.py`, `servicio_analitica.analizar_resultado`,
+  `/analitica/resultado`): margen bruto de referencia − gastos vigentes, por día/semana/mes, con anulaciones, costo
+  real y unidades sin costo informados aparte; CSV; dos indicadores en el dashboard.
+- **Pedidos de clientes** (`domain/pedido.py`, `db/repositorios/pedidos.py`, `services/servicio_pedidos.py`,
+  `interfaces/web/rutas/pedidos.py`, migración 051): PENDIENTE → CONVERTIDO (con `venta_id` único) o CANCELADO;
+  líneas y estados terminales inmutables; sin reserva ni descuento de stock. La conversión reutiliza el POS:
+  `/pedidos/{id}/vender` precarga el carrito (`pos.js`) y `POST /api/ventas` lleva `pedido_id`;
+  `servicio_ventas.registrar_venta` deja el pedido convertido en la misma transacción (nunca dos ventas).
+- **Comprobante del proveedor en compras** (migración 049): tipo/número/fecha opcionales, únicos por proveedor entre
+  compras activas, edición auditada (`actualizar_comprobante_compra`), filtro `referencia` y columnas en el CSV.
+- **DNI de clientes** (migración 050) y reporte `/reportes/clientes` (`repositorio_clientes.resumir_ventas_por_cliente`).
+- **Facturación sin homologación**: `services/fiscal/servicio_preparacion.py` (estado de preparación con
+  responsable por paso), `domain/fiscal/documento.armar_borrador` + `servicio_facturacion.previsualizar_venta` +
+  `GET /fiscal/ventas/{id}/borrador`, `GET /fiscal/listado` (+ CSV) y `services/fiscal/servicio_custodia.py`
+  (historia fiscal custodiada en `fiscal_privado/historia_fiscal_custodiada.json`; `verificar_al_iniciar` en el
+  lifespan; `--aceptar-historia-fiscal` en el lanzador).
+- **Backup programado** (`services/servicio_backup_programado.py`, hilo del proceso arrancado en el lifespan) y
+  **desinstalador** (`Desinstalar.ps1` / `Desinstalar.bat`, en el entregable y en la carpeta instalada).
+
 ## Estado actual
 
 - [x] Estructura de carpetas y configuración base

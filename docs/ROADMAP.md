@@ -202,3 +202,32 @@ Sin migraciones: todo se calcula sobre datos ya persistidos, de solo lectura, so
   mensajes revisados, versión 1.17.0 en programa y LEEME, instalador con validación del entregable.
 - **V1.18-G Release candidate (parcial)**: entregable instalable, LEEME, manual, changelog, tests y capturas en esta
   rama. No hay merge a `main` ni tag: V1.16 sigue sin homologación ARCA y el ejecutable sin firma.
+
+## Cierre operativo (rama `feature/cierre-roadmap-operativo`, candidato 1.18.0 para piloto no fiscal)
+
+Migraciones 048–051. Completa los pendientes del roadmap y de los requisitos originales sin rediseñar lo cerrado.
+
+- **A Gastos operativos y resultado (cerrado)**: tabla `gastos` (048) con categorías fijas, medio de pago, egreso de
+  caja atómico e idempotente, corrección descriptiva auditada y anulación con reintegro opcional; `/gastos` (OWNER)
+  con CSV; `/analitica/resultado` (ventas, anulaciones, margen bruto, gastos por categoría, resultado operativo
+  estimado por día/semana/mes, CSV); dos indicadores en el dashboard. Nunca se presenta como ganancia neta.
+- **B1 Clientes (cerrado)**: DNI opcional de personas (050, único, sin inferir históricos) y reporte
+  `/reportes/clientes` (ventas, ticket promedio, frecuencia, deuda y cobros por cliente identificado).
+- **B2 Compras (cerrado)**: comprobante del proveedor (049: tipo, número y fecha; sin duplicados activos por
+  proveedor; edición auditada; filtro por referencia; CSV).
+- **B3/B4**: margen por categoría auditado por las suites existentes; productos agotados ya cubiertos; no se
+  registran eventos de demanda no satisfecha (no hay dato real que lo sustente; queda como candidato).
+- **C1 Motivos de baja (decisión conservada)**: se mantienen VENCIMIENTO/ROTURA/ROBO/FALLA_FABRICA; no se agrega
+  un motivo genérico (la decisión de V1.11-A sigue vigente: un motivo que no dice qué pasó no sirve para analizar
+  pérdidas). Alternativa documentada: inventario físico (RECUENTO) con observaciones para casos no contemplados.
+- **C2/C3**: flujos de vencimientos, liquidación y reposición verificados por las suites existentes.
+- **D Pedidos de clientes (cerrado)**: `pedidos` + `pedido_lineas` (051), sin reserva ni descuento de stock;
+  conversión en venta reutilizando el POS (carrito precargado, `pedido_id` en la venta, pedido CONVERTIDO en la
+  misma transacción, nunca dos ventas); cancelación con motivo; ambos roles.
+- **E Facturación sin homologación (cerrado)**: ticket interno inequívoco; estado de preparación para emitir
+  (quién resuelve cada paso); borrador «SIN VALIDEZ FISCAL» por venta; listado informativo de autorizados (no es
+  Libro IVA); custodia de la historia fiscal fuera de `data/` que bloquea el arranque sobre una base que perdió
+  comprobantes informados a ARCA (`--aceptar-historia-fiscal` auditado para el técnico). Sin ARCA real.
+- **F Preparación comercial (cerrado salvo externos)**: backup diario a hora fija con la app abierta;
+  `Desinstalar.bat` que nunca toca los datos; manual y ayuda actualizados. Siguen externos: homologación ARCA,
+  certificado de firma de código, piloto de Ollama.

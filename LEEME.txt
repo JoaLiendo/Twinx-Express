@@ -1,6 +1,6 @@
 KioscoApp - Guia rapida
 =======================
-Twinx Express 1.17.0
+Twinx Express 1.18.0
 
 La version se ve al pie del menu lateral y de la pantalla de inicio de
 sesion, y en Propiedades > Detalles de KioscoApp.exe. Si pedis soporte,
@@ -95,7 +95,10 @@ KioscoApp hace backups solo:
 
   - cada vez que se CIERRA LA CAJA;
   - al abrirse, si el ultimo backup tiene mas de 24 horas;
-  - antes de cada actualizacion (ver punto 6).
+  - antes de cada actualizacion (ver punto 6);
+  - opcionalmente, todos los dias a una hora fija elegida en la pagina de
+    Backup, SOLO si KioscoApp esta abierto a esa hora (no instala ningun
+    servicio ni tarea de Windows).
 
 Ademas, el dueño puede crear uno cuando quiera desde la pagina de
 Backup: menu Configuracion > "Ir a Backup" (o la direccion
@@ -967,3 +970,34 @@ e) AL ACTUALIZAR DESDE LA VERSION 1.15
    clasificacion de otros impuestos solo (quedan "sin clasificar"). La
    facturacion queda apagada hasta configurarla. Si algo sale mal,
    segui el punto 7.
+
+
+13) NOVEDADES DE LA VERSION 1.18 (CIERRE OPERATIVO, PILOTO NO FISCAL)
+----------------------------------------------------------------------
+
+  - GASTOS (dueño): alquiler, servicios, salarios, impuestos y otros gastos
+    del negocio, con medio de pago. Si se pagan con efectivo de la caja, el
+    egreso queda registrado en la misma operacion. En Analitica > Resultado
+    se ve el RESULTADO OPERATIVO ESTIMADO (margen bruto menos gastos). Es
+    una estimacion: no descuenta impuestos ni perdidas de stock.
+  - PEDIDOS DE CLIENTES (ambos roles): tomar un pedido no reserva stock ni
+    cobra; se vende desde el POS con el carrito ya cargado y queda
+    convertido en esa venta (nunca dos veces).
+  - COMPRAS: numero y fecha del comprobante que entrega el proveedor.
+  - CLIENTES: DNI opcional en personas y reporte de ventas por cliente.
+  - FACTURACION: el panel Fiscal muestra el ESTADO DE PREPARACION (que falta
+    para emitir facturas validas y quien lo resuelve), un borrador sin
+    validez fiscal por venta y un listado informativo de comprobantes
+    autorizados (NO es el Libro IVA). El ticket de cada venta sigue siendo
+    un COMPROBANTE INTERNO, NO VALIDO COMO FACTURA. La homologacion con
+    ARCA y la habilitacion de produccion siguen pendientes (externas).
+  - BACKUP: opcion de backup diario a una hora fija, solo mientras la
+    aplicacion esta abierta (con la computadora apagada no hay backup).
+  - PROTECCION FISCAL: si la base de datos se reemplaza por una copia
+    anterior por fuera del procedimiento seguro, la aplicacion no inicia
+    y explica como recuperar la base (ver punto 9).
+
+DESINSTALAR SIN PERDER DATOS: hace doble clic en Desinstalar.bat (esta en
+C:\KioscoApp y en esta carpeta). Quita el programa y los accesos directos
+y NUNCA borra %LOCALAPPDATA%\KioscoApp (base de datos, imagenes, backups,
+versiones y material fiscal). Si reinstalas, vuelve a abrir esos datos.

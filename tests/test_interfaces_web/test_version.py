@@ -26,7 +26,7 @@ def _cookies_de_dueno() -> dict[str, str]:
 
 
 def test_la_version_definida_es_la_del_candidato_actual():
-    assert VERSION == "1.17.0"
+    assert VERSION == "1.18.0"
     assert NOMBRE_APLICACION == "Twinx Express"
     assert re.fullmatch(r"\d+\.\d+\.\d+", VERSION)
 

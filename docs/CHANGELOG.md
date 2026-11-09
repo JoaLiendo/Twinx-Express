@@ -3,6 +3,36 @@
 Formato: una entrada por versión, de la más nueva a la más vieja. Lo que cada versión implementó en detalle está en
 `README.md`; las novedades para el usuario final, en `LEEME.txt`.
 
+## 1.18.0 — candidato de cierre operativo para PILOTO NO FISCAL (rama `feature/cierre-roadmap-operativo`)
+
+Migraciones 048–051 (gastos, comprobante del proveedor, DNI de clientes, pedidos). Sin release ni tag: la
+homologación real con ARCA y la firma del ejecutable siguen pendientes y externas.
+
+- **Gastos operativos y resultado**: módulo *Gastos* (OWNER) con categorías fijas, importes en centavos, medio de
+  pago, referencia, responsable y observaciones; pagado con efectivo de la caja genera el egreso en la misma
+  transacción (idempotente, un egreso por gasto, reintegro opcional al anular); lo económico es inmutable, lo
+  descriptivo se corrige auditado. *Analítica › Resultado*: ventas, anulaciones, margen bruto, gastos por categoría y
+  **resultado operativo estimado** por período, con CSV; indicadores en el dashboard. Nunca se presenta como
+  ganancia neta.
+- **Pedidos de clientes**: módulo operativo para ambos roles (antes era un cascarón): tomar, listar, ver, cancelar con
+  motivo y **vender desde el POS** con el carrito precargado; el pedido queda convertido en esa venta en la misma
+  transacción y no se vende dos veces. No reserva ni descuenta stock, no cobra ni factura.
+- **Compras**: tipo, número y fecha del comprobante del proveedor (sin duplicados activos por proveedor, edición
+  auditada, filtro por referencia, columnas en el CSV). Nunca se confunde con el id interno.
+- **Clientes**: DNI opcional en personas (único, sin inferir históricos; búsqueda) y reporte *Ventas por cliente*
+  (ventas, ticket promedio, frecuencia, deuda y cobros).
+- **Facturación sin homologación**: panel *Fiscal* con **Estado de preparación** (qué falta y quién lo resuelve, sin
+  consultar ARCA), **borrador** por venta marcado «BORRADOR — SIN VALIDEZ FISCAL» (sin número, CAE ni QR; no
+  avanza numeración), listado informativo de comprobantes autorizados con CSV («no es el Libro IVA Ventas») y
+  **custodia de la historia fiscal** fuera de `data/`: si la base se reemplaza por una copia anterior fuera del
+  restore seguro, la aplicación no inicia (`KioscoApp.exe --aceptar-historia-fiscal` para el técnico, auditado).
+  El ticket interno sigue diciendo «COMPROBANTE INTERNO · NO VÁLIDO COMO FACTURA».
+- **Backup**: backup diario a una hora fija, solo mientras la aplicación está abierta (sin servicio ni tarea de
+  Windows).
+- **Desinstalación**: `Desinstalar.bat` / `Desinstalar.ps1` quitan el programa y los accesos directos sin tocar los
+  datos, e informan dónde quedan.
+- **Manual y ayuda** actualizados y sincronizados; menú con *Pedidos* (ambos roles) y *Gastos* (OWNER).
+
 ## 1.17.0 — candidato (rama `dev/v1.17`)
 
 Sin migraciones nuevas (la base sigue en la 047).
