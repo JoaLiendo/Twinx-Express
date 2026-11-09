@@ -90,4 +90,10 @@
   {% elif resumen.estado == 'ACTIVA' and not fiscal_activo and not principal_fiscal_vivo %}
     <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">La facturación fiscal no está configurada o no tiene certificado vigente.</p>
   {% endif %}
+  {% if es_owner and resumen.estado == 'ACTIVA' and borrador_disponible %}
+    <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+      <a id="venta-borrador-fiscal" href="/fiscal/ventas/{{ resumen.id }}/borrador" target="_blank" rel="noopener" class="font-medium text-primary hover:text-primary-hover">Ver borrador de la factura</a>
+      · vista previa sin validez fiscal: no emite, no numera ni consulta a ARCA.
+    </p>
+  {% endif %}
 </section>

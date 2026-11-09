@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass
 
 from db.conexion import obtener_conexion
-from domain.fiscal.comprobante import ComprobanteFiscal, SnapshotEmisor, SnapshotReceptor
+from domain.fiscal.comprobante import ESTADOS_AUTORIZADOS, ComprobanteFiscal, SnapshotEmisor, SnapshotReceptor
 from domain.fiscal import otros_impuestos
 from domain.fiscal.emisor import PerfilFiscal
 from domain.fiscal.iva import AlicuotaFiscal, ImportesFiscales, LineaFiscal, TratamientoIva
@@ -828,3 +828,16 @@ def actualizar_cancelacion_en_conexion(
         " WHERE id = ?",
         (estado, detalle, cancelacion_id),
     )
+
+
+def listar_autorizados_entre(inicio: str, fin_exclusivo: str) -> list[ComprobanteFiscal]:
+    """Comprobantes en estado autorizado (CAE o CAEA) con fecha de comprobante en `[inicio, fin_exclusivo)`,
+    en orden de emisión (cierre operativo, E6: listado informativo, no es el Libro IVA Ventas)."""
+    marcadores = ", ".join("?" for _ in ESTADOS_AUTORIZADOS)
+    with obtener_conexion() as conexion:
+        return _listar(
+            conexion,
+            f"estado IN ({marcadores}) AND fecha_comprobante >= ? AND fecha_comprobante < ?",
+            (*ESTADOS_AUTORIZADOS, inicio, fin_exclusivo),
+            "ORDER BY fecha_comprobante, punto_venta, tipo_comprobante, numero",
+        )

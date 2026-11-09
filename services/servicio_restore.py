@@ -36,7 +36,7 @@ from domain.backup import TIPO_SEGURIDAD
 from domain.fiscal.historia import describir, no_cubierta_por
 from excepciones import BackupInvalidoError, ErrorBackup, ErrorBaseDatos, ErrorRestore, RestoreConHistoriaFiscalError
 from services import servicio_backup
-from services.fiscal import credenciales
+from services.fiscal import credenciales, servicio_custodia
 from services.control_escrituras import ControlEscrituras
 from services.formato_backup import CARPETA_IMAGENES, NOMBRE_DB, InfoBackup, validar_backup
 
@@ -202,6 +202,8 @@ def restaurar_desde_backup(
 
     _auditar_restore(directorio_data / NOMBRE_DB, accion_auditoria, Path(ruta_zip).name, seguridad)
     logger.info("Datos restaurados desde %s", Path(ruta_zip).name)
+    # E5: la base restaurada conserva toda la historia conocida (ya verificado): la custodia la refleja.
+    servicio_custodia.actualizar_sin_fallar()
     return ResultadoRestore(info, seguridad, datos_reemplazados)
 
 

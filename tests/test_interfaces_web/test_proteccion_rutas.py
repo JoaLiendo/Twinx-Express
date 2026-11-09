@@ -23,7 +23,7 @@ _RUTAS_OWNER_Y_CASHIER = [
     "/", "/ventas", "/caja", "/caja/arqueo", "/productos", "/ventas/historial", "/ventas/1", "/clientes", "/clientes/nuevo",
     "/pedidos", "/pedidos/nuevo",
 ]
-_RUTAS_SOLO_OWNER = ["/precios", "/proveedores", "/compras", "/reportes", "/empleados", "/gastos", "/gastos/nuevo"]
+_RUTAS_SOLO_OWNER = ["/fiscal/listado", "/precios", "/proveedores", "/compras", "/reportes", "/empleados", "/gastos", "/gastos/nuevo"]
 _RUTAS_PRODUCTOS_SOLO_OWNER = ["/productos/nuevo", "/productos/importar"]
 
 

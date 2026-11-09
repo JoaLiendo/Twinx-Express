@@ -58,7 +58,7 @@ from interfaces.web.rutas import (
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
 from services import servicio_backup, servicio_catalogo_inicial
 from services.control_escrituras import control_escrituras
-from services.fiscal import servicio_facturacion, servicio_notas
+from services.fiscal import servicio_custodia, servicio_facturacion, servicio_notas
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,10 @@ async def lifespan(app: FastAPI):
             # V1.16: un comprobante que quedó "enviando" cuando se cerró la app pasa a INCIERTO (solo base);
             # su conciliación con ARCA corre después, en segundo plano, sin demorar el arranque.
             servicio_facturacion.recuperar_al_iniciar()
+            # Cierre operativo (E5): si la base perdió comprobantes que esta instalación ya informó a ARCA
+            # (reemplazada por fuera del restore seguro), no se arranca. Después se refresca la custodia.
+            servicio_custodia.verificar_al_iniciar()
+            servicio_custodia.actualizar_sin_fallar()
             if SEMBRAR_CATALOGO_INICIAL:
                 # Si falla, el error se propaga: el arranque se aborta y el operador ve el
                 # error en la consola (`lanzador.py`), en vez de seguir con un catálogo a medias.
@@ -118,6 +122,8 @@ async def lifespan(app: FastAPI):
         ).start()
         threading.Thread(target=servicio_notas.conciliar_y_aplicar, daemon=True).start()
         yield
+        # Al cerrar: la custodia refleja el último estado fiscal conocido (ver servicio_custodia).
+        servicio_custodia.actualizar_sin_fallar()
 
 
 app = FastAPI(title="Kiosco - Panel de Control", lifespan=lifespan)

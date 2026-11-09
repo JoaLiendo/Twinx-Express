@@ -18,6 +18,34 @@
   </div>
   {% endif %}
 
+  {# Cierre operativo (E2): qué falta para emitir con validez fiscal y quién lo resuelve. Solo lecturas locales. #}
+  {% set variantes_paso = {'OK': 'exito', 'PENDIENTE': 'advertencia', 'EXTERNO': 'alerta', 'ADVERTENCIA': 'info'} %}
+  {% set etiquetas_paso = {'OK': 'Listo', 'PENDIENTE': 'Falta configurar', 'EXTERNO': 'Trámite externo', 'ADVERTENCIA': 'Revisar'} %}
+  <section id="fiscal-preparacion" class="{{ tarjeta }}" data-emite-con-validez="{{ 'true' if preparacion.puede_emitir_con_validez else 'false' }}">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="{{ etiqueta }}">Facturación electrónica — Estado de preparación</p>
+        <p id="fiscal-situacion" class="mt-1 text-sm font-semibold {{ 'text-success' if preparacion.puede_emitir_con_validez else ('text-warning' if preparacion.solo_pruebas else 'text-slate-800 dark:text-slate-100') }}">{{ preparacion.situacion }}</p>
+      </div>
+      <a href="/fiscal/listado" class="btn btn-outline btn-sm" id="enlace-listado-fiscal">Comprobantes autorizados</a>
+    </div>
+    <ul class="mt-3 divide-y divide-slate-100 dark:divide-slate-800 text-sm" id="fiscal-pasos">
+      {% for paso in preparacion.pasos %}
+      <li class="py-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between" data-paso="{{ paso.clave }}" data-estado="{{ paso.estado }}">
+        <div class="min-w-0">
+          <p class="font-medium text-slate-900 dark:text-slate-100">{% if paso.enlace %}<a href="{{ paso.enlace }}" class="hover:underline">{{ paso.titulo }}</a>{% else %}{{ paso.titulo }}{% endif %}</p>
+          <p class="text-xs text-slate-600 dark:text-slate-300">{{ paso.detalle }}</p>
+        </div>
+        <div class="shrink-0 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span>{{ paso.responsable }}</span>
+          {{ ui.badge(etiquetas_paso[paso.estado], variantes_paso[paso.estado]) }}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">Que un dato esté cargado no lo da por válido: solo cuentan la confirmación de ARCA (punto de venta) y el certificado vigente. Este panel no consulta ARCA al abrirse.</p>
+  </section>
+
   <section id="fiscal-emisor" class="{{ tarjeta }}">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">

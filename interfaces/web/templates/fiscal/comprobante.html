@@ -38,7 +38,8 @@
   </style>
 </head>
 <body>
-  <div class="hoja" id="comprobante-fiscal" data-estado="{{ comprobante.estado }}">
+  <div class="hoja" id="comprobante-fiscal" data-estado="{{ 'BORRADOR' if documento.borrador else comprobante.estado }}">
+    {% if documento.borrador %}<p class="prueba" id="comprobante-borrador" style="color:#b91c1c;border-color:#b91c1c;font-size:15px">BORRADOR — SIN VALIDEZ FISCAL · sin número, sin CAE, sin QR · no se envió a ARCA</p>{% endif %}
     {% if documento.ambiente_prueba %}<p class="prueba" id="comprobante-homologacion">HOMOLOGACIÓN (PRUEBAS) · SIN VALIDEZ FISCAL</p>{% endif %}
     <div class="cabecera">
       <div class="emisor">
@@ -76,17 +77,21 @@
     </div>
     {% endif %}
     <div class="autorizacion">
-      <div id="comprobante-qr" data-qr-url="{{ documento.qr_url }}">{{ qr_svg | safe }}</div>
+      {% if not documento.borrador %}<div id="comprobante-qr" data-qr-url="{{ documento.qr_url }}">{{ qr_svg | safe }}</div>{% endif %}
       <div>
         {% for etiqueta, valor in documento.autorizacion %}<p>{{ etiqueta }}: {{ valor }}</p>{% endfor %}
       </div>
     </div>
   </div>
   <div class="acciones">
-    <button type="button" onclick="window.print()">Imprimir</button>
-    <a href="/fiscal/comprobantes/{{ comprobante.id }}/pdf">Descargar PDF</a>
-    <a href="/fiscal/comprobantes/{{ comprobante.id }}/ticket">Formato 80 mm</a>
-    <a href="/ventas/{{ comprobante.venta_id }}">Volver a la venta</a>
+    {% if documento.borrador %}
+      <a href="/ventas/{{ venta_id }}">Volver a la venta</a>
+    {% else %}
+      <button type="button" onclick="window.print()">Imprimir</button>
+      <a href="/fiscal/comprobantes/{{ comprobante.id }}/pdf">Descargar PDF</a>
+      <a href="/fiscal/comprobantes/{{ comprobante.id }}/ticket">Formato 80 mm</a>
+      <a href="/ventas/{{ comprobante.venta_id }}">Volver a la venta</a>
+    {% endif %}
   </div>
 </body>
 </html>

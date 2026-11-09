@@ -97,6 +97,8 @@ ACCIONES_VALIDAS = frozenset(
         "PEDIDO_TOMADO",
         "PEDIDO_CONVERTIDO",
         "PEDIDO_CANCELADO",
+        # Cierre operativo (E5): custodia de la historia fiscal aceptada por el técnico.
+        "HISTORIA_FISCAL_ACEPTADA",
         "VENTA_ANULADA",
         "CAJA_APERTURA",
         "CAJA_CIERRE",

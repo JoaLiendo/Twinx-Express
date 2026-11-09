@@ -296,7 +296,7 @@ def _comando_de_mantenimiento(argv):
     <version>`, `--versiones` y `--version`; `None` en una ejecución normal."""
     if len(argv) >= 3 and argv[1] in ("--actualizar", "--rollback", "--habilitar-produccion-fiscal"):
         return argv[1], argv[2]
-    if len(argv) >= 2 and argv[1] in ("--versiones", "--version"):
+    if len(argv) >= 2 and argv[1] in ("--versiones", "--version", "--aceptar-historia-fiscal"):
         return argv[1], None
     return None
 
@@ -339,6 +339,14 @@ def _ejecutar_mantenimiento(comando, argumento, aplicacion_en_uso=_puerto_ocupad
 
             with instancia_unica.exclusiva():
                 mensaje = servicio_tecnico.habilitar_produccion(argumento)
+        elif comando == "--aceptar-historia-fiscal":
+            # Cierre operativo (E5): el técnico da por perdida la historia fiscal que la base ya no tiene
+            # (custodia fuera de data/). Solo con la app cerrada; queda en la auditoría.
+            from db import instancia_unica
+            from services.fiscal import servicio_custodia
+
+            with instancia_unica.exclusiva():
+                mensaje = servicio_custodia.aceptar_historia_actual()
         else:
             registro = servicio_actualizacion.versiones_conservadas()
             lineas = [f"Instalación: {registro.instalacion or 'sin registrar'} (activa: {registro.activa or '-'})"]

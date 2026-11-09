@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+{% import "reportes/_periodo.html" as periodo %}
+
+{% block titulo %}Comprobantes autorizados{% endblock %}
+{% block header %}<h1 class="page-title">Fiscal · Comprobantes autorizados</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <a href="/fiscal" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Panel fiscal</a>
+    <a href="/fiscal/listado/exportar?fecha_desde={{ fecha_desde }}&fecha_hasta={{ fecha_hasta }}" data-accion="exportar-csv" class="btn btn-outline">Exportar CSV</a>
+  </div>
+  {% call periodo.formulario("/fiscal/listado", fecha_desde, fecha_hasta) %}{% endcall %}
+
+  <div class="alert alert-warning" id="aviso-no-libro-iva">
+    <p><strong>Listado informativo.</strong> Son los comprobantes que ARCA autorizó desde Twinx (CAE o CAEA) entre {{ fecha_desde | fecha_corta }} y {{ fecha_hasta | fecha_corta }}. <strong>No es el Libro IVA Ventas</strong>: no valida tratamientos tributarios, no incluye comprobantes emitidos por otros medios y las notas de crédito se informan aparte, sin netear. Los comprobantes de homologación no tienen validez fiscal. Los comprobantes internos y los borradores no figuran acá.</p>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-4 gap-4" id="totales-fiscales">
+    <div class="kpi"><p class="kpi-label">Comprobantes</p><p class="kpi-value" id="fiscal-total-cantidad">{{ totales.cantidad }}</p></div>
+    <div class="kpi"><p class="kpi-label">Total facturas</p><p class="kpi-value">${{ totales.total_centavos | dinero_ar }}</p><p class="kpi-detail">neto ${{ totales.neto_centavos | dinero_ar }} · IVA ${{ totales.iva_centavos | dinero_ar }}</p></div>
+    <div class="kpi"><p class="kpi-label">Notas de crédito</p><p class="kpi-value">${{ totales.notas_credito_centavos | dinero_ar }}</p><p class="kpi-detail">se informan aparte</p></div>
+    <div class="kpi"><p class="kpi-label">Por tipo</p><p class="kpi-detail mt-2">{% for nombre, cantidad, importe in totales.por_tipo %}{{ nombre }}: {{ cantidad }} (${{ importe | dinero_ar }}){{ ' · ' if not loop.last }}{% else %}—{% endfor %}</p></div>
+  </div>
+
+  {% if comprobantes %}
+    <div class="card overflow-hidden">
+      <div class="table-wrap">
+        <table class="data-table" id="tabla-comprobantes-autorizados">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-4 py-3">Fecha</th>
+              <th class="px-4 py-3">Comprobante</th>
+              <th class="px-4 py-3">Receptor</th>
+              <th class="px-4 py-3 text-right">Neto</th>
+              <th class="px-4 py-3 text-right">IVA</th>
+              <th class="px-4 py-3 text-right">Total</th>
+              <th class="px-4 py-3">Autorización</th>
+              <th class="px-4 py-3">Venta</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in comprobantes %}
+              <tr data-comprobante="{{ c.id }}" class="border-b border-slate-50 last:border-0 dark:border-slate-800">
+                <td class="px-4 py-2.5 whitespace-nowrap">{{ c.fecha_comprobante | fecha_corta }}</td>
+                <td class="px-4 py-2.5 font-medium"><a href="/fiscal/comprobantes/{{ c.id }}" class="text-primary hover:text-primary-hover">{{ c.nombre_tipo }} {{ c.numero_formateado }}</a>{% if c.ambiente != 'PRODUCCION' %} {{ ui.badge('homologación', 'advertencia') }}{% endif %}</td>
+                <td class="px-4 py-2.5 text-slate-600 dark:text-slate-400">{{ c.receptor.nombre }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">${{ c.importes.neto_centavos | dinero_ar }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums">${{ c.importes.iva_centavos | dinero_ar }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums font-semibold {{ 'text-error' if c.es_nota_credito else '' }}">{{ '−' if c.es_nota_credito else '' }}${{ c.importes.total_centavos | dinero_ar }}</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums">{{ c.modalidad }} {{ c.codigo_autorizacion }}</td>
+                <td class="px-4 py-2.5"><a href="/ventas/{{ c.venta_id }}" class="text-primary hover:text-primary-hover">#{{ c.venta_id }}</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    {{ ui.estado_vacio("Sin comprobantes autorizados en el período", "Acá aparecen solo los comprobantes que ARCA autorizó desde Twinx.") }}
+  {% endif %}
+</div>
+{% endblock %}

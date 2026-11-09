@@ -69,14 +69,13 @@ class DocumentoFiscal:
     asociado: str | None
     qr_url: str
     ambiente_prueba: bool
+    # Cierre operativo (E3): vista previa sin emitir. Sin número, CAE ni QR; nunca avanza numeración.
+    borrador: bool = False
 
 
-def armar(comprobante: ComprobanteFiscal, asociado: ComprobanteFiscal | None = None) -> DocumentoFiscal:
-    """Raises: OperacionFiscalInvalidaError si el comprobante no está autorizado (no hay documento fiscal)."""
-    if not comprobante.autorizado:
-        raise OperacionFiscalInvalidaError(
-            "El comprobante no está autorizado por ARCA: no existe documento fiscal para imprimir."
-        )
+def _contenido(comprobante) -> dict:
+    """Partes comunes del documento a partir del snapshot (emisor, receptor, renglones, totales, leyendas y
+    transparencia). `comprobante` es un `ComprobanteFiscal` o un `NuevoComprobante` (misma forma de snapshot)."""
     emisor = comprobante.emisor
     datos_emisor = [
         emisor.razon_social,
@@ -138,6 +137,28 @@ def armar(comprobante: ComprobanteFiscal, asociado: ComprobanteFiscal | None = N
         if otros is not None:
             transparencia.append((otros_impuestos.ETIQUETA_DOCUMENTO, _pesos(otros)))
 
+    return {
+        "letra": comprobante.clase,
+        "codigo_tipo": f"COD. {comprobante.tipo_comprobante:03d}",
+        "nombre_tipo": tablas_arca.NOMBRE_TIPO_COMPROBANTE.get(
+            comprobante.tipo_comprobante, f"Comprobante {comprobante.tipo_comprobante}"
+        ),
+        "emisor": datos_emisor,
+        "receptor": datos_receptor,
+        "renglones": renglones,
+        "totales": totales,
+        "leyendas": leyendas,
+        "transparencia": transparencia,
+        "ambiente_prueba": comprobante.ambiente != "PRODUCCION",
+    }
+
+
+def armar(comprobante: ComprobanteFiscal, asociado: ComprobanteFiscal | None = None) -> DocumentoFiscal:
+    """Raises: OperacionFiscalInvalidaError si el comprobante no está autorizado (no hay documento fiscal)."""
+    if not comprobante.autorizado:
+        raise OperacionFiscalInvalidaError(
+            "El comprobante no está autorizado por ARCA: no existe documento fiscal para imprimir."
+        )
     codigo = "CAEA" if comprobante.modalidad == MODALIDAD_CAEA else "CAE"
     autorizacion = [
         (f"{codigo} N°", comprobante.codigo_autorizacion),
@@ -149,19 +170,25 @@ def armar(comprobante: ComprobanteFiscal, asociado: ComprobanteFiscal | None = N
             f"Comprobante asociado: {asociado.nombre_tipo} {asociado.numero_formateado} del {_fecha(asociado.fecha_comprobante)}"
         )
     return DocumentoFiscal(
-        letra=comprobante.clase,
-        codigo_tipo=f"COD. {comprobante.tipo_comprobante:03d}",
-        nombre_tipo=comprobante.nombre_tipo,
+        **_contenido(comprobante),
         numero=comprobante.numero_formateado,
         fecha=_fecha(comprobante.fecha_comprobante),
-        emisor=datos_emisor,
-        receptor=datos_receptor,
-        renglones=renglones,
-        totales=totales,
-        leyendas=leyendas,
-        transparencia=transparencia,
         autorizacion=autorizacion,
         asociado=texto_asociado,
         qr_url=url_qr(comprobante),
-        ambiente_prueba=comprobante.ambiente != "PRODUCCION",
+    )
+
+
+def armar_borrador(nuevo) -> DocumentoFiscal:
+    """Vista previa de lo que se emitiría para una venta (cierre operativo, E3), a partir del snapshot que
+    `servicio_facturacion.preparar_principal` arma SIN escribir nada: sin número (no se avanza la
+    numeración), sin CAE ni QR (no se inventan) y marcada como BORRADOR — SIN VALIDEZ FISCAL."""
+    return DocumentoFiscal(
+        **_contenido(nuevo),
+        numero=f"{nuevo.emisor.punto_venta:05d}-BORRADOR",
+        fecha="(al emitir)",
+        autorizacion=[("BORRADOR", "SIN VALIDEZ FISCAL"), ("CAE", "no solicitado: se pide a ARCA al emitir")],
+        asociado=None,
+        qr_url="",
+        borrador=True,
     )

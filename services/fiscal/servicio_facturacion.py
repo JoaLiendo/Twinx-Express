@@ -47,6 +47,7 @@ from domain.fiscal.emisor import PerfilFiscal
 from domain.fiscal.iva import calcular_importes
 from domain.fiscal.protocolo import ComprobanteAsociado, MensajeARCA, RespuestaAutorizacion, SolicitudAutorizacion
 from domain.usuario import exigir_rol
+from domain.fiscal.documento import armar_borrador
 from excepciones import (
     ComprobanteFiscalNoEncontradoError,
     ConfiguracionFiscalError,
@@ -61,7 +62,7 @@ from excepciones import (
     TicketYaVigenteError,
     VentaNoEncontradaError,
 )
-from services.fiscal import servicio_parametros
+from services.fiscal import servicio_custodia, servicio_parametros
 from services.fiscal.gateway import GatewayARCA, gateway_para
 
 logger = logging.getLogger(__name__)
@@ -312,7 +313,11 @@ def emitir(comprobante_id: int, usuario_id: int | None) -> ComprobanteFiscal:
         if ultimo > ultimo_local:
             logger.warning("Secuencia %s: ARCA informa %s y Twinx registró hasta %s (hay emisiones externas)",
                            _clave_secuencia(comprobante)[2:], ultimo, ultimo_local)
-        return _enviar(comprobante, ultimo + 1, gateway, usuario_id)
+        try:
+            return _enviar(comprobante, ultimo + 1, gateway, usuario_id)
+        finally:
+            # E5: pase lo que pase (AUTORIZADO, INCIERTO, ENVIANDO), la custodia fuera de `data/` lo sabe.
+            servicio_custodia.actualizar_sin_fallar()
 
 
 def _exigir_otros_impuestos_conocidos(comprobante: ComprobanteFiscal) -> None:
@@ -526,7 +531,10 @@ def conciliar(comprobante_id: int, usuario_id: int | None) -> ComprobanteFiscal:
         raise OperacionFiscalInvalidaError("El comprobante es de otro ambiente: no puede conciliarse desde el actual.")
     gateway = gateway_para(perfil)
     with _candado_secuencia(_clave_secuencia(comprobante)):
-        return _conciliar_bajo_candado(comprobante_id, gateway, usuario_id)
+        try:
+            return _conciliar_bajo_candado(comprobante_id, gateway, usuario_id)
+        finally:
+            servicio_custodia.actualizar_sin_fallar()
 
 
 def _conciliar_bajo_candado(comprobante_id: int, gateway: GatewayARCA, usuario_id: int | None) -> ComprobanteFiscal:
@@ -696,3 +704,66 @@ def comprobantes_de_venta(venta_id: int) -> list[ComprobanteFiscal]:
 
 def intentos(comprobante_id: int):
     return repositorio_fiscal.listar_intentos(comprobante_id)
+
+
+# --- Cierre operativo (E3): vista previa sin emitir ----------------------------------------------------
+
+
+def previsualizar_venta(venta_id: int, usuario_id: int | None):
+    """Borrador del comprobante principal que se emitiría para la venta: mismo snapshot que la emisión
+    (`preparar_principal`), pero sin crear el comprobante, sin número, sin CAE ni QR. No escribe nada ni
+    llama a ARCA. Si la venta no podría fiscalizarse, lanza el mismo error que bloquearía la emisión.
+
+    Raises:
+        ConfiguracionFiscalError: sin perfil del emisor.
+        FiscalizacionBloqueadaError / DatosInvalidosError / VentaNoEncontradaError: lo que bloquearía emitir.
+    """
+    perfil = repositorio_fiscal.obtener_perfil()
+    if perfil is None:
+        raise ConfiguracionFiscalError("Todavía no hay perfil fiscal del emisor: no hay nada que previsualizar.")
+    if perfil.punto_venta_cae is None:
+        raise ConfiguracionFiscalError("El perfil fiscal no tiene punto de venta: completalo para previsualizar.")
+    return armar_borrador(preparar_principal(perfil, venta_id, usuario_id).nuevo)
+
+
+# --- Cierre operativo (E6): listado informativo de autorizados ---------------------------------------
+
+
+@dataclass(frozen=True)
+class TotalesListado:
+    cantidad: int
+    total_centavos: int
+    neto_centavos: int
+    iva_centavos: int
+    por_tipo: list[tuple[str, int, int]]  # (nombre del tipo, cantidad, total)
+    notas_credito_centavos: int
+
+
+def listar_autorizados(inicio: str, fin_exclusivo: str) -> list[ComprobanteFiscal]:
+    """Comprobantes autorizados (CAE o CAEA) del período, por fecha de comprobante. Solo lectura."""
+    return repositorio_fiscal.listar_autorizados_entre(inicio, fin_exclusivo)
+
+
+def totales_de(comprobantes: list[ComprobanteFiscal]) -> TotalesListado:
+    """Totales informativos: suma de importes del snapshot de cada comprobante; las notas de crédito se
+    informan aparte (no se netean contra las facturas: eso lo decide el contador)."""
+    por_tipo: dict[str, list[int]] = {}
+    total = neto = iva = notas = 0
+    for c in comprobantes:
+        acumulado = por_tipo.setdefault(c.nombre_tipo, [0, 0])
+        acumulado[0] += 1
+        acumulado[1] += c.importes.total_centavos
+        if c.es_nota_credito:
+            notas += c.importes.total_centavos
+        else:
+            total += c.importes.total_centavos
+            neto += c.importes.neto_centavos
+            iva += c.importes.iva_centavos
+    return TotalesListado(
+        cantidad=len(comprobantes),
+        total_centavos=total,
+        neto_centavos=neto,
+        iva_centavos=iva,
+        por_tipo=[(nombre, cantidad, importe) for nombre, (cantidad, importe) in sorted(por_tipo.items())],
+        notas_credito_centavos=notas,
+    )

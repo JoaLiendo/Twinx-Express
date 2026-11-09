@@ -392,3 +392,26 @@ def csv_clientes(fecha_desde: str | None, fecha_hasta: str | None) -> bytes:
             for f in reporte.filas
         ),
     )
+
+
+COLUMNAS_COMPROBANTES_FISCALES = (
+    "fecha", "tipo", "punto_venta_numero", "clase", "ambiente", "receptor", "documento_receptor", "neto", "iva",
+    "total", "autorizacion", "codigo_autorizacion", "vencimiento", "venta", "estado",
+)
+
+
+def csv_comprobantes_fiscales(inicio: str, fin_exclusivo: str) -> bytes:
+    """Listado informativo de comprobantes autorizados del período (cierre operativo, E6). No es el Libro
+    IVA Ventas: no valida tratamientos tributarios ni incluye comprobantes emitidos fuera de Twinx."""
+    from services.fiscal import servicio_facturacion
+
+    filas = (
+        (
+            c.fecha_comprobante, c.nombre_tipo, c.numero_formateado, c.clase, c.ambiente, c.receptor.nombre,
+            c.receptor.doc_nro if not c.receptor.es_anonimo else None, dinero(c.importes.neto_centavos),
+            dinero(c.importes.iva_centavos), dinero(c.importes.total_centavos), c.modalidad, c.codigo_autorizacion,
+            c.vencimiento_autorizacion, numero(c.venta_id), c.estado,
+        )
+        for c in servicio_facturacion.listar_autorizados(inicio, fin_exclusivo)
+    )
+    return generar_csv(COLUMNAS_COMPROBANTES_FISCALES, filas)

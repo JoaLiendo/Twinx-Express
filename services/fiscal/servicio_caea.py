@@ -39,7 +39,7 @@ from excepciones import (
     ErrorFiscal,
     FiscalizacionNoDisponibleError,
 )
-from services.fiscal import servicio_facturacion
+from services.fiscal import servicio_custodia, servicio_facturacion
 from services.fiscal.arca.wsfe import ErrorWSFE
 from services.fiscal.gateway import GatewayARCA, gateway_para
 
@@ -112,6 +112,7 @@ def solicitar(usuario_id: int | None, hoy: date | None = None) -> list[CAEA]:
         obtenidos.append(registrado)
         logger.info("CAEA obtenido: período=%s orden=%s ambiente=%s", periodo, orden, perfil.ambiente)
     sincronizar_numeracion(perfil, gateway)
+    servicio_custodia.actualizar_sin_fallar()
     return obtenidos
 
 
@@ -172,6 +173,7 @@ def emitir_bajo_caea(venta_id: int, usuario_id: int) -> ComprobanteFiscal:
         servicio_facturacion.auditar(conexion, usuario_id, ACCION_FISCAL_CAEA_EMITIDO, comprobante,
                                      f"emitido bajo CAEA {vigente.codigo}; informar a ARCA hasta {vigente.tope_informe}")
     logger.warning("Comprobante %s emitido bajo CAEA (contingencia)", comprobante_id)
+    servicio_custodia.actualizar_sin_fallar()
     return servicio_facturacion.obtener(comprobante_id)
 
 
@@ -247,6 +249,7 @@ def informar_pendientes() -> int:
                     f"Informe CAEA rechazado de {comprobante.numero_formateado}: {detalle}",
                 )
         informados += int(bool(aceptado))
+    servicio_custodia.actualizar_sin_fallar()
     return informados
 
 
@@ -270,6 +273,7 @@ def informar_sin_movimiento(hoy: date | None = None) -> int:
         with obtener_conexion() as conexion:
             repositorio_caea.registrar_sin_movimiento_en_conexion(conexion, caea.id, punto, respuesta_resultado, fecha, detalle)
         informados += int(respuesta_resultado == "A")
+    servicio_custodia.actualizar_sin_fallar()
     return informados
 
 

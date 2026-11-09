@@ -19,7 +19,10 @@ from domain.usuario import Usuario
 from excepciones import DatosInvalidosError
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
-from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
+from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje, respuesta_csv
+from services import servicio_exportacion_csv
+from services.servicio_reportes import limites_del_periodo
+from excepciones import ErrorAplicacion
 from domain.venta import MOTIVOS_ANULACION_VALIDOS
 from services.fiscal import (
     credenciales,
@@ -30,6 +33,7 @@ from services.fiscal import (
     servicio_notas,
     servicio_panel,
     servicio_perfil,
+    servicio_preparacion,
 )
 from services.fiscal.gateway import invalidar_tickets
 
@@ -105,7 +109,14 @@ def pdf_comprobante(comprobante_id: int) -> Response:
 
 @router.get("/fiscal", dependencies=[_SOLO_OWNER])
 def panel(request: Request):
-    contexto = {**contexto_base(request), "panel": servicio_panel.estado(), "ambientes": AMBIENTES}
+    panel = servicio_panel.estado()
+    contexto = {
+        **contexto_base(request),
+        "panel": panel,
+        "ambientes": AMBIENTES,
+        # Cierre operativo (E2): qué falta para emitir con validez fiscal y quién lo resuelve.
+        "preparacion": servicio_preparacion.preparacion(panel),
+    }
     return templates.TemplateResponse(request, "fiscal/panel.html", contexto)
 
 
@@ -351,6 +362,45 @@ def contexto_fiscal_de_venta(venta_id: int, usuario: Usuario | None) -> dict:
         "principal_fiscal_vivo": vivo,
         "fiscal_activo": servicio_panel.fiscalizacion_activa(),
         "es_owner": usuario is not None and usuario.rol == "OWNER",
+        # Cierre operativo (E3): vista previa (borrador) mientras no haya un comprobante principal vivo.
+        "borrador_disponible": vivo is None and servicio_perfil.obtener_perfil() is not None,
     }
 
 
+
+
+# --- Cierre operativo: borrador (E3) y listado informativo de autorizados (E6) --------------------------
+
+
+@router.get("/fiscal/ventas/{venta_id}/borrador", dependencies=[_SOLO_OWNER])
+def borrador_de_venta(request: Request, venta_id: int, usuario: Usuario = Depends(obtener_usuario_actual)):
+    """Vista previa de lo que se emitiría para la venta: sin número, CAE ni QR, marcada BORRADOR — SIN
+    VALIDEZ FISCAL. No crea comprobante, no avanza numeración ni llama a ARCA."""
+    try:
+        documento = servicio_facturacion.previsualizar_venta(venta_id, usuario.id)
+    except ErrorAplicacion as error:
+        return redireccionar_con_mensaje(f"/ventas/{venta_id}", "warning", f"No se puede previsualizar: {error}")
+    contexto = {"comprobante": None, "venta_id": venta_id, "documento": documento, "qr_svg": ""}
+    return templates.TemplateResponse(request, "fiscal/comprobante.html", contexto)
+
+
+@router.get("/fiscal/listado", dependencies=[_SOLO_OWNER])
+def listado_autorizados(request: Request, fecha_desde: str | None = None, fecha_hasta: str | None = None):
+    """Listado informativo de comprobantes autorizados por período con totales. No es el Libro IVA Ventas:
+    no valida tratamientos tributarios ni incluye comprobantes emitidos fuera de Twinx."""
+    desde, hasta, inicio, fin = limites_del_periodo(fecha_desde, fecha_hasta)
+    comprobantes = servicio_facturacion.listar_autorizados(inicio, fin)
+    contexto = {
+        **contexto_base(request),
+        "comprobantes": comprobantes,
+        "fecha_desde": desde,
+        "fecha_hasta": hasta,
+        "totales": servicio_facturacion.totales_de(comprobantes),
+    }
+    return templates.TemplateResponse(request, "fiscal/listado.html", contexto)
+
+
+@router.get("/fiscal/listado/exportar", dependencies=[_SOLO_OWNER])
+def exportar_autorizados(fecha_desde: str | None = None, fecha_hasta: str | None = None):
+    desde, hasta, inicio, fin = limites_del_periodo(fecha_desde, fecha_hasta)
+    return respuesta_csv(servicio_exportacion_csv.csv_comprobantes_fiscales(inicio, fin), "comprobantes_autorizados")

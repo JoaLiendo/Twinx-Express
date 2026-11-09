@@ -537,3 +537,9 @@ class PedidoNoEncontradoError(ErrorAplicacion):
 
 class PedidoNoPendienteError(ErrorAplicacion):
     """El pedido ya fue convertido en venta o cancelado: no admite otra conversión ni cambios."""
+
+
+class HistoriaFiscalPerdidaError(ErrorFiscal):
+    """La base actual no contiene comprobantes fiscales que esta instalación ya había informado a ARCA
+    (custodia fuera de `data/`, cierre operativo E5): la aplicación no inicia hasta recuperar la base o
+    aceptar la pérdida desde la consola del técnico."""

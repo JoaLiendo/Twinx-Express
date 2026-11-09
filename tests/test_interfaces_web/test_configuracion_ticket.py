@@ -115,14 +115,17 @@ class TestTicket:
         assert "Tel." not in html
         assert 'class="pie"' not in html.split("</style>")[1]  # sin leyenda si no se configuró una
 
-    def test_no_hay_leyenda_fija_de_no_factura_en_ningun_caso(self, base_datos_temporal):
+    def test_la_leyenda_de_comprobante_interno_aparece_siempre_y_nunca_parece_una_factura(self, base_datos_temporal):
+        """V1.16 / cierre operativo E1: el ticket interno dice inequívocamente que no es factura, esté o no
+        configurado el comercio, y no lleva CAE, QR fiscal ni letra de comprobante."""
         cookies = _cookies()
         sin_configurar = _ticket(cookies, _venta())
         servicio_configuracion.guardar_datos_comercio(DatosComercio("Mi Kiosco", "Calle 1", "11-1", "Gracias"))
         configurado = _ticket(cookies, _venta_otra())
 
         for html in (sin_configurar, configurado):
-            assert "No válido como factura" not in html and "Comprobante interno" not in html
+            assert 'id="ticket-no-fiscal"' in html and "COMPROBANTE INTERNO" in html and "NO VÁLIDO COMO FACTURA" in html
+            assert "CAE" not in html and "comprobante-qr" not in html and "FACTURA A" not in html
 
     def test_un_nombre_largo_sin_espacios_no_rompe_el_formato_de_80mm(self, base_datos_temporal):
         cookies = _cookies()
