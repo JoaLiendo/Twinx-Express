@@ -348,7 +348,7 @@ def test_modo_restore_error_inesperado_conserva_traceback(monkeypatch, capsys):
 
 
 def test_detecta_comandos_de_mantenimiento():
-    assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--actualizar", "C:\KioscoApp"]) == ("--actualizar", "C:\KioscoApp")
+    assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--actualizar", r"C:\KioscoApp"]) == ("--actualizar", r"C:\KioscoApp")
     assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--rollback", "1.14.0"]) == ("--rollback", "1.14.0")
     assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--versiones"]) == ("--versiones", None)
     assert lanzador._comando_de_mantenimiento(["KioscoApp.exe", "--version"]) == ("--version", None)
