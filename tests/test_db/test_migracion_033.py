@@ -66,10 +66,14 @@ class BaseAnterior:
         columnas_previas = "id, nombre, contacto_nombre, telefono, email, direccion, notas, activo, fecha_creacion"
         resultado = {t: self.con.execute(f"SELECT * FROM {t} ORDER BY rowid").fetchall() for t in _TABLAS_HISTORICAS[1:]}
         resultado["proveedores"] = self.con.execute(f"SELECT {columnas_previas} FROM proveedores ORDER BY id").fetchall()
-        # La 047 (posterior) agrega a `compras` el origen del pago, en NULL para todo lo histórico.
+        # La 047 (posterior) agrega a `compras` el origen del pago y la 049 el comprobante del proveedor, en
+        # NULL para todo lo histórico.
         columnas_compras = ", ".join(
             c[1] for c in self.con.execute("PRAGMA table_info(compras)")
-            if c[1] not in ("origen_pago", "caja_movimiento_id", "caja_movimiento_reintegro_id")
+            if c[1] not in (
+                "origen_pago", "caja_movimiento_id", "caja_movimiento_reintegro_id",
+                "comprobante_tipo", "comprobante_numero", "comprobante_fecha",
+            )
         )
         resultado["compras"] = self.con.execute(f"SELECT {columnas_compras} FROM compras ORDER BY rowid").fetchall()
         return resultado

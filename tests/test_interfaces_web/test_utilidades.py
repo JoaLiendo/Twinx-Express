@@ -43,7 +43,8 @@ def test_sin_sesion_usuario_actual_es_none_y_nav_completa(base_datos_temporal):
     contexto = contexto_base(_request_con_cookie(None))
 
     assert contexto["usuario_actual"] is None
-    assert _hrefs(contexto["nav_items"]) == _hrefs(NAV_ITEMS) - {"/pedidos"}
+    # 051: Pedidos dejó de ser un cascarón: ya no queda ninguna sección «próximamente» fuera del menú.
+    assert _hrefs(contexto["nav_items"]) == _hrefs(NAV_ITEMS)
     assert "caja_abierta" in contexto
 
 
@@ -54,7 +55,7 @@ def test_con_sesion_owner_expone_el_usuario_y_nav_completa(base_datos_temporal):
 
     assert contexto["usuario_actual"] is not None
     assert contexto["usuario_actual"].rol == "OWNER"
-    assert _hrefs(contexto["nav_items"]) == _hrefs(NAV_ITEMS) - {"/pedidos"}
+    assert _hrefs(contexto["nav_items"]) == _hrefs(NAV_ITEMS)
 
 
 def test_con_sesion_cashier_expone_el_usuario_y_nav_restringida(base_datos_temporal):
@@ -64,4 +65,7 @@ def test_con_sesion_cashier_expone_el_usuario_y_nav_restringida(base_datos_tempo
 
     assert contexto["usuario_actual"].rol == "CASHIER"
     # 021: Clientes es visible para ambos roles. V1.4: Inventario también (el CASHIER solo cuenta).
-    assert _hrefs(contexto["nav_items"]) == {"/", "/ventas", "/caja", "/productos", "/clientes", "/inventario", "/ayuda"}
+    # 051: Pedidos de clientes también (ambos roles los toman y los venden).
+    assert _hrefs(contexto["nav_items"]) == {
+        "/", "/ventas", "/pedidos", "/caja", "/productos", "/clientes", "/inventario", "/ayuda",
+    }

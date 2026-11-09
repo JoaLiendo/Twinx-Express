@@ -335,7 +335,9 @@ def test_la_migracion_048_sobre_una_base_047_queda_registrada_una_vez_y_sin_toca
     con = sqlite3.connect(ruta)
     try:
         tablas = {f[0] for f in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        assert tablas == tablas_antes | {"gastos"}
+        # Se aplican también las migraciones posteriores (051 crea `pedidos` y `pedido_lineas`): lo que importa
+        # es que no se pierda ninguna tabla previa y que `gastos` nazca vacía.
+        assert tablas_antes <= tablas and "gastos" in tablas
         assert con.execute("SELECT COUNT(*) FROM gastos").fetchone()[0] == 0
         assert con.execute("SELECT COUNT(*) FROM schema_migraciones WHERE nombre_archivo = '048_gastos_operativos.sql'").fetchone()[0] == 1
         assert con.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

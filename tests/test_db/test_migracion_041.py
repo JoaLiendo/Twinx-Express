@@ -53,13 +53,15 @@ def base_v115(tmp_path, monkeypatch):
 def _huella(ruta) -> tuple:
     con = sqlite3.connect(ruta)
     try:
+        # La 050 (posterior) agrega `clientes.dni`, en NULL para todo lo histórico (se verifica aparte).
+        columnas_clientes = ", ".join(c[1] for c in con.execute("PRAGMA table_info(clientes)") if c[1] != "dni")
         return tuple(
             con.execute(consulta).fetchall()
             for consulta in (
                 "SELECT * FROM ventas ORDER BY id",
                 "SELECT * FROM detalle_venta ORDER BY id",
                 "SELECT * FROM productos ORDER BY id",
-                "SELECT * FROM clientes ORDER BY id",
+                f"SELECT {columnas_clientes} FROM clientes ORDER BY id",
                 "SELECT * FROM caja_movimientos ORDER BY id",
             )
         )

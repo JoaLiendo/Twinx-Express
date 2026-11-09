@@ -84,7 +84,9 @@ class TestBloqueEfectivoVuelto:
             "pago_contado_centavos", "comprador_autorizado_id", "comprador_excepcional_nombre",
             "comprador_excepcional_metodo", "comprador_excepcional_detalle",
         }
-        assert campos == {"items", "tipo_pago", "clave_idempotencia", "cliente_id"} | autorizacion | credito
+        # Cierre operativo (051): `pedido_id`, el pedido de cliente que la venta concreta (no es un monto).
+        pedido = {"pedido_id"}
+        assert campos == {"items", "tipo_pago", "clave_idempotencia", "cliente_id"} | autorizacion | credito | pedido
         assert not {"monto_recibido", "vuelto", "efectivo_recibido"} & campos
-        for opcional in {"cliente_id"} | autorizacion | credito:
+        for opcional in {"cliente_id"} | autorizacion | credito | pedido:
             assert VentaEntrada.model_fields[opcional].is_required() is False

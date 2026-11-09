@@ -274,9 +274,13 @@ def test_la_columna_es_text_null_sin_default_y_va_al_final(migrada):
     posicion = nombres.index("fecha_vencimiento")
     columna = columnas[posicion]
     assert (columna[2], columna[3], columna[4], columna[5]) == ("TEXT", 0, None, 0)
-    # Va justo después de las previas; lo que sigue es de migraciones posteriores (047: origen del pago).
+    # Va justo después de las previas; lo que sigue es de migraciones posteriores (047: origen del pago;
+    # 049: comprobante del proveedor).
     assert nombres[:posicion] == [c.strip() for c in COLUMNAS_COMPRAS_PREVIAS.split(",")]
-    assert nombres[posicion + 1 :] == ["origen_pago", "caja_movimiento_id", "caja_movimiento_reintegro_id"]
+    assert nombres[posicion + 1 :] == [
+        "origen_pago", "caja_movimiento_id", "caja_movimiento_reintegro_id",
+        "comprobante_tipo", "comprobante_numero", "comprobante_fecha",
+    ]
 
 
 def test_no_se_agrega_ningun_indice_sobre_fecha_vencimiento(migrada):

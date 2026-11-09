@@ -74,9 +74,8 @@ class TestVerReportes:
         assert 'value="2024-01-31"' in respuesta.texto
 
     def test_dashboard_no_ofrece_las_secciones_proximamente(self, base_datos_temporal):
-        """Reportes ya es real (V1); Pedidos y Precios siguen siendo
-        cascarones y, desde V1.1, no aparecen en los accesos del dashboard
-        ni en el menú."""
+        """Reportes ya es real (V1), Precios desde V1.2 y Pedidos desde el cierre operativo (051): ninguna
+        sección del menú queda marcada «próximamente»."""
         cookies = _cookies_owner()
 
         respuesta = solicitud("GET", "/", cookies=cookies)
@@ -84,7 +83,7 @@ class TestVerReportes:
         assert respuesta.status == 200
         assert 'title="Reportes"' in respuesta.texto
         assert "(próximamente)" not in respuesta.texto
-        assert 'href="/pedidos"' not in respuesta.texto
+        assert 'href="/pedidos"' in respuesta.texto  # 051: pedidos de clientes reales
         assert 'href="/precios"' in respuesta.texto  # V1.2: actualización masiva real
 
     def test_las_rutas_de_pedidos_y_precios_siguen_existiendo(self, base_datos_temporal):

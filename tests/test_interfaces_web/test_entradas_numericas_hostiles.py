@@ -172,6 +172,7 @@ CASOS = [
     ),
     ("caja_abrir", "POST", "/caja/abrir", {"monto_inicial": "1.00", "descripcion": ""}, {"monto_inicial": "monto"}),
     # Cierre operativo (051): pedidos de clientes.
+    ("pedido_formulario", "GET", "/pedidos/nuevo", {"cliente_id": "{cid}"}, {"cliente_id": "entero"}),
     (
         "pedido_nuevo",
         "POST",
@@ -265,6 +266,8 @@ RUTAS_CON_ID = [
     ("POST", "/compras/{id}/anular"),
     ("GET", "/compras/{id}/vencimiento"),
     ("POST", "/compras/{id}/vencimiento"),
+    ("GET", "/compras/{id}/comprobante"),
+    ("POST", "/compras/{id}/comprobante"),
     ("GET", "/gastos/{id}"),
     ("GET", "/gastos/{id}/editar"),
     ("POST", "/gastos/{id}/editar"),
