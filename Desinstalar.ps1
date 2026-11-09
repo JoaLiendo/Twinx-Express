@@ -76,6 +76,9 @@ if ((Normalizar $destinoCompleto) -eq (Normalizar $datos) -or (Normalizar $desti
 if (((Normalizar $datos)).StartsWith((Normalizar $destinoCompleto) + '\')) {
     Fallar "La carpeta de datos ($datos) esta dentro del programa: no se puede desinstalar sin arriesgar los datos. No se toco nada."
 }
+if ($destinoCompleto.Length -le 3 -or (Normalizar $destinoCompleto) -eq (Normalizar $env:USERPROFILE)) {
+    Fallar "La carpeta indicada ($destinoCompleto) no es una carpeta de programa (raiz de una unidad o perfil del usuario). No se toco nada."
+}
 if (Aplicacion-Abierta) {
     Fallar 'Twinx Express esta abierto (puerto 8000 en uso). Cerralo y volve a ejecutar la desinstalacion. No se toco nada.'
 }
@@ -108,9 +111,16 @@ foreach ($carpeta in $carpetas) {
     }
 }
 
-# 2. Carpeta del programa (y nada mas).
+# 2. Carpeta del programa (y nada mas). Windows no deja borrar la carpeta en la que esta parado un proceso
+#    (doble clic en Desinstalar.bat dentro de C:\KioscoApp): primero se sale de ella.
 Write-Host "[1/1] Quitando el programa de $destinoCompleto..."
-Remove-Item -LiteralPath $destinoCompleto -Recurse -Force
+Set-Location -LiteralPath $env:TEMP
+[Environment]::CurrentDirectory = $env:TEMP
+try {
+    Remove-Item -LiteralPath $destinoCompleto -Recurse -Force -ErrorAction Stop
+} catch {
+    Fallar "No se pudo quitar completamente $destinoCompleto ($($_.Exception.Message)). Cerra las ventanas o programas que usen esa carpeta y volve a intentar. Los datos siguen intactos en $datos."
+}
 if (Test-Path -LiteralPath $destinoCompleto) {
     Fallar "No se pudo quitar completamente $destinoCompleto (archivos en uso?). Los datos siguen intactos en $datos."
 }

@@ -137,7 +137,7 @@ def _ejecutar_desinstalador(carpeta: Path, localappdata: Path, *argumentos: str)
 def _instalacion_con_datos(tmp_path: Path):
     bundle = _bundle_falso(tmp_path / "entregable")
     shutil.copy(DESINSTALADOR, bundle / "Desinstalar.ps1")
-    (bundle / "Desinstalar.bat").write_text("bat", encoding="utf-8")
+    shutil.copy(RAIZ / "Desinstalar.bat", bundle / "Desinstalar.bat")
     destino = tmp_path / "instalacion"
     accesos = tmp_path / "accesos"
     assert _ejecutar(bundle, "-Destino", str(destino), "-CarpetaAccesosDirectos", str(accesos)).returncode == 0
@@ -179,3 +179,48 @@ def test_desinstalar_se_niega_sin_programa_o_sobre_los_datos(tmp_path):
     sobre_datos = _ejecutar_desinstalador(destino, localappdata, "-Destino", str(datos))
     assert sobre_datos.returncode == 1 and "DATOS" in sobre_datos.stdout
     assert (datos / "data" / "kiosco.db").exists() and destino.exists()
+
+
+def _estado(destino: Path, accesos: Path, datos: Path) -> dict:
+    return {
+        "programa": destino.exists(),
+        "acceso": (accesos / "Twinx Express.lnk").exists(),
+        "base": (datos / "data" / "kiosco.db").exists(),
+        "backups": (datos / "backups" / "KioscoApp_backup_2026-11-09_210000.zip").exists(),
+        "fiscal": (datos / "fiscal_privado").exists(),
+    }
+
+
+def test_desinstalar_parado_dentro_de_la_carpeta_instalada(tmp_path):
+    """Regresión: Windows no deja borrar la carpeta que es el directorio actual de un proceso (doble clic en
+    Desinstalar.bat dentro de C:\KioscoApp). El script sale de la carpeta antes de borrarla."""
+    destino, accesos, localappdata, datos = _instalacion_con_datos(tmp_path)
+    comando = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "Desinstalar.ps1", "-Si", "-Destino", ".",
+               "-CarpetaAccesosDirectos", str(accesos)]
+    resultado = subprocess.run(comando, cwd=destino, capture_output=True, text=True, timeout=120,
+                               env={**os.environ, "LOCALAPPDATA": str(localappdata)})
+    assert resultado.returncode == 0, resultado.stdout + resultado.stderr
+    assert _estado(destino, accesos, datos) == {"programa": False, "acceso": False, "base": True, "backups": True, "fiscal": True}
+
+
+def test_desinstalar_bat_como_doble_clic_conserva_los_datos_e_informa_donde(tmp_path):
+    """El .bat real, con cmd parado en la carpeta instalada (como un doble clic desde el Explorador): quita la
+    carpeta donde está (incluido él mismo) sin errores de cmd y conserva los datos."""
+    destino, accesos, localappdata, datos = _instalacion_con_datos(tmp_path)
+    # Con la ruta completa, como lo lanza el Explorador (cmd puede tener deshabilitada la búsqueda en la carpeta actual).
+    resultado = subprocess.run(
+        ["cmd", "/c", str(destino / "Desinstalar.bat"), "-Si", "-CarpetaAccesosDirectos", str(accesos)],
+        cwd=destino, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+        env={**os.environ, "LOCALAPPDATA": str(localappdata)},
+    )
+    salida = resultado.stdout + resultado.stderr
+    assert resultado.returncode == 0, salida
+    assert _estado(destino, accesos, datos) == {"programa": False, "acceso": False, "base": True, "backups": True, "fiscal": True}
+    assert "Datos conservados" in salida and str(datos) in salida
+    assert "no se encuentra" not in salida.lower() and "cannot find" not in salida.lower()
+
+
+def test_desinstalar_se_niega_sobre_la_raiz_de_una_unidad(tmp_path):
+    destino, accesos, localappdata, datos = _instalacion_con_datos(tmp_path)
+    resultado = _ejecutar_desinstalador(destino, localappdata, "-Destino", destino.anchor)
+    assert resultado.returncode == 1 and "No se toco nada" in resultado.stdout
