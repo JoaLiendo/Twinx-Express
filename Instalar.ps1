@@ -152,6 +152,12 @@ if ($hayInstalacion) {
     # una copia en otra carpeta o PC (desde la instalacion no se reinstala sobre si misma).
     Copy-Item -LiteralPath (Join-Path $origen 'Instalar.ps1') -Destination $destinoCompleto -Force
     Copy-Item -LiteralPath (Join-Path $origen 'Instalar.bat') -Destination $destinoCompleto -Force
+    # Cierre operativo (F3): el desinstalador viaja con el programa (quita el programa, nunca los datos).
+    foreach ($desinstalador in @('Desinstalar.ps1', 'Desinstalar.bat')) {
+        if (Test-Path -LiteralPath (Join-Path $origen $desinstalador) -PathType Leaf) {
+            Copy-Item -LiteralPath (Join-Path $origen $desinstalador) -Destination $destinoCompleto -Force
+        }
+    }
     if (-not (Test-Path -LiteralPath $exeDestino -PathType Leaf)) {
         Fallar 'La copia termino sin KioscoApp.exe en el destino.'
     }

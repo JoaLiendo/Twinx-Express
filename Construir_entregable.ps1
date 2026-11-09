@@ -38,7 +38,7 @@ $dirBuild = Join-Path $raiz 'build\KioscoApp'
 $dirDist = Join-Path $raiz 'dist'
 $dirEntregable = Join-Path $dirDist 'KioscoApp'
 # V1.18: instalador (Instalar.bat + Instalar.ps1) y manual distribuible junto al ejecutable.
-$archivosDeEntrega = @('LEEME.txt', 'Restaurar_backup.bat', 'Instalar.bat', 'Instalar.ps1', 'docs\MANUAL.md')
+$archivosDeEntrega = @('LEEME.txt', 'Restaurar_backup.bat', 'Instalar.bat', 'Instalar.ps1', 'Desinstalar.bat', 'Desinstalar.ps1', 'docs\MANUAL.md')
 
 # Ruta relativa (a dist\KioscoApp) de los unicos ZIP legitimos del bundle.
 $zipsPermitidos = @('_internal\base_library.zip')
@@ -70,7 +70,7 @@ function Eliminar-ArtefactoDeBuild([string]$ruta) {
 Write-Host '[1/5] Validando el repositorio...'
 Set-Location -LiteralPath $raiz
 
-$requeridosEnRepo = @('KioscoApp.spec', 'lanzador.py', 'config.py', 'LEEME.txt', 'Restaurar_backup.bat', 'Instalar.bat', 'Instalar.ps1', 'docs\MANUAL.md', 'db\seed\catalogo_inicial.json', 'interfaces\web\static\css\twinx.css')
+$requeridosEnRepo = @('KioscoApp.spec', 'lanzador.py', 'config.py', 'LEEME.txt', 'Restaurar_backup.bat', 'Instalar.bat', 'Instalar.ps1', 'Desinstalar.bat', 'Desinstalar.ps1', 'docs\MANUAL.md', 'db\seed\catalogo_inicial.json', 'interfaces\web\static\css\twinx.css')
 foreach ($nombre in $requeridosEnRepo) {
     if (-not (Test-Path -LiteralPath (Join-Path $raiz $nombre) -PathType Leaf)) {
         Fallar "Falta '$nombre' en $raiz. Este script debe vivir en la raiz del repositorio."
@@ -145,6 +145,8 @@ $requeridosEnEntregable = @(
     @{ Ruta = 'Restaurar_backup.bat'; Tipo = 'Leaf' },
     @{ Ruta = 'Instalar.bat'; Tipo = 'Leaf' },
     @{ Ruta = 'Instalar.ps1'; Tipo = 'Leaf' },
+    @{ Ruta = 'Desinstalar.bat'; Tipo = 'Leaf' },
+    @{ Ruta = 'Desinstalar.ps1'; Tipo = 'Leaf' },
     @{ Ruta = 'MANUAL.md'; Tipo = 'Leaf' },
     @{ Ruta = '_internal\interfaces\web\templates'; Tipo = 'Container' },
     @{ Ruta = '_internal\interfaces\web\static'; Tipo = 'Container' },

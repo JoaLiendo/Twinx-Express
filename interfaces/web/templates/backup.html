@@ -67,6 +67,21 @@
     <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Dejalo vacío y guardá para desactivarlo. Es solo para copias: la base de datos activa siempre queda en esta computadora.</p>
   </section>
 
+  {# Cierre operativo (F4): backup diario a una hora fija, solo mientras la aplicación está abierta. #}
+  <section id="backup-programado" class="{{ tarjeta }}">
+    <p class="{{ etiqueta }}">Backup diario a una hora fija</p>
+    <p class="mt-1 text-sm text-slate-600 dark:text-slate-300" id="backup-programado-estado">
+      {% if hora_programada %}Programado a las <strong>{{ hora_programada.strftime('%H:%M') }}</strong>, todos los días en que la aplicación esté abierta a esa hora.{% else %}Desactivado. Hoy ya hay backup al abrir (si el último tiene más de 24 h), al cerrar la caja y manual.{% endif %}
+    </p>
+    <form method="post" action="/backup/hora-programada" class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+      <label for="hora" class="text-sm text-slate-700 dark:text-slate-300">Hora (24 h)</label>
+      <input id="hora" name="hora" type="time" value="{{ hora_programada.strftime('%H:%M') if hora_programada else '' }}"
+             class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+      <button type="submit" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">Guardar</button>
+    </form>
+    <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Solo funciona con Twinx abierto: si la computadora está apagada a esa hora, ese día no hay backup programado (no se instala ningún servicio ni tarea de Windows). Si ya hubo un backup después de esa hora, no se repite. Dejalo vacío y guardá para desactivarlo.</p>
+  </section>
+
   <section id="backup-recuperacion" class="{{ tarjeta }}">
     <p class="{{ etiqueta }}">Puntos de retorno de actualizaciones</p>
     {% if estado.puntos_de_retorno %}

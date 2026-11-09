@@ -13,7 +13,7 @@ from domain.usuario import Usuario
 from interfaces.web.auth import obtener_usuario_actual, requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
-from services import servicio_backup, servicio_destino_secundario
+from services import servicio_backup, servicio_backup_programado, servicio_destino_secundario
 from services.control_escrituras import control_escrituras
 
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
@@ -29,7 +29,13 @@ RUTA_CREAR_BACKUP = "/backup/crear"
 @router.get("/backup")
 def panel_backup(request: Request):
     estado = servicio_backup.estado_backups()
-    contexto = {**contexto_base(request), "estado": estado, "alerta_backup": estado.alerta}
+    contexto = {
+        **contexto_base(request),
+        "estado": estado,
+        "alerta_backup": estado.alerta,
+        # Cierre operativo (F4): hora del backup diario (solo con la app abierta).
+        "hora_programada": servicio_backup_programado.obtener_hora_programada(),
+    }
     return templates.TemplateResponse(request, "backup.html", contexto)
 
 
@@ -53,3 +59,15 @@ def accion_crear_backup(usuario_actual: Usuario | None = Depends(obtener_usuario
     if not resultado.ok:
         return redireccionar_con_mensaje("/backup", "error", f"No se pudo crear el backup: {resultado.error}")
     return redireccionar_con_mensaje("/backup", "success", f"Backup creado: {resultado.ruta.name}")
+
+
+@router.post("/backup/hora-programada")
+def guardar_hora_programada(hora: str = Form(""), usuario_actual: Usuario | None = Depends(obtener_usuario_actual)):
+    """Backup diario a una hora fija mientras la aplicación esté abierta (F4). Vacío lo desactiva."""
+    valor = servicio_backup_programado.guardar_hora_programada(hora, usuario_actual.id)
+    mensaje = (
+        f"Backup diario programado a las {valor:%H:%M} (solo si la aplicación está abierta a esa hora)."
+        if valor
+        else "Backup diario programado desactivado."
+    )
+    return redireccionar_con_mensaje("/backup", "success", mensaje)

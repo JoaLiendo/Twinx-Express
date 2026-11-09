@@ -56,7 +56,7 @@ from interfaces.web.rutas import (
     ventas,
 )
 from interfaces.web.utilidades import contexto_base, redireccionar_con_mensaje
-from services import servicio_backup, servicio_catalogo_inicial
+from services import servicio_backup, servicio_backup_programado, servicio_catalogo_inicial
 from services.control_escrituras import control_escrituras
 from services.fiscal import servicio_custodia, servicio_facturacion, servicio_notas
 
@@ -121,7 +121,10 @@ async def lifespan(app: FastAPI):
             daemon=True,
         ).start()
         threading.Thread(target=servicio_notas.conciliar_y_aplicar, daemon=True).start()
+        # Cierre operativo (F4): backup diario a la hora configurada, solo mientras la aplicación está abierta.
+        detener_backup_programado = servicio_backup_programado.iniciar(DIRECTORIO_BACKUPS, control_escrituras)
         yield
+        detener_backup_programado.set()
         # Al cerrar: la custodia refleja el último estado fiscal conocido (ver servicio_custodia).
         servicio_custodia.actualizar_sin_fallar()
 
