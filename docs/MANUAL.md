@@ -59,6 +59,20 @@ dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consult
 - **Historial** (*Ventas › Ver historial*): detalle de cada venta, ticket e impresión. El dueño puede **anular** una
   venta activa con un motivo: el stock vuelve y, si fue en efectivo, se registra el egreso de caja. Las ventas a cuenta
   no se anulan; las fiscalizadas se cancelan con nota de crédito desde el panel fiscal.
+- **Borrador de factura** (dueño): desde el detalle de una venta, *Ver borrador de la factura* muestra lo que se
+  emitiría, marcado «BORRADOR — SIN VALIDEZ FISCAL», sin número, CAE ni QR. No emite ni consulta a ARCA.
+
+## Pedidos
+
+- Un **pedido de cliente** es lo que alguien encarga para retirar o recibir después: cliente (o un nombre de contacto),
+  productos y cantidades, fecha de entrega y notas. Lo toman y lo venden ambos roles.
+- Tomar un pedido **no reserva ni descuenta stock, no cobra ni factura**. Los precios se guardan solo como referencia:
+  rigen los del momento de la venta.
+- *Vender en el POS* abre el punto de venta con el carrito ya cargado (hasta donde el stock de hoy lo permite) y avisa
+  si un producto cambió de precio, no tiene stock suficiente o fue dado de baja. Al cobrar, el pedido queda
+  **convertido** en esa venta y no se puede vender dos veces; un reintento devuelve la misma venta.
+- Un pedido pendiente se **cancela** con motivo (queda en el historial y en la auditoría). Nada se borra.
+- No es una compra a proveedor ni una sugerencia de reposición: eso sigue en *Compras* y *Reposición*.
 
 ## Caja
 
@@ -115,6 +129,25 @@ dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consult
   hubo pagos posteriores.
 - El precio de venta no cambia solo al comprar: se ajusta en *Precios* (actualización masiva por categoría, con vista
   previa) o editando el producto.
+- **Comprobante del proveedor** (opcional): tipo (factura, remito, ticket, otro), número tal como figura en el papel y
+  fecha. No es el número interno de la compra (ese es «#…»). Un mismo proveedor no puede tener dos compras activas con
+  el mismo comprobante; se busca por ese número en el historial y se corrige desde el detalle (queda auditado).
+
+## Gastos y resultado
+
+- *Gastos* (dueño): alquiler, electricidad, agua, Internet, servicios, salarios, mantenimiento, transporte, comisiones,
+  impuestos y tasas, u «otros» con descripción obligatoria. Cada gasto lleva fecha, importe, medio de pago, referencia,
+  responsable y observaciones.
+- **No cargues mercadería como gasto**: su costo se reconoce al vender (margen bruto); contarla también como gasto la
+  duplicaría.
+- Si se paga **con efectivo de la caja abierta**, se registra el egreso en la caja en la misma operación. Un reenvío del
+  formulario no duplica nada.
+- Lo económico (fecha, importe, medio de pago) no se edita: un gasto equivocado se **anula** con motivo (si salió de la
+  caja, decidís si el efectivo vuelve) y se carga otro. Lo descriptivo (categoría, descripción, referencia,
+  responsable, observaciones) se corrige y queda auditado.
+- *Analítica › Resultado*: ventas, anulaciones, margen bruto, gastos por categoría y **resultado operativo estimado**
+  (margen bruto − gastos) por día, semana o mes, con CSV. Es una estimación: no descuenta impuestos, pérdidas de stock
+  ni unidades sin costo conocido. El dashboard del dueño muestra los gastos y el resultado de los últimos 30 días.
 
 ## Proveedores
 
@@ -137,6 +170,8 @@ dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consult
   (más de 45: requiere autorización temporal del dueño para vender a cuenta) y crítica (60 o más: crédito cerrado hasta
   que el dueño lo reabra). Tres cierres seguidos sin regularizar vetan el crédito.
 - La ficha muestra saldo, estado, movimientos, obligaciones pendientes y el historial de crédito.
+- **DNI** (opcional, solo personas): 7 u 8 dígitos; sirve para buscar al cliente y evitar fichas duplicadas. A los
+  clientes históricos no se les inventa ninguno.
 
 ## Reportes y analítica
 
@@ -144,8 +179,9 @@ dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consult
 
 - *Ventas* por período (facturación, ticket promedio, medios de pago, por día, por vendedor, rentabilidad, anulaciones)
   y valorización del inventario a costo.
-- *Caja por sesión*, *Compras por proveedor*, *Cuenta corriente* (deuda y cobranzas), *Deuda a proveedores*, *Rotación
-  de stock* y *Pérdidas de stock* (por motivo, producto, categoría y mes). Casi todos exportan a CSV.
+- *Caja por sesión*, *Compras por proveedor*, *Cuenta corriente* (deuda y cobranzas), *Ventas por cliente* (ventas,
+  ticket promedio, cada cuántos días compra, deuda y cobros de cada cliente identificado), *Deuda a proveedores*,
+  *Rotación de stock* y *Pérdidas de stock* (por motivo, producto, categoría y mes). Casi todos exportan a CSV.
 - *Auditoría*: quién hizo qué y cuándo, paginada y exportable.
 
 **Analítica (dueño)**
@@ -157,12 +193,32 @@ dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consult
   de referencia, costo real de partidas y unidades sin costo conocido; *Precios y costos* desde el historial real;
   *Deuda* de clientes por antigüedad y a proveedores por vencimiento; *Proveedores* (compras, calificación, reclamos,
   costos, dependencia).
+- *Resultado*: margen bruto menos gastos operativos por período (ver *Gastos y resultado*).
 - Todo se calcula con datos registrados. Nada es un pronóstico; el margen bruto no es ganancia neta.
+
+## Facturación electrónica
+
+- **Comprobante interno**: toda venta imprime un ticket que dice «COMPROBANTE INTERNO · NO VÁLIDO COMO FACTURA». No
+  es una factura y no reemplaza la obligación de emitir comprobantes por un medio autorizado.
+- **Estado de preparación** (*Fiscal*, dueño): lista qué falta para emitir facturas electrónicas y quién lo resuelve:
+  perfil del emisor, certificado del ambiente (ausente, vencido, por vencer o vigente), punto de venta cargado y
+  **validado por ARCA**, tablas de ARCA, información fiscal de los productos, conectividad (se prueba con un botón,
+  nunca sola), homologación y habilitación de producción (trámite externo y del técnico), comprobantes inciertos.
+  Que un dato esté cargado no lo da por válido.
+- **Homologación**: mientras el ambiente sea *homologación*, lo que se emite lleva la marca «SIN VALIDEZ FISCAL». La
+  homologación real con ARCA y la habilitación de producción están pendientes y son externas a Twinx.
+- **Comprobantes autorizados** (*Fiscal › Comprobantes autorizados*): listado informativo por período con totales y
+  CSV. **No es el Libro IVA Ventas**: no valida tratamientos tributarios ni incluye comprobantes emitidos fuera de
+  Twinx; las notas de crédito se informan aparte.
+- **Borrador**: vista previa sin validez fiscal desde el detalle de la venta (ver *Ventas*).
 
 ## Backup
 
 - Se hace un backup **al cerrar la caja**, **al abrir la aplicación** si el último tiene más de 24 horas y **antes de
   cada actualización**. El dueño puede crear uno cuando quiera en *Configuración › Backup*.
+- **Backup diario a una hora fija** (opcional): en *Backup* se elige la hora; se hace solo si Twinx está abierto a esa
+  hora (no se instala ningún servicio ni tarea de Windows: con la computadora apagada no hay backup) y no se repite si
+  ya hubo uno después de esa hora.
 - Cada backup es un ZIP con la base de datos y las imágenes, verificado antes de darse por bueno. Se guardan en
   `%LOCALAPPDATA%\KioscoApp\backups`: 14 diarios, 8 semanales, 12 mensuales, los últimos 10 manuales y los 3 previos a
   actualizaciones.
@@ -170,11 +226,19 @@ dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consult
   backup se copia y se verifica ahí; si el disco no está, el backup principal se hace igual y la página avisa.
 - El material fiscal (certificados y claves) no viaja en los backups: se vuelve a importar en una instalación nueva.
 
-## Restauración, actualización y vuelta atrás
+## Restauración, actualización, vuelta atrás y desinstalación
 
 - **Restaurar** (con la aplicación cerrada): doble clic en `Restaurar_backup.bat` y arrastrar el ZIP. Antes de
   reemplazar nada se guarda una copia de seguridad de los datos actuales; un backup dañado o de una versión más nueva
   no se restaura. Si hay comprobantes fiscales que el backup no conoce, el restore se bloquea: lo concilia el soporte.
+- **Custodia de la historia fiscal**: Twinx guarda, fuera de la carpeta de datos, qué comprobantes ya informó a ARCA.
+  Si la base se reemplaza por una copia anterior por fuera del procedimiento (versión vieja del programa, copia
+  manual), la aplicación **no inicia** y explica cómo recuperar la base; el técnico puede aceptar la pérdida con
+  `KioscoApp.exe --aceptar-historia-fiscal` (queda auditado).
+- **Desinstalar**: `Desinstalar.bat` (en la carpeta del programa o del entregable) quita el programa y los accesos
+  directos, y **nunca borra los datos**: la base, las imágenes, los backups, las versiones archivadas y el material
+  fiscal quedan en `%LOCALAPPDATA%\KioscoApp` y el script lo informa. Reinstalar vuelve a abrir esos mismos datos.
+  Borrar los datos es una decisión manual y deliberada, fuera de Twinx.
 - **Actualizar** (soporte): `Instalar.bat` desde la carpeta de la versión nueva detecta la instalación y ejecuta la
   actualización con backup previo verificado, copia de la versión anterior y migración de la base. Si la migración
   falla, vuelve sola a la versión anterior.
@@ -198,6 +262,9 @@ dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consult
 - **Facturación ARCA**: una venta queda «incierta» cuando ARCA no respondió; se concilia sola al reiniciar o desde el
   panel fiscal. Mientras una esté incierta no se emite la siguiente. No reinstales ni restaures datos sin consultar al
   soporte.
+- **«La base de datos actual NO contiene comprobantes fiscales…»** al abrir: la base fue reemplazada por una copia
+  anterior fuera del procedimiento seguro. No sigas: restaurá el backup de tipo SEGURIDAD más reciente (o la carpeta
+  `data_reemplazada_*`) con `Restaurar_backup.bat`, o pedí al soporte que evalúe `--aceptar-historia-fiscal`.
 - **Pedir ayuda**: *Configuración › Soporte* muestra la versión, dónde están los datos y permite descargar un
   diagnóstico (sin datos de negocio ni contraseñas) para enviar al soporte técnico.
 

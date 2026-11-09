@@ -5,7 +5,7 @@
 
 {% block content %}
 {% set es_owner = usuario_actual and usuario_actual.es_owner %}
-{% set secciones = [('guia-rapida', 'Guía rápida'), ('primeros-pasos', 'Primeros pasos'), ('ventas', 'Ventas'), ('caja', 'Caja'), ('inventario', 'Inventario'), ('compras', 'Compras'), ('proveedores', 'Proveedores'), ('clientes', 'Clientes'), ('reportes', 'Reportes y analítica'), ('backup', 'Backup'), ('restauracion', 'Restauración'), ('problemas', 'Solución de problemas'), ('asistente', 'Asistente')] %}
+{% set secciones = [('guia-rapida', 'Guía rápida'), ('primeros-pasos', 'Primeros pasos'), ('ventas', 'Ventas'), ('pedidos', 'Pedidos'), ('caja', 'Caja'), ('inventario', 'Inventario'), ('compras', 'Compras'), ('gastos', 'Gastos y resultado'), ('proveedores', 'Proveedores'), ('clientes', 'Clientes'), ('reportes', 'Reportes y analítica'), ('facturacion', 'Facturación electrónica'), ('backup', 'Backup'), ('restauracion', 'Restauración y desinstalación'), ('problemas', 'Solución de problemas'), ('asistente', 'Asistente')] %}
 <div class="page">
   <div class="grid grid-cols-1 lg:grid-cols-[14rem_1fr] gap-6">
     <nav class="lg:sticky lg:top-4 self-start card p-3" aria-label="Secciones de la ayuda" id="ayuda-indice">
@@ -64,6 +64,18 @@
           <li><strong>Mercadería vencida</strong>: si una venta solo se puede completar con unidades vencidas, el sistema pide autorización del dueño (su usuario y contraseña en el puesto del cajero) y lo registra en la auditoría.</li>
           <li><strong>Después de cobrar</strong>: se puede imprimir el ticket interno y, si la facturación ARCA está configurada, la factura; <em>Nueva venta</em> deja todo listo para el siguiente cliente.</li>
           <li><strong>Historial</strong> (<em>Ventas › Ver historial</em>): detalle de cada venta, ticket e impresión. El dueño puede <strong>anular</strong> una venta activa con un motivo: el stock vuelve y, si fue en efectivo, se registra el egreso de caja. Las ventas a cuenta no se anulan; las fiscalizadas se cancelan con nota de crédito desde el panel fiscal.</li>
+          <li><strong>Borrador de factura</strong> (dueño): desde el detalle de una venta, <em>Ver borrador de la factura</em> muestra lo que se emitiría, marcado «BORRADOR — SIN VALIDEZ FISCAL», sin número, CAE ni QR. No emite ni consulta a ARCA.</li>
+        </ul>
+      </section>
+
+      <section id="pedidos" class="card p-6">
+        <h2>Pedidos</h2>
+        <ul>
+          <li>Un <strong>pedido de cliente</strong> es lo que alguien encarga para retirar o recibir después: cliente (o un nombre de contacto), productos y cantidades, fecha de entrega y notas. Lo toman y lo venden ambos roles.</li>
+          <li>Tomar un pedido <strong>no reserva ni descuenta stock, no cobra ni factura</strong>. Los precios se guardan solo como referencia: rigen los del momento de la venta.</li>
+          <li><em>Vender en el POS</em> abre el punto de venta con el carrito ya cargado (hasta donde el stock de hoy lo permite) y avisa si un producto cambió de precio, no tiene stock suficiente o fue dado de baja. Al cobrar, el pedido queda <strong>convertido</strong> en esa venta y no se puede vender dos veces; un reintento devuelve la misma venta.</li>
+          <li>Un pedido pendiente se <strong>cancela</strong> con motivo (queda en el historial y en la auditoría). Nada se borra.</li>
+          <li>No es una compra a proveedor ni una sugerencia de reposición: eso sigue en <em>Compras</em> y <em>Reposición</em>.</li>
         </ul>
       </section>
 
@@ -108,6 +120,18 @@
           <li>Al confirmar, el stock sube, el costo vigente del producto pasa a ser el de la compra y queda en el historial de precios. Un reenvío del mismo formulario no duplica la compra.</li>
           <li>El listado filtra por proveedor, fechas, estado y producto; el detalle muestra líneas, vencimientos y partidas. Una compra se puede <strong>anular</strong> con motivo si el stock todavía lo permite; a crédito, revierte el cargo al proveedor si no hubo pagos posteriores.</li>
           <li>El precio de venta no cambia solo al comprar: se ajusta en <em>Precios</em> (actualización masiva por categoría, con vista previa) o editando el producto.</li>
+          <li><strong>Comprobante del proveedor</strong> (opcional): tipo (factura, remito, ticket, otro), número tal como figura en el papel y fecha. No es el número interno de la compra (ese es «#…»). Un mismo proveedor no puede tener dos compras activas con el mismo comprobante; se busca por ese número en el historial y se corrige desde el detalle (queda auditado).</li>
+        </ul>
+      </section>
+
+      <section id="gastos" class="card p-6">
+        <h2>Gastos y resultado</h2>
+        <ul>
+          <li><em>Gastos</em> (dueño): alquiler, electricidad, agua, Internet, servicios, salarios, mantenimiento, transporte, comisiones, impuestos y tasas, u «otros» con descripción obligatoria. Cada gasto lleva fecha, importe, medio de pago, referencia, responsable y observaciones.</li>
+          <li><strong>No cargues mercadería como gasto</strong>: su costo se reconoce al vender (margen bruto); contarla también como gasto la duplicaría.</li>
+          <li>Si se paga <strong>con efectivo de la caja abierta</strong>, se registra el egreso en la caja en la misma operación. Un reenvío del formulario no duplica nada.</li>
+          <li>Lo económico (fecha, importe, medio de pago) no se edita: un gasto equivocado se <strong>anula</strong> con motivo (si salió de la caja, decidís si el efectivo vuelve) y se carga otro. Lo descriptivo (categoría, descripción, referencia, responsable, observaciones) se corrige y queda auditado.</li>
+          <li><em>Analítica › Resultado</em>: ventas, anulaciones, margen bruto, gastos por categoría y <strong>resultado operativo estimado</strong> (margen bruto − gastos) por día, semana o mes, con CSV. Es una estimación: no descuenta impuestos, pérdidas de stock ni unidades sin costo conocido. El dashboard del dueño muestra los gastos y el resultado de los últimos 30 días.</li>
         </ul>
       </section>
 
@@ -128,6 +152,7 @@
           <li><strong>Cuenta corriente</strong>: una venta a cuenta carga el saldo; los <em>cobros</em> en efectivo entran a la caja y se imputan a las ventas más viejas (el dueño puede imputar a mano).</li>
           <li><strong>Crédito</strong>: nadie tiene crédito hasta que el dueño define una política en <em>Configuración</em> (general, por tipo de cliente o individual). El estado se calcula por antigüedad de la deuda: normal, regular (más de 30 días), demorado (más de 45: requiere autorización temporal del dueño para vender a cuenta) y crítica (60 o más: crédito cerrado hasta que el dueño lo reabra). Tres cierres seguidos sin regularizar vetan el crédito.</li>
           <li>La ficha muestra saldo, estado, movimientos, obligaciones pendientes y el historial de crédito.</li>
+          <li><strong>DNI</strong> (opcional, solo personas): 7 u 8 dígitos; sirve para buscar al cliente y evitar fichas duplicadas. A los clientes históricos no se les inventa ninguno.</li>
         </ul>
       </section>
 
@@ -136,14 +161,26 @@
         <h3>Reportes (dueño)</h3>
         <ul>
           <li><em>Ventas</em> por período (facturación, ticket promedio, medios de pago, por día, por vendedor, rentabilidad, anulaciones) y valorización del inventario a costo.</li>
-          <li><em>Caja por sesión</em>, <em>Compras por proveedor</em>, <em>Cuenta corriente</em> (deuda y cobranzas), <em>Deuda a proveedores</em>, <em>Rotación de stock</em> y <em>Pérdidas de stock</em> (por motivo, producto, categoría y mes). Casi todos exportan a CSV.</li>
+          <li><em>Caja por sesión</em>, <em>Compras por proveedor</em>, <em>Cuenta corriente</em> (deuda y cobranzas), <em>Ventas por cliente</em> (ventas, ticket promedio, cada cuántos días compra, deuda y cobros de cada cliente identificado), <em>Deuda a proveedores</em>, <em>Rotación de stock</em> y <em>Pérdidas de stock</em> (por motivo, producto, categoría y mes). Casi todos exportan a CSV.</li>
           <li><em>Auditoría</em>: quién hizo qué y cuándo, paginada y exportable.</li>
         </ul>
         <h3>Analítica (dueño)</h3>
         <ul>
           <li><em>Resumen</em>: últimos 30 días contra los 30 anteriores, stock que necesita atención y <strong>decisiones a revisar hoy</strong> (márgenes negativos, costos que subieron sin ajustar el precio, clientes críticos o demorados, proveedores con deuda vencida o con seguimiento, reposición pendiente).</li>
           <li><em>Ventas</em> por día, semana o mes con comparaciones; <em>Margen bruto</em> por producto, categoría o período distinguiendo costo de referencia, costo real de partidas y unidades sin costo conocido; <em>Precios y costos</em> desde el historial real; <em>Deuda</em> de clientes por antigüedad y a proveedores por vencimiento; <em>Proveedores</em> (compras, calificación, reclamos, costos, dependencia).</li>
+          <li><em>Resultado</em>: margen bruto menos gastos operativos por período (ver <em>Gastos y resultado</em>).</li>
           <li>Todo se calcula con datos registrados. Nada es un pronóstico; el margen bruto no es ganancia neta.</li>
+        </ul>
+      </section>
+
+      <section id="facturacion" class="card p-6">
+        <h2>Facturación electrónica</h2>
+        <ul>
+          <li><strong>Comprobante interno</strong>: toda venta imprime un ticket que dice «COMPROBANTE INTERNO · NO VÁLIDO COMO FACTURA». No es una factura y no reemplaza la obligación de emitir comprobantes por un medio autorizado.</li>
+          <li><strong>Estado de preparación</strong> (<em>Fiscal</em>, dueño): lista qué falta para emitir facturas electrónicas y quién lo resuelve: perfil del emisor, certificado del ambiente (ausente, vencido, por vencer o vigente), punto de venta cargado y <strong>validado por ARCA</strong>, tablas de ARCA, información fiscal de los productos, conectividad (se prueba con un botón, nunca sola), homologación y habilitación de producción (trámite externo y del técnico), comprobantes inciertos. Que un dato esté cargado no lo da por válido.</li>
+          <li><strong>Homologación</strong>: mientras el ambiente sea <em>homologación</em>, lo que se emite lleva la marca «SIN VALIDEZ FISCAL». La homologación real con ARCA y la habilitación de producción están pendientes y son externas a Twinx.</li>
+          <li><strong>Comprobantes autorizados</strong> (<em>Fiscal › Comprobantes autorizados</em>): listado informativo por período con totales y CSV. <strong>No es el Libro IVA Ventas</strong>: no valida tratamientos tributarios ni incluye comprobantes emitidos fuera de Twinx; las notas de crédito se informan aparte.</li>
+          <li><strong>Borrador</strong>: vista previa sin validez fiscal desde el detalle de la venta (ver <em>Ventas</em>).</li>
         </ul>
       </section>
 
@@ -151,6 +188,7 @@
         <h2>Backup</h2>
         <ul>
           <li>Se hace un backup <strong>al cerrar la caja</strong>, <strong>al abrir la aplicación</strong> si el último tiene más de 24 horas y <strong>antes de cada actualización</strong>. El dueño puede crear uno cuando quiera en <em>Configuración › Backup</em>.</li>
+          <li><strong>Backup diario a una hora fija</strong> (opcional): en <em>Backup</em> se elige la hora; se hace solo si Twinx está abierto a esa hora (no se instala ningún servicio ni tarea de Windows: con la computadora apagada no hay backup) y no se repite si ya hubo uno después de esa hora.</li>
           <li>Cada backup es un ZIP con la base de datos y las imágenes, verificado antes de darse por bueno. Se guardan en <code>%LOCALAPPDATA%\KioscoApp\backups</code>: 14 diarios, 8 semanales, 12 mensuales, los últimos 10 manuales y los 3 previos a actualizaciones.</li>
           <li><strong>Segundo destino</strong> (muy recomendado): una carpeta en otro disco, pendrive o carpeta sincronizada con la nube. Cada backup se copia y se verifica ahí; si el disco no está, el backup principal se hace igual y la página avisa.</li>
           <li>El material fiscal (certificados y claves) no viaja en los backups: se vuelve a importar en una instalación nueva.</li>
@@ -158,9 +196,11 @@
       </section>
 
       <section id="restauracion" class="card p-6">
-        <h2>Restauración, actualización y vuelta atrás</h2>
+        <h2>Restauración, actualización, vuelta atrás y desinstalación</h2>
         <ul>
           <li><strong>Restaurar</strong> (con la aplicación cerrada): doble clic en <code>Restaurar_backup.bat</code> y arrastrar el ZIP. Antes de reemplazar nada se guarda una copia de seguridad de los datos actuales; un backup dañado o de una versión más nueva no se restaura. Si hay comprobantes fiscales que el backup no conoce, el restore se bloquea: lo concilia el soporte.</li>
+          <li><strong>Custodia de la historia fiscal</strong>: Twinx guarda, fuera de la carpeta de datos, qué comprobantes ya informó a ARCA. Si la base se reemplaza por una copia anterior por fuera del procedimiento (versión vieja del programa, copia manual), la aplicación <strong>no inicia</strong> y explica cómo recuperar la base; el técnico puede aceptar la pérdida con <code>KioscoApp.exe --aceptar-historia-fiscal</code> (queda auditado).</li>
+          <li><strong>Desinstalar</strong>: <code>Desinstalar.bat</code> (en la carpeta del programa o del entregable) quita el programa y los accesos directos, y <strong>nunca borra los datos</strong>: la base, las imágenes, los backups, las versiones archivadas y el material fiscal quedan en <code>%LOCALAPPDATA%\KioscoApp</code> y el script lo informa. Reinstalar vuelve a abrir esos mismos datos. Borrar los datos es una decisión manual y deliberada, fuera de Twinx.</li>
           <li><strong>Actualizar</strong> (soporte): <code>Instalar.bat</code> desde la carpeta de la versión nueva detecta la instalación y ejecuta la actualización con backup previo verificado, copia de la versión anterior y migración de la base. Si la migración falla, vuelve sola a la versión anterior.</li>
           <li><strong>Volver a la versión anterior</strong> (soporte): <code>KioscoApp.exe --rollback &lt;versión&gt;</code> desde la copia conservada en <code>%LOCALAPPDATA%\KioscoApp\versiones</code>; restaura el programa y los datos de antes de actualizar. <code>KioscoApp.exe --versiones</code> lista lo conservado.</li>
         </ul>
@@ -176,6 +216,7 @@
           <li><strong>Alerta de backup fallido</strong>: revisá espacio en disco y permisos, creá un backup manual desde <em>Backup</em>; si vuelve a fallar, pedí soporte.</li>
           <li><strong>La aplicación no arranca o muestra «base de datos dañada»</strong>: no borres nada; restaurá el backup más reciente con <code>Restaurar_backup.bat</code> o contactá al soporte con el registro (<code>%LOCALAPPDATA%\KioscoApp\logs\twinx_express.log</code>).</li>
           <li><strong>Facturación ARCA</strong>: una venta queda «incierta» cuando ARCA no respondió; se concilia sola al reiniciar o desde el panel fiscal. Mientras una esté incierta no se emite la siguiente. No reinstales ni restaures datos sin consultar al soporte.</li>
+          <li><strong>«La base de datos actual NO contiene comprobantes fiscales…»</strong> al abrir: la base fue reemplazada por una copia anterior fuera del procedimiento seguro. No sigas: restaurá el backup de tipo SEGURIDAD más reciente (o la carpeta <code>data_reemplazada_*</code>) con <code>Restaurar_backup.bat</code>, o pedí al soporte que evalúe <code>--aceptar-historia-fiscal</code>.</li>
           <li><strong>Pedir ayuda</strong>: {% if es_owner %}<a href="/soporte" class="text-primary hover:underline">Soporte técnico</a> muestra la versión, dónde están los datos y permite descargar un diagnóstico para enviar{% else %}avisale al dueño: en <em>Soporte técnico</em> puede descargar un diagnóstico para enviar{% endif %}.</li>
         </ul>
       </section>
