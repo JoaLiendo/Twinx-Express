@@ -25,6 +25,17 @@
 
 - **V1.18 Twinx Asistente (rama `feature/v1.18-asistente-ia`, sin migraciones)**: asistente conversacional de solo lectura en un panel lateral disponible en todas las pantallas para ambos roles (`domain/asistente.py`, `services/asistente/`, `interfaces/web/rutas/asistente.py`, `static/js/asistente.js`, componentes `chat-*` del design system). Ayuda integrada sin IA para las preguntas objetivo (ventas por período o sesión de caja, más vendidos, vencimientos, reposición, margen negativo, reclamos, deuda de clientes y a proveedores, guías de uso) con datos reales de los servicios existentes y accesos a la pantalla relacionada; permisos por herramienta decididos en el backend (el CASHIER no obtiene costos, márgenes, reposición ni proveedores por el chat); adaptador de Ollama local opcional (solo loopback, timeouts, `num_ctx`/`num_predict`/`keep_alive` acotados, sin dependencias ni telemetría) configurable en Configuración › Asistente y probado con un servidor HTTP falso y un proveedor determinista (Ollama no está instalado en la máquina de desarrollo: sin prueba con modelo real). Sin acciones de escritura. Detalle en `docs/ASISTENTE.md` y `README.md` («Twinx Asistente (V1.18)»).
 
+- **Cierre operativo (rama `feature/cierre-roadmap-operativo`, candidato 1.18.0, migraciones 048–051)**: gastos
+  operativos con egreso de caja atómico e idempotente, anulación con reintegro y corrección auditada; resultado
+  operativo estimado (`/analitica/resultado`, CSV, dashboard); pedidos de clientes operativos (sin reserva de stock,
+  conversión atómica en venta desde el POS precargado, cancelación con motivo, ambos roles); comprobante del
+  proveedor en compras (tipo/número/fecha, sin duplicados activos, edición auditada, filtro y CSV); DNI opcional de
+  clientes y reporte de ventas por cliente; facturación sin homologación (estado de preparación con responsable por
+  paso, borrador «SIN VALIDEZ FISCAL», listado informativo de autorizados, custodia de la historia fiscal fuera de
+  `data/` que bloquea el arranque sobre una base que perdió comprobantes informados y `--aceptar-historia-fiscal`
+  auditado); backup diario a hora fija con la app abierta; `Desinstalar.bat` que nunca toca los datos; manual y
+  ayuda sincronizados. Matriz de alcance y decisiones en `docs/CIERRE_OPERATIVO.md`.
+
 ## 2. Pendiente / fuera de alcance actual
 
 - **V1.16 antes del release**: smoke real contra ARCA homologación con un certificado de homologación del emisor (WSAA, FEDummy, FEParamGetPtosVenta, tablas, FECompUltimoAutorizado y un FECAESolicitar). Hasta entonces V1.16 queda como candidato (`dev/v1.16`).
@@ -35,7 +46,14 @@
 - **Próximas versiones**: V1.17 analítica, V1.18 preparación comercial / piloto (alcance en `docs/ROADMAP.md`).
 - **Limitaciones aceptadas de V1.15**: la retención clasifica los backups viejos por su manifiesto sin revalidarlos (los puntos de retorno, el restore y el rollback sí validan completo); el rollback y la actualización son comandos de técnico, sin interfaz web; la copia al segundo destino corre en segundo plano y su resultado se ve en Backup (no en el toast); no hay backup programado por horario (cierre de caja + uno diario al abrir).
 - **Limitaciones aceptadas**: de V1.12, en `docs/V1.12_PARTIDAS.md`. De V1.13: revertir un ajuste FALLA_FABRICA que ya originó un reclamo no lo bloquea ni lo marca en el reclamo (se resuelve cambiando el estado del reclamo); la documentación fiscal es solo metadata (sin archivos); no hay contador global de reclamos en el dashboard. De V1.14: el pago al contado de una venta mixta es solo en efectivo (como los cobros); el estado de crédito se evalúa al abrir la ficha, vender a cuenta o cobrar (sin proceso en segundo plano: el listado de clientes no muestra el estado); no hay calificación subjetiva de clientes; las ventas de cuenta corriente (también mixtas) siguen sin anularse.
-- **Pedidos**: solo cascarón visual (`interfaces/web/rutas/pedidos.py`), sin lógica de negocio; oculto del menú.
+- **Cierre operativo (limitaciones aceptadas)**: el resultado operativo es una estimación (no descuenta impuestos,
+  ajustes contables, pérdidas de stock ni unidades sin costo conocido); un pedido no reserva stock (se valida al
+  cobrar) y la venta puede diferir de lo pedido; el backup programado solo corre con la aplicación abierta; la
+  custodia de la historia fiscal es una cota inferior (se refresca al arrancar, al cerrar y tras cada cambio
+  fiscal); el listado de comprobantes autorizados no es el Libro IVA Ventas; no se agregó un motivo genérico de baja
+  de stock (decisión de V1.11-A conservada; alternativa: inventario físico con observaciones); sin comparación lado
+  a lado de proveedores por producto, sin listado de movimientos de caja entre sesiones, sin eventos de demanda no
+  satisfecha. Detalle en `docs/CIERRE_OPERATIVO.md`.
 - **Órdenes de compra persistentes, imputación de pagos a compras concretas, notificaciones de vencimientos, saldos a favor y devoluciones a proveedor**: NO implementadas (candidatas de una versión futura).
 - **CLI (`interfaces/cli/main.py`)**: interfaz secundaria no sincronizada con los flujos de la web.
 - Anulación de ventas a cuenta corriente (incluidas las mixtas de V1.14): no permitida (decisión de V1.3).

@@ -72,3 +72,26 @@ instalador (V1.18-A) es necesario para distribuir la 1.17.0 de todos modos.
 
 Con los dos primeros pendientes resueltos fuera del código, el corte `14035b4` ya es distribuible como 1.17.0
 (build real validado, instalación, actualización y rollback probados con ejecutables).
+
+## Cierre operativo (2026-11-09): rama `feature/cierre-roadmap-operativo`
+
+Nace de `feature/v1.18-asistente-ia` en `b913b6a` (árbol limpio, igual al remoto) y agrega las migraciones
+048–051 (gastos, comprobante del proveedor, DNI, pedidos), la facturación utilizable sin homologación, la custodia
+de la historia fiscal, el backup programado y el desinstalador. Versión candidata `1.18.0`. Estado y evidencia en
+`docs/CIERRE_OPERATIVO.md` y `PROGRESS.md`.
+
+Secuencia propuesta (la ejecuta Joaquín, fuera de Claude; nada se mueve sin su autorización):
+
+```bash
+# 1. dev/v1.17 queda en el corte certificado 14035b4 (fast-forward, sin reescribir nada)
+git switch dev/v1.17 && git merge --ff-only feature/v1.17-analitica && git push origin dev/v1.17
+
+# 2. dev/v1.18 nace del commit certificado del cierre operativo (ver PROGRESS.md §3 para el HEAD exacto)
+git switch -c dev/v1.18 <commit certificado de feature/cierre-roadmap-operativo> && git push -u origin dev/v1.18
+
+# 3. main, dev/v1.16 y los tags v1.16.0-rc* no se tocan: la 1.16 espera la homologación con ARCA
+```
+
+El candidato instalable 1.18.0 sirve para un **piloto no fiscal** (ventas con comprobante interno, gastos,
+pedidos, compras, clientes, backups). Para distribuir con facturación fiscal siguen faltando la homologación real
+con ARCA y la habilitación de producción; para instalar sin advertencia de SmartScreen, el certificado de firma.
