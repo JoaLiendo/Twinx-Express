@@ -219,6 +219,13 @@ class Compra:
     origen_pago: str | None = None
     caja_movimiento_id: int | None = None
     caja_movimiento_reintegro_id: int | None = None
+    comprobante_tipo: str | None = None
+    comprobante_numero: str | None = None
+    comprobante_fecha: str | None = None
+
+    @property
+    def comprobante(self) -> "ComprobanteProveedor":
+        return ComprobanteProveedor(self.comprobante_tipo, self.comprobante_numero, self.comprobante_fecha)
 
 
 @dataclass
@@ -260,6 +267,13 @@ class ResumenCompra:
     fecha_vencimiento: str | None = None
     origen_pago: str | None = None
     caja_movimiento_reintegro_id: int | None = None
+    comprobante_tipo: str | None = None
+    comprobante_numero: str | None = None
+    comprobante_fecha: str | None = None
+
+    @property
+    def comprobante(self) -> "ComprobanteProveedor":
+        return ComprobanteProveedor(self.comprobante_tipo, self.comprobante_numero, self.comprobante_fecha)
 
 
 @dataclass(frozen=True)
@@ -295,6 +309,13 @@ class LineaCompraExportable:
     total_centavos: int
     motivo_anulacion: str | None
     fecha_anulacion: str | None
+    comprobante_tipo: str | None = None
+    comprobante_numero: str | None = None
+    comprobante_fecha: str | None = None
+
+    @property
+    def comprobante(self) -> "ComprobanteProveedor":
+        return ComprobanteProveedor(self.comprobante_tipo, self.comprobante_numero, self.comprobante_fecha)
 
 
 @dataclass(frozen=True)
@@ -401,3 +422,73 @@ def decidir_costo_de_linea(
     if costo_vigente_centavos != linea.precio_nuevo_centavos:
         return DecisionCosto(linea.producto_id, None, CAUSA_COSTO_ACTUAL_DIVERGENTE)
     return DecisionCosto(linea.producto_id, linea.precio_anterior_centavos, None)
+
+
+# --- Comprobante del proveedor (cierre operativo, migración 049) -----------------------------------
+
+TIPOS_COMPROBANTE_PROVEEDOR: tuple[tuple[str, str], ...] = (
+    ("FACTURA", "Factura"),
+    ("REMITO", "Remito"),
+    ("TICKET", "Ticket"),
+    ("OTRO", "Otro"),
+)
+ETIQUETAS_TIPO_COMPROBANTE = dict(TIPOS_COMPROBANTE_PROVEEDOR)
+LARGO_MAXIMO_NUMERO_COMPROBANTE = 40
+
+
+@dataclass(frozen=True)
+class ComprobanteProveedor:
+    """Identificación del comprobante que entregó el proveedor (nunca el id interno de la compra). Los tres
+    campos vacíos significan "sin comprobante cargado"."""
+
+    tipo: str | None = None
+    numero: str | None = None
+    fecha: str | None = None
+
+    @property
+    def cargado(self) -> bool:
+        return self.numero is not None
+
+    @property
+    def texto(self) -> str:
+        if not self.cargado:
+            return "Sin comprobante"
+        etiqueta = ETIQUETAS_TIPO_COMPROBANTE.get(self.tipo or "", self.tipo or "")
+        return f"{etiqueta} {self.numero}" + (f" ({self.fecha})" if self.fecha else "")
+
+
+def validar_comprobante_proveedor(
+    tipo: str | None, numero: str | None, fecha: str | None, fecha_compra: str | None = None
+) -> ComprobanteProveedor:
+    """Normaliza y valida el comprobante del proveedor. Tipo y número van juntos; la fecha es opcional y no
+    puede ser posterior al día en que se cargó la compra (el proveedor emite antes o el mismo día).
+
+    Raises:
+        DatosInvalidosError: tipo desconocido, número sin tipo (o al revés), número demasiado largo, fecha
+            inválida o posterior a la compra.
+    """
+    tipo_limpio = (tipo or "").strip() or None
+    numero_limpio = " ".join((numero or "").split()) or None
+    fecha_limpia = (fecha or "").strip() or None
+    if tipo_limpio is None and numero_limpio is None and fecha_limpia is None:
+        return ComprobanteProveedor()
+    if tipo_limpio is not None and tipo_limpio not in ETIQUETAS_TIPO_COMPROBANTE:
+        raise DatosInvalidosError("El tipo de comprobante del proveedor no es válido.")
+    if (tipo_limpio is None) != (numero_limpio is None):
+        raise DatosInvalidosError("Indicá el tipo y el número del comprobante del proveedor (o dejá los dos vacíos).")
+    if numero_limpio is None:
+        raise DatosInvalidosError("La fecha del comprobante requiere su tipo y número.")
+    if len(numero_limpio) > LARGO_MAXIMO_NUMERO_COMPROBANTE:
+        raise DatosInvalidosError(
+            f"El número del comprobante no puede superar los {LARGO_MAXIMO_NUMERO_COMPROBANTE} caracteres."
+        )
+    if fecha_limpia is not None:
+        try:
+            if not _FECHA_VENCIMIENTO.fullmatch(fecha_limpia):
+                raise ValueError
+            valor = date.fromisoformat(fecha_limpia)
+        except ValueError:
+            raise DatosInvalidosError("La fecha del comprobante del proveedor no es válida.") from None
+        if fecha_compra and valor > date.fromisoformat(fecha_compra[:10]):
+            raise DatosInvalidosError("La fecha del comprobante no puede ser posterior al día de la compra.")
+    return ComprobanteProveedor(tipo_limpio, numero_limpio, fecha_limpia)

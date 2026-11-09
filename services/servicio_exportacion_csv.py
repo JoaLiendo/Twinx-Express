@@ -75,17 +75,18 @@ def generar_csv_por_lotes(
 
 COLUMNAS_COMPRAS = (
     "compra", "fecha", "proveedor", "estado", "codigo_barras", "producto", "cantidad", "costo_unitario",
-    "subtotal", "total_compra", "motivo_anulacion", "fecha_anulacion",
+    "subtotal", "total_compra", "motivo_anulacion", "fecha_anulacion", "comprobante_tipo", "comprobante_numero",
+    "comprobante_fecha",
 )
 
 
 def csv_compras(
     proveedor_id: int | None, fecha_desde: str | None, fecha_hasta: str | None, estado: str | None,
-    producto_id: int | None,
+    producto_id: int | None, referencia: str | None = None,
 ) -> bytes:
     """Compras que cumplen los filtros del listado (todas, sin paginar), una fila por línea. `total_compra` es
     el total de la compra completa y se repite en cada una de sus líneas: no sumarlo entre filas."""
-    lineas = servicio_compras.listar_lineas_para_exportar(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    lineas = servicio_compras.listar_lineas_para_exportar(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id, referencia)
     return generar_csv(
         COLUMNAS_COMPRAS,
         (
@@ -93,7 +94,7 @@ def csv_compras(
                 numero(linea.compra_id), linea.fecha, linea.proveedor_nombre, linea.estado, linea.codigo_barras,
                 linea.producto_nombre, numero(linea.cantidad), dinero(linea.costo_unitario_centavos),
                 dinero(linea.subtotal_centavos), dinero(linea.total_centavos), linea.motivo_anulacion,
-                linea.fecha_anulacion,
+                linea.fecha_anulacion, linea.comprobante_tipo, linea.comprobante_numero, linea.comprobante_fecha,
             )
             for linea in lineas
         ),

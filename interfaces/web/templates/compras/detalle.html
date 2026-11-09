@@ -61,6 +61,16 @@
       {% endif %}
       {% endif %}
     </div>
+    <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Comprobante del proveedor</p>
+        <p id="compra-comprobante" class="mt-1 font-medium text-slate-900 dark:text-slate-100">{{ compra.comprobante.texto }}</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400">El número interno de esta compra en Twinx es #{{ compra.id }}.</p>
+      </div>
+      {% if compra.estado == 'ACTIVA' %}
+        <a href="/compras/{{ compra.id }}/comprobante" id="enlace-editar-comprobante" class="btn btn-outline btn-sm">{{ 'Corregir comprobante' if compra.comprobante.cargado else 'Cargar comprobante' }}</a>
+      {% endif %}
+    </div>
     {% if compra.observaciones %}
       <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
         <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Observaciones</p>

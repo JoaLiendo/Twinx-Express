@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block titulo %}Comprobante del proveedor{% endblock %}
+{% block header %}<h1 class="page-title">Comprobante del proveedor · compra #{{ compra.id }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <div class="card p-5 sm:p-8">
+    <dl class="grid grid-cols-2 gap-4 text-sm mb-5">
+      <div>
+        <dt class="label">Proveedor</dt>
+        <dd class="font-medium text-slate-900 dark:text-slate-100">{{ compra.proveedor_nombre }}</dd>
+      </div>
+      <div>
+        <dt class="label">Cargada en Twinx</dt>
+        <dd class="font-medium text-slate-900 dark:text-slate-100">{{ compra.fecha }} (compra interna #{{ compra.id }})</dd>
+      </div>
+      <div class="col-span-2">
+        <dt class="label">Comprobante actual</dt>
+        <dd class="font-medium text-slate-900 dark:text-slate-100">{{ compra.comprobante.texto }}</dd>
+      </div>
+    </dl>
+
+    <form method="post" action="/compras/{{ compra.id }}/comprobante" class="space-y-5" id="form-comprobante">
+      <div>
+        <label class="label-lg">Tipo</label>
+        <select name="comprobante_tipo" class="input input-lg">
+          <option value="">Sin comprobante</option>
+          {% for clave, etiqueta in tipos_comprobante %}
+            <option value="{{ clave }}" {{ 'selected' if compra.comprobante_tipo == clave else '' }}>{{ etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label-lg">Número</label>
+        <input type="text" name="comprobante_numero" maxlength="40" value="{{ compra.comprobante_numero or '' }}" placeholder="Tal como figura en el papel del proveedor" class="input input-lg" />
+      </div>
+      <div>
+        <label class="label-lg">Fecha del comprobante <span class="muted font-normal">(opcional)</span></label>
+        <input type="date" name="comprobante_fecha" value="{{ compra.comprobante_fecha or '' }}" class="input input-lg" />
+        <p class="mt-1.5 text-xs muted">Dejá todo vacío para quitar el comprobante. Es identificación: no cambia el total, el stock ni el saldo del proveedor. El cambio queda en la auditoría.</p>
+      </div>
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="btn btn-primary">Guardar comprobante</button>
+        <a href="/compras/{{ compra.id }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

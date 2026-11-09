@@ -11,7 +11,12 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 
-from domain.compra import MOTIVOS_ANULACION_COMPRA_VALIDOS, ItemCompra, parsear_vencimientos_de_producto
+from domain.compra import (
+    MOTIVOS_ANULACION_COMPRA_VALIDOS,
+    TIPOS_COMPROBANTE_PROVEEDOR,
+    ItemCompra,
+    parsear_vencimientos_de_producto,
+)
 from domain.dinero import texto_a_centavos
 from domain.evaluacion_proveedor import ESTRELLAS_CON_ADVERTENCIA
 from domain.usuario import Usuario
@@ -40,7 +45,7 @@ from services.servicio_stock import ListaReposicion
 router = APIRouter(dependencies=[Depends(requiere_rol("OWNER"))])
 
 
-def _filtros_de_compras(proveedor_id: str, fecha_desde: str, fecha_hasta: str, estado: str, producto_id: str) -> dict:
+def _filtros_de_compras(proveedor_id: str, fecha_desde: str, fecha_hasta: str, estado: str, producto_id: str, referencia: str = "") -> dict:
     """Filtros del historial de compras tal como los entiende la pantalla; la exportación usa los mismos."""
     return {
         "proveedor_id": entero_opcional(proveedor_id, "El proveedor elegido no es válido."),
@@ -48,15 +53,17 @@ def _filtros_de_compras(proveedor_id: str, fecha_desde: str, fecha_hasta: str, e
         "fecha_hasta": fecha_hasta or None,
         "estado": estado if estado and estado != "TODOS" else None,
         "producto_id": entero_opcional(producto_id, "El producto elegido no es válido."),
+        "referencia": referencia.strip()[:60] or None,
     }
 
 
 @router.get("/compras/exportar")
 def exportar_compras(
-    proveedor_id: str = "", fecha_desde: str = "", fecha_hasta: str = "", estado: str = "", producto_id: str = ""
+    proveedor_id: str = "", fecha_desde: str = "", fecha_hasta: str = "", estado: str = "", producto_id: str = "",
+    referencia: str = "",
 ):
     """CSV de TODAS las compras que cumplen los filtros de la pantalla (no solo la página visible)."""
-    filtros = _filtros_de_compras(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    filtros = _filtros_de_compras(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id, referencia)
     return respuesta_csv(servicio_exportacion_csv.csv_compras(**filtros), "compras")
 
 
@@ -68,9 +75,10 @@ def listar_compras(
     fecha_hasta: str = "",
     estado: str = "",
     producto_id: str = "",
+    referencia: str = "",
     pagina: str = "1",
 ):
-    filtros = _filtros_de_compras(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    filtros = _filtros_de_compras(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id, referencia)
     resultado = servicio_compras.listar_pagina(**filtros, pagina=pagina_o_primera(pagina))
     id_proveedor, id_producto, estado_filtro = filtros["proveedor_id"], filtros["producto_id"], filtros["estado"]
     contexto = {
@@ -86,6 +94,7 @@ def listar_compras(
         "estado": estado_filtro or "",
         "fecha_desde": fecha_desde or "",
         "fecha_hasta": fecha_hasta or "",
+        "referencia": referencia.strip()[:60],
         "hay_filtro_activo": any(valor is not None for valor in filtros.values()),
         "pagina": resultado.pagina,
         "total_paginas": resultado.total_paginas,
@@ -107,6 +116,7 @@ def respuesta_formulario_compra(request: Request, precarga: ListaReposicion | No
         "estrellas_con_advertencia": ESTRELLAS_CON_ADVERTENCIA,
         "productos": servicio_stock.listar_todos(),
         "clave_idempotencia": nueva_clave_idempotencia(),
+        "tipos_comprobante": TIPOS_COMPROBANTE_PROVEEDOR,
         "precarga": precarga,
     }
     return templates.TemplateResponse(request, "compras/nueva.html", contexto)
@@ -129,6 +139,9 @@ def crear_compra(
     fecha_vencimiento: str = Form(""),
     vencimiento_producto: list[str] = Form([]),
     origen_pago: str = Form(""),
+    comprobante_tipo: str = Form(""),
+    comprobante_numero: str = Form(""),
+    comprobante_fecha: str = Form(""),
     usuario_actual: Usuario | None = Depends(obtener_usuario_actual),
 ):
     # `vencimiento_producto` (V1.12-B) va alineado con las líneas; un formulario anterior que no lo envía
@@ -151,6 +164,9 @@ def crear_compra(
         fecha_vencimiento=fecha_vencimiento or None,
         # RC4: al contado se exige la elección del formulario ("" se rechaza); a crédito no aplica.
         origen_pago=origen_pago if condicion_pago == "CONTADO" else None,
+        comprobante_tipo=comprobante_tipo,
+        comprobante_numero=comprobante_numero,
+        comprobante_fecha=comprobante_fecha,
     )
     return redireccionar_con_mensaje(
         f"/compras/{compra.id}", "success", f"Compra #{compra.id} registrada correctamente."
@@ -215,6 +231,33 @@ def accion_editar_vencimiento(
             f"/compras/{compra_id}", "warning", "Sin cambios: el vencimiento ya tenía ese valor."
         )
     return redireccionar_con_mensaje(f"/compras/{compra_id}", "success", "Vencimiento actualizado correctamente.")
+
+
+@router.get("/compras/{compra_id}/comprobante")
+def formulario_editar_comprobante(request: Request, compra_id: int):
+    compra = servicio_compras.obtener_resumen_por_id(compra_id)
+    if compra is None:
+        return redireccionar_con_mensaje("/compras", "error", "La compra no existe.")
+    if compra.estado != "ACTIVA":
+        return redireccionar_con_mensaje(f"/compras/{compra_id}", "error", "El comprobante de una compra anulada no se modifica.")
+    contexto = {**contexto_base(request), "compra": compra, "tipos_comprobante": TIPOS_COMPROBANTE_PROVEEDOR}
+    return templates.TemplateResponse(request, "compras/comprobante.html", contexto)
+
+
+@router.post("/compras/{compra_id}/comprobante")
+def accion_editar_comprobante(
+    compra_id: int,
+    comprobante_tipo: str = Form(""),
+    comprobante_numero: str = Form(""),
+    comprobante_fecha: str = Form(""),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    modificada = servicio_compras.actualizar_comprobante_compra(
+        compra_id, usuario_actual.id, comprobante_tipo, comprobante_numero, comprobante_fecha
+    )
+    if not modificada:
+        return redireccionar_con_mensaje(f"/compras/{compra_id}", "warning", "Sin cambios: el comprobante ya tenía esos datos.")
+    return redireccionar_con_mensaje(f"/compras/{compra_id}", "success", "Comprobante del proveedor actualizado.")
 
 
 @router.get("/compras/{compra_id}/anular")

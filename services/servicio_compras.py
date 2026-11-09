@@ -29,6 +29,7 @@ from domain.caja import MovimientoCaja
 from domain.compra import (
     ORIGEN_CAJA_ACTUAL,
     Compra,
+    ComprobanteProveedor,
     CompraDeProducto,
     DecisionCosto,
     DetalleCompra,
@@ -38,6 +39,7 @@ from domain.compra import (
     ResumenCompra,
     UltimaCompraDeProducto,
     decidir_costo_de_linea,
+    validar_comprobante_proveedor,
     validar_condicion_pago,
     validar_fecha_vencimiento,
     validar_motivo_anulacion_compra,
@@ -55,6 +57,7 @@ from excepciones import (
     CajaCerradaError,
     ClaveIdempotenciaReutilizadaError,
     CompraConPagosPosterioresError,
+    ComprobanteProveedorDuplicadoError,
     CompraNoEncontradaError,
     CompraYaAnuladaError,
     DatosInvalidosError,
@@ -78,6 +81,9 @@ def registrar_compra(
     condicion_pago: str = "CONTADO",
     fecha_vencimiento: str | None = None,
     origen_pago: str | None = None,
+    comprobante_tipo: str | None = None,
+    comprobante_numero: str | None = None,
+    comprobante_fecha: str | None = None,
 ) -> Compra:
     """Registra un ingreso de mercadería con sus líneas de detalle,
     incrementa el stock de cada producto y actualiza su costo vigente.
@@ -137,6 +143,7 @@ def registrar_compra(
     if not items:
         raise DatosInvalidosError("Una compra debe tener al menos un ítem.")
     validar_condicion_pago(condicion_pago)
+    comprobante_reintento = validar_comprobante_proveedor(comprobante_tipo, comprobante_numero, comprobante_fecha)
     origen_pago = validar_origen_pago(
         condicion_pago, origen_pago, sum(item.cantidad * item.costo_unitario_centavos for item in items)
     )
@@ -167,9 +174,11 @@ def registrar_compra(
                 if (
                     existente.proveedor_id, existente.observaciones, existente.condicion_pago,
                     existente.fecha_vencimiento, existente.origen_pago, lineas_originales,
+                    (comprobante_reintento.tipo, comprobante_reintento.numero, comprobante_reintento.fecha),
                     ingresos or vencimientos_pedidos,
                 ) != (
                     proveedor_id, observaciones, condicion_pago, fecha_vencimiento, origen_pago, lineas_pedidas,
+                    (existente.comprobante_tipo, existente.comprobante_numero, existente.comprobante_fecha),
                     vencimientos_pedidos,
                 ):
                     raise ClaveIdempotenciaReutilizadaError(MENSAJE_FORMULARIO_REENVIADO_CON_OTROS_DATOS)
@@ -185,6 +194,9 @@ def registrar_compra(
         fecha_compra = repositorio_compras.obtener_fecha_hora_actual_en_conexion(conexion)
         validar_fecha_vencimiento(condicion_pago, fecha_compra, fecha_vencimiento)
         validar_vencimientos_de_producto(items, fecha_compra)
+        comprobante = validar_comprobante_proveedor(comprobante_tipo, comprobante_numero, comprobante_fecha, fecha_compra)
+        if comprobante.cargado:
+            _exigir_comprobante_libre(conexion, proveedor_id, comprobante)
 
         proveedor = repositorio_proveedores.obtener_por_id_en_conexion(conexion, proveedor_id)
         if proveedor is None:
@@ -255,6 +267,7 @@ def registrar_compra(
             fecha_vencimiento=fecha_vencimiento,
             origen_pago=origen_pago,
             caja_movimiento_id=caja_movimiento_id,
+            comprobante=comprobante,
         )
 
         # V1.12: cada línea ingresa como una partida por vencimiento de producto, con el costo real de la compra.
@@ -283,6 +296,8 @@ def registrar_compra(
             sufijo_condicion = f" (contado, con efectivo de la caja: egreso #{caja_movimiento_id})"
         else:
             sufijo_condicion = " (contado, pagada fuera de la caja)"
+        if comprobante.cargado:
+            sufijo_condicion += f"; comprobante {comprobante.texto}"
         repositorio_auditoria.registrar_en_conexion(
             conexion,
             usuario_id,
@@ -489,6 +504,53 @@ def anular_compra(
     return anulada
 
 
+def _exigir_comprobante_libre(
+    conexion, proveedor_id: int, comprobante: ComprobanteProveedor, excluir_compra_id: int | None = None
+) -> None:
+    repetida = repositorio_compras.existe_comprobante_activo_en_conexion(
+        conexion, proveedor_id, comprobante.tipo or "", comprobante.numero or "", excluir_compra_id
+    )
+    if repetida is not None:
+        raise ComprobanteProveedorDuplicadoError(
+            f"El comprobante {comprobante.texto} de este proveedor ya está cargado en la compra #{repetida}. "
+            "Si es otro comprobante, revisá el número; si es la misma compra, no la cargues de nuevo."
+        )
+
+
+def actualizar_comprobante_compra(
+    compra_id: int, usuario_id: int, tipo: str | None, numero: str | None, fecha: str | None
+) -> bool:
+    """Asigna, corrige o quita (todo vacío) el comprobante del proveedor de una compra ACTIVA (migración 049).
+    Es identificación, no dinero: no toca total, stock, costo ni saldo. Devuelve `False` si no cambió nada.
+
+    Raises:
+        CompraNoEncontradaError, CompraYaAnuladaError, DatosInvalidosError, ComprobanteProveedorDuplicadoError.
+    """
+    with obtener_conexion(inmediata=True) as conexion:
+        compra = repositorio_compras.obtener_por_id_en_conexion(conexion, compra_id)
+        if compra is None:
+            raise CompraNoEncontradaError(f"No existe una compra con id {compra_id}.")
+        if compra.estado != "ACTIVA":
+            raise CompraYaAnuladaError(f"La compra {compra_id} está anulada: su comprobante ya no se modifica.")
+        comprobante = validar_comprobante_proveedor(tipo, numero, fecha, compra.fecha)
+        if comprobante == compra.comprobante:
+            return False
+        if comprobante.cargado:
+            _exigir_comprobante_libre(conexion, compra.proveedor_id, comprobante, excluir_compra_id=compra_id)
+        if not repositorio_compras.actualizar_comprobante_en_conexion(conexion, compra_id, comprobante):
+            raise CompraYaAnuladaError(f"La compra {compra_id} ya no está activa.")
+        repositorio_auditoria.registrar_en_conexion(
+            conexion,
+            usuario_id,
+            "COMPROBANTE_COMPRA_MODIFICADO",
+            "COMPRA",
+            compra_id,
+            f"Compra #{compra_id}: comprobante {compra.comprobante.texto} → {comprobante.texto}",
+        )
+    logger.info("Comprobante de compra modificado: id=%s usuario_id=%s", compra_id, usuario_id)
+    return True
+
+
 def _texto_vencimiento(fecha_vencimiento: str | None) -> str:
     return fecha_vencimiento or "sin vencimiento"
 
@@ -587,14 +649,15 @@ def _total_paginas(total: int) -> int:
 
 def _filtros_validados(
     proveedor_id: int | None, fecha_desde: str | None, fecha_hasta: str | None, estado: str | None,
-    producto_id: int | None,
-) -> tuple[int | None, str | None, str | None, str | None, int | None]:
+    producto_id: int | None, referencia: str | None = None,
+) -> tuple[int | None, str | None, str | None, str | None, int | None, str | None]:
+
     """Filtros del historial ya validados, en el orden que esperan las consultas del repositorio (que recibe
     días completos). Los usan por igual el listado y su exportación."""
     desde, _ = limites_de_fechas(fecha_desde, fecha_hasta, _MENSAJE_FECHAS)  # valida; el repositorio recibe días
     if estado is not None and estado not in ESTADOS_COMPRA_FILTRABLES:
         raise DatosInvalidosError("El estado de compra elegido no es válido.")
-    return proveedor_id, desde, fecha_hasta or None, estado, producto_id
+    return proveedor_id, desde, fecha_hasta or None, estado, producto_id, (referencia or "").strip()[:60] or None
 
 
 def listar_lineas_para_exportar(
@@ -603,10 +666,11 @@ def listar_lineas_para_exportar(
     fecha_hasta: str | None = None,
     estado: str | None = None,
     producto_id: int | None = None,
+    referencia: str | None = None,
 ) -> list[LineaCompraExportable]:
     """Líneas de TODAS las compras que cumplen los filtros de `listar_pagina` (mismas validaciones), sin paginar."""
     return repositorio_compras.listar_lineas_para_exportar(
-        *_filtros_validados(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+        *_filtros_validados(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id, referencia)
     )
 
 
@@ -616,6 +680,7 @@ def listar_pagina(
     fecha_hasta: str | None = None,
     estado: str | None = None,
     producto_id: int | None = None,
+    referencia: str | None = None,
     pagina: int = 1,
 ) -> PaginaCompras:
     """Una página del historial de compras con filtros combinables (proveedor, rango de días, estado y
@@ -625,7 +690,7 @@ def listar_pagina(
         DatosInvalidosError: si una fecha no es `AAAA-MM-DD` válida, `desde` es posterior a `hasta`, o el
             estado no es `ACTIVA` ni `ANULADA` (vacío o `None` no filtra).
     """
-    filtros = _filtros_validados(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    filtros = _filtros_validados(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id, referencia)
     total = repositorio_compras.contar_resumen(*filtros)
     total_paginas = _total_paginas(total)
     pagina_efectiva = min(max(1, pagina), total_paginas)

@@ -18,6 +18,7 @@ from db.conexion import obtener_conexion
 from domain.compra import (
     Compra,
     CompraDeProducto,
+    ComprobanteProveedor,
     DetalleCompra,
     ItemCompra,
     LineaCompraExportable,
@@ -30,7 +31,8 @@ from domain.reportes_operativos import ComprasDeProveedor
 
 _COLUMNAS_COMPRA = (
     "id, proveedor_id, usuario_id, fecha, observaciones, total_centavos, estado, costo_trazable, condicion_pago, "
-    "fecha_vencimiento, origen_pago, caja_movimiento_id, caja_movimiento_reintegro_id"
+    "fecha_vencimiento, origen_pago, caja_movimiento_id, caja_movimiento_reintegro_id, comprobante_tipo, "
+    "comprobante_numero, comprobante_fecha"
 )
 _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centavos, subtotal_centavos"
 
@@ -45,7 +47,7 @@ _COLUMNAS_DETALLE = "id, compra_id, producto_id, cantidad, costo_unitario_centav
 _CONSULTA_RESUMEN_BASE = """
     SELECT
         c.id, c.fecha, c.observaciones, c.total_centavos, c.condicion_pago, c.fecha_vencimiento,
-        c.origen_pago, c.caja_movimiento_reintegro_id,
+        c.origen_pago, c.caja_movimiento_reintegro_id, c.comprobante_tipo, c.comprobante_numero, c.comprobante_fecha,
         c.estado, c.motivo_anulacion, c.observaciones_anulacion, c.fecha_anulacion,
         p.nombre AS proveedor_nombre,
         u.nombre_completo AS usuario_nombre_completo,
@@ -74,6 +76,9 @@ def _fila_a_resumen(fila: sqlite3.Row) -> ResumenCompra:
         fecha_vencimiento=fila["fecha_vencimiento"],
         origen_pago=fila["origen_pago"],
         caja_movimiento_reintegro_id=fila["caja_movimiento_reintegro_id"],
+        comprobante_tipo=fila["comprobante_tipo"],
+        comprobante_numero=fila["comprobante_numero"],
+        comprobante_fecha=fila["comprobante_fecha"],
     )
 
 
@@ -105,6 +110,9 @@ def _fila_a_compra(fila: sqlite3.Row) -> Compra:
         origen_pago=fila["origen_pago"],
         caja_movimiento_id=fila["caja_movimiento_id"],
         caja_movimiento_reintegro_id=fila["caja_movimiento_reintegro_id"],
+        comprobante_tipo=fila["comprobante_tipo"],
+        comprobante_numero=fila["comprobante_numero"],
+        comprobante_fecha=fila["comprobante_fecha"],
     )
 
 
@@ -161,6 +169,7 @@ def registrar_compra_con_detalle(
     fecha_vencimiento: str | None = None,
     origen_pago: str | None = None,
     caja_movimiento_id: int | None = None,
+    comprobante: ComprobanteProveedor | None = None,
 ) -> Compra:
     """Inserta la compra y su detalle dentro de la conexión recibida.
 
@@ -187,17 +196,20 @@ def registrar_compra_con_detalle(
     `origen_pago` / `caja_movimiento_id` (RC4, migración 047): el egreso de una compra pagada con la caja
     ya fue creado en esta misma transacción por el servicio; los triggers exigen su coherencia.
     """
+    comprobante = comprobante or ComprobanteProveedor()
     fila_compra = conexion.execute(
         f"""
         INSERT INTO compras
             (proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia, costo_trazable,
-             condicion_pago, fecha_vencimiento, fecha, origen_pago, caja_movimiento_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now', 'localtime')), ?, ?)
+             condicion_pago, fecha_vencimiento, fecha, origen_pago, caja_movimiento_id,
+             comprobante_tipo, comprobante_numero, comprobante_fecha)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now', 'localtime')), ?, ?, ?, ?, ?)
         RETURNING {_COLUMNAS_COMPRA}
         """,
         (
             proveedor_id, usuario_id, observaciones, total_centavos, clave_idempotencia,
             int(eventos_costo is not None), condicion_pago, fecha_vencimiento, fecha, origen_pago, caja_movimiento_id,
+            comprobante.tipo, comprobante.numero, comprobante.fecha,
         ),
     ).fetchone()
 
@@ -308,6 +320,33 @@ def actualizar_vencimiento_en_conexion(
     return cursor.rowcount == 1
 
 
+def existe_comprobante_activo_en_conexion(
+    conexion: sqlite3.Connection, proveedor_id: int, tipo: str, numero: str, excluir_compra_id: int | None = None
+) -> int | None:
+    """Id de otra compra ACTIVA del mismo proveedor con ese tipo y número de comprobante, o `None`. Es la
+    verificación con mensaje claro; el índice único parcial de la 049 es la última defensa."""
+    fila = conexion.execute(
+        """
+        SELECT id FROM compras
+        WHERE proveedor_id = ? AND comprobante_tipo = ? AND comprobante_numero = ? AND estado = 'ACTIVA'
+          AND (? IS NULL OR id <> ?)
+        LIMIT 1
+        """,
+        (proveedor_id, tipo, numero, excluir_compra_id, excluir_compra_id),
+    ).fetchone()
+    return fila["id"] if fila is not None else None
+
+
+def actualizar_comprobante_en_conexion(conexion: sqlite3.Connection, compra_id: int, comprobante: ComprobanteProveedor) -> bool:
+    """Cambia (o quita) el comprobante del proveedor de una compra ACTIVA. `False` si ya no está activa."""
+    cursor = conexion.execute(
+        "UPDATE compras SET comprobante_tipo = ?, comprobante_numero = ?, comprobante_fecha = ?"
+        " WHERE id = ? AND estado = 'ACTIVA'",
+        (comprobante.tipo, comprobante.numero, comprobante.fecha, compra_id),
+    )
+    return cursor.rowcount == 1
+
+
 def obtener_por_id(compra_id: int) -> Compra | None:
     """Busca una compra por id, o `None` si no existe."""
     consulta = f"SELECT {_COLUMNAS_COMPRA} FROM compras WHERE id = ?"
@@ -376,6 +415,7 @@ def _filtro_resumen(
     fecha_hasta: str | None,
     estado: str | None,
     producto_id: int | None,
+    referencia: str | None = None,
 ) -> tuple[str, list[object]]:
     """`WHERE` (con placeholders) del historial de compras. Todo filtra columnas de `compras c`: el producto
     con `EXISTS` (una compra con varias líneas del producto no se duplica) y las fechas comparando la columna
@@ -397,6 +437,9 @@ def _filtro_resumen(
     if producto_id is not None:
         condiciones.append("EXISTS (SELECT 1 FROM detalle_compra x WHERE x.compra_id = c.id AND x.producto_id = ?)")
         parametros.append(producto_id)
+    if referencia:
+        condiciones.append("(c.comprobante_numero LIKE ? OR c.observaciones LIKE ?)")
+        parametros.extend([f"%{referencia}%", f"%{referencia}%"])
     return (f"WHERE {' AND '.join(condiciones)}" if condiciones else ""), parametros
 
 
@@ -406,6 +449,7 @@ def listar_resumen(
     fecha_hasta: str | None = None,
     estado: str | None = None,
     producto_id: int | None = None,
+    referencia: str | None = None,
     limite: int | None = None,
     desplazamiento: int = 0,
 ) -> list[ResumenCompra]:
@@ -416,7 +460,7 @@ def listar_resumen(
     inclusivos (el servicio los valida; un texto que no es fecha no coincide con nada, nunca es un error).
     `limite`/`desplazamiento` recortan la página en SQL (`LIMIT/OFFSET`), con orden estable por id.
     """
-    where, parametros = _filtro_resumen(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    where, parametros = _filtro_resumen(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id, referencia)
     consulta = f"{_CONSULTA_RESUMEN_BASE} {where} GROUP BY c.id ORDER BY c.id DESC"
     if limite is not None:
         consulta += " LIMIT ? OFFSET ?"
@@ -432,17 +476,19 @@ def listar_lineas_para_exportar(
     fecha_hasta: str | None = None,
     estado: str | None = None,
     producto_id: int | None = None,
+    referencia: str | None = None,
 ) -> list[LineaCompraExportable]:
     """Todas las líneas de las compras que cumplen los mismos filtros que `listar_resumen` (sin paginar),
     en una sola consulta con JOIN. Una compra que coincide por el filtro de producto se exporta completa,
     igual que la pantalla la lista. Orden estable: compra descendente, líneas en orden de carga."""
-    where, parametros = _filtro_resumen(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    where, parametros = _filtro_resumen(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id, referencia)
     with obtener_conexion() as conexion:
         filas = conexion.execute(
             f"""
             SELECT c.id AS compra_id, c.fecha, pv.nombre AS proveedor_nombre, c.estado,
                    pr.codigo_barras, pr.nombre AS producto_nombre, d.cantidad, d.costo_unitario_centavos,
-                   d.subtotal_centavos, c.total_centavos, c.motivo_anulacion, c.fecha_anulacion
+                   d.subtotal_centavos, c.total_centavos, c.motivo_anulacion, c.fecha_anulacion,
+                   c.comprobante_tipo, c.comprobante_numero, c.comprobante_fecha
             FROM compras c
             JOIN proveedores pv ON pv.id = c.proveedor_id
             JOIN detalle_compra d ON d.compra_id = c.id
@@ -461,9 +507,10 @@ def contar_resumen(
     fecha_hasta: str | None = None,
     estado: str | None = None,
     producto_id: int | None = None,
+    referencia: str | None = None,
 ) -> int:
     """Cantidad de compras que cumplen los filtros de `listar_resumen`, sin paginar."""
-    where, parametros = _filtro_resumen(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id)
+    where, parametros = _filtro_resumen(proveedor_id, fecha_desde, fecha_hasta, estado, producto_id, referencia)
     with obtener_conexion() as conexion:
         return conexion.execute(f"SELECT COUNT(*) FROM compras c {where}", parametros).fetchone()[0]
 

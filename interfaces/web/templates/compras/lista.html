@@ -59,6 +59,10 @@
           {% endfor %}
         </select>
       </div>
+      <div>
+        <label class="label">Comprobante / referencia</label>
+        <input type="search" name="referencia" value="{{ referencia }}" placeholder="N° de factura, remito…" class="input max-w-[12rem]" />
+      </div>
       <button type="submit" class="btn btn-dark">
         Filtrar
       </button>
@@ -87,6 +91,7 @@
               <th class="px-5 py-3">N°</th>
               <th class="px-5 py-3">Fecha</th>
               <th class="px-5 py-3">Proveedor</th>
+              <th class="px-5 py-3">Comprobante</th>
               <th class="px-5 py-3">Usuario</th>
               <th class="px-5 py-3">Condición</th>
               <th class="px-5 py-3">Vence</th>
@@ -101,6 +106,7 @@
                 <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">#{{ compra.id }}{% if compra.estado == 'ANULADA' %} {{ ui.badge('ANULADA', 'alerta') }}{% endif %}</td>
                 <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ compra.fecha }}</td>
                 <td class="px-5 py-3.5 font-medium text-slate-800 dark:text-slate-200">{{ compra.proveedor_nombre }}</td>
+                <td data-columna="comprobante" class="px-5 py-3.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{% if compra.comprobante.cargado %}{{ compra.comprobante.texto }}{% else %}—{% endif %}</td>
                 <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ compra.usuario_nombre_completo }}</td>
                 <td class="px-5 py-3.5 whitespace-nowrap">{{ ui.badge('A crédito', 'info') if compra.condicion_pago == 'CREDITO' else '—' }}</td>
                 <td data-columna="vence" class="px-5 py-3.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{% if compra.condicion_pago == 'CREDITO' %}{{ compra.fecha_vencimiento or 'Sin vencimiento' }}{% else %}—{% endif %}</td>
