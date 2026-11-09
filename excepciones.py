@@ -525,3 +525,7 @@ class MotorIAError(ErrorAplicacion):
 
 class ComprobanteProveedorDuplicadoError(DatosInvalidosError):
     """Ese tipo y número de comprobante del proveedor ya está cargado en otra compra activa (migración 049)."""
+
+
+class DniClienteDuplicadoError(ErrorAplicacion):
+    """Ya existe un cliente con ese DNI (migración 050): probablemente la misma persona cargada dos veces."""

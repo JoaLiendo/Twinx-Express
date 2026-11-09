@@ -10,6 +10,7 @@ pago en efectivo del cliente. El saldo nunca se guarda: es
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 
 from domain.proveedor import normalizar_cuit
@@ -24,6 +25,7 @@ LONGITUD_MAXIMA_DESCRIPCION_MOVIMIENTO = 250
 LONGITUD_MAXIMA_RAZON_SOCIAL = 150
 LONGITUD_MAXIMA_CONTACTO = 120
 LONGITUD_MAXIMA_DOCUMENTO = 30
+_DNI = re.compile(r"[0-9]{7,8}")
 
 TIPO_PERSONA = "PERSONA"
 TIPO_EMPRESA = "EMPRESA"
@@ -58,6 +60,22 @@ def _limpiar_opcional(valor: str | None, campo: str, longitud_maxima: int) -> st
     return limpio
 
 
+
+def normalizar_dni(texto: str | None) -> str | None:
+    """DNI argentino como 7 u 8 dígitos (acepta puntos y espacios al cargarlo); vacío es `None`. No se
+    infiere de ningún otro dato ni se consulta a ningún padrón.
+
+    Raises:
+        DatosInvalidosError: si quedan caracteres que no son dígitos o el largo no es 7-8.
+    """
+    limpio = "".join(c for c in (texto or "") if c not in " .-")
+    if not limpio:
+        return None
+    if not _DNI.fullmatch(limpio):
+        raise DatosInvalidosError("El DNI debe tener 7 u 8 dígitos (sin letras ni símbolos).")
+    return limpio
+
+
 @dataclass
 class Cliente:
     """Un cliente, validado y normalizado (espacios recortados, opcionales vacíos
@@ -84,6 +102,7 @@ class Cliente:
     razon_social: str | None = None
     cuit: str | None = None
     contacto: str | None = None
+    dni: str | None = None
 
     def __post_init__(self) -> None:
         self.nombre = (self.nombre or "").strip()
@@ -102,6 +121,9 @@ class Cliente:
         self.razon_social = _limpiar_opcional(self.razon_social, "La razón social", LONGITUD_MAXIMA_RAZON_SOCIAL)
         self.contacto = _limpiar_opcional(self.contacto, "El contacto", LONGITUD_MAXIMA_CONTACTO)
         self.cuit = normalizar_cuit(self.cuit)
+        self.dni = normalizar_dni(self.dni)
+        if self.tipo_cliente == TIPO_EMPRESA and self.dni is not None:
+            raise DatosInvalidosError("Una empresa se identifica por CUIT, no por DNI.")
         if self.tipo_cliente == TIPO_EMPRESA:
             faltantes = [
                 etiqueta
@@ -129,6 +151,11 @@ class Cliente:
     @property
     def condicion_fiscal_etiqueta(self) -> str:
         return CONDICIONES_FISCALES_CLIENTE[self.condicion_fiscal] if self.condicion_fiscal else "Sin declarar"
+
+    @property
+    def dni_formateado(self) -> str | None:
+        """DNI legible: "12.345.678"."""
+        return f"{int(self.dni):,}".replace(",", ".") if self.dni else None
 
     @property
     def cuit_formateado(self) -> str | None:

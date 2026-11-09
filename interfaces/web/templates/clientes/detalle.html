@@ -28,6 +28,7 @@
         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
           <span id="cliente-tipo">{{ cliente.tipo_etiqueta }}</span> · <span id="cliente-condicion-fiscal">{{ cliente.condicion_fiscal_etiqueta }}</span>
           {% if cliente.cuit %} · CUIT <span id="cliente-cuit" class="tabular-nums">{{ cliente.cuit_formateado }}</span>{% endif %}
+          {% if cliente.dni %} · DNI <span id="cliente-dni" class="tabular-nums">{{ cliente.dni_formateado }}</span>{% endif %}
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">

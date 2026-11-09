@@ -259,3 +259,33 @@ class ReportePerdidas:
     por_producto: list[GrupoPerdidas] = field(default_factory=list)
     por_categoria: list[GrupoPerdidas] = field(default_factory=list)
     por_mes: list[GrupoPerdidas] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class VentasDeCliente:
+    """Ventas activas de un cliente identificado en un período (cierre operativo, B1), con su deuda actual y
+    sus cobros del mismo período. Las ventas sin cliente (consumidor final anónimo) no aparecen: no se
+    inventa un cliente."""
+
+    cliente_id: int
+    cliente_nombre: str
+    activo: bool
+    cantidad_ventas: int
+    total_centavos: int
+    unidades: int
+    primera_venta: str
+    ultima_venta: str
+    dias_con_compras: int
+    saldo_centavos: int
+    cantidad_cobros: int
+    cobrado_centavos: int
+
+    @property
+    def ticket_promedio_centavos(self) -> int:
+        return self.total_centavos // self.cantidad_ventas if self.cantidad_ventas else 0
+
+    def compras_cada_dias(self, dias_del_periodo: int) -> float | None:
+        """Cada cuántos días compra, en promedio, dentro del período (`None` con una sola venta)."""
+        if self.cantidad_ventas < 2 or dias_del_periodo <= 0:
+            return None
+        return round(dias_del_periodo / self.cantidad_ventas, 1)

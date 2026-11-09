@@ -61,6 +61,7 @@ def crear_cliente(
     razon_social: str | None = None,
     cuit: str | None = None,
     contacto: str | None = None,
+    dni: str | None = None,
 ) -> Cliente:
     """Da de alta un cliente activo. Todo cliente nuevo nace clasificado (PERSONA o EMPRESA); la
     condición fiscal de una persona es opcional ("sin declarar").
@@ -81,6 +82,7 @@ def crear_cliente(
         razon_social=razon_social,
         cuit=cuit,
         contacto=contacto,
+        dni=dni,
     )
     if cliente.tipo_cliente is None:
         raise DatosInvalidosError("Elegí si el cliente es una persona o una empresa.")
@@ -107,6 +109,7 @@ def editar_cliente(
     razon_social: str | None = None,
     cuit: str | None = None,
     contacto: str | None = None,
+    dni: str | None = None,
 ) -> Cliente:
     """Edita los datos de un cliente (activo o no); no cambia su estado.
 
@@ -138,6 +141,7 @@ def editar_cliente(
             razon_social=razon_social,
             cuit=cuit,
             contacto=contacto,
+            dni=dni,
         )
         if (
             actual.es_empresa

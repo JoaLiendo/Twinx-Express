@@ -367,3 +367,28 @@ def csv_resultado(fecha_desde: str | None, fecha_hasta: str | None, granularidad
         )
 
     return generar_csv(COLUMNAS_RESULTADO, chain((fila(p) for p in analisis.periodos), [fila(analisis.total)]))
+
+
+COLUMNAS_CLIENTES = (
+    "cliente_id", "cliente", "activo", "ventas", "total_vendido", "ticket_promedio", "unidades", "primera_venta",
+    "ultima_venta", "dias_con_compras", "compra_cada_dias", "deuda_actual", "cobros", "cobrado",
+)
+
+
+def csv_clientes(fecha_desde: str | None, fecha_hasta: str | None) -> bytes:
+    """El mismo agregado de `/reportes/clientes` (ventas activas con cliente identificado)."""
+    reporte = servicio_reportes.generar_reporte_clientes(fecha_desde, fecha_hasta)
+    dias = reporte.dias_del_periodo
+    return generar_csv(
+        COLUMNAS_CLIENTES,
+        (
+            (
+                numero(f.cliente_id), f.cliente_nombre, "si" if f.activo else "no", numero(f.cantidad_ventas),
+                dinero(f.total_centavos), dinero(f.ticket_promedio_centavos), numero(f.unidades), f.primera_venta,
+                f.ultima_venta, numero(f.dias_con_compras),
+                Numero(str(f.compras_cada_dias(dias))) if f.compras_cada_dias(dias) is not None else None,
+                dinero(f.saldo_centavos), numero(f.cantidad_cobros), dinero(f.cobrado_centavos),
+            )
+            for f in reporte.filas
+        ),
+    )

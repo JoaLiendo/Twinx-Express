@@ -43,6 +43,11 @@
     <input type="text" name="cuit" id="cuit" maxlength="13" placeholder="30-71234567-1" inputmode="numeric"
            value="{{ (cliente.cuit_formateado or '') if cliente else '' }}" class="{{ clase_campo }}" />
   </div>
+  <div id="campo-dni">
+    <label for="dni" class="{{ clase_label }}">DNI <span class="font-normal text-slate-400">(opcional, solo persona)</span></label>
+    <input type="text" name="dni" id="dni" maxlength="10" placeholder="12345678" inputmode="numeric"
+           value="{{ (cliente.dni or '') if cliente else '' }}" class="{{ clase_campo }}" />
+  </div>
 </div>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

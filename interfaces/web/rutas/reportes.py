@@ -200,3 +200,20 @@ def exportar_reporte_perdidas(
         ),
         "perdidas",
     )
+
+
+@router.get("/reportes/clientes")
+def ver_reporte_clientes(request: Request, fecha_desde: str | None = None, fecha_hasta: str | None = None):
+    """Ventas por cliente identificado, frecuencia de compra, deuda y cobros (cierre operativo, B1)."""
+    contexto = {
+        **contexto_base(request),
+        "reporte": servicio_reportes.generar_reporte_clientes(**_periodo(fecha_desde, fecha_hasta)),
+        "seccion": "clientes",
+    }
+    return templates.TemplateResponse(request, "reportes/clientes.html", contexto)
+
+
+@router.get("/reportes/clientes/exportar")
+def exportar_reporte_clientes(fecha_desde: str | None = None, fecha_hasta: str | None = None):
+    """CSV del mismo agregado por cliente (solo OWNER: incluye deuda por persona)."""
+    return respuesta_csv(servicio_exportacion_csv.csv_clientes(**_periodo(fecha_desde, fecha_hasta)), "ventas_por_cliente")

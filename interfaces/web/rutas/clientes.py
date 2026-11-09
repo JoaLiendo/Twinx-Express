@@ -111,6 +111,7 @@ def crear_cliente(
     razon_social: str = Form(""),
     cuit: str = Form(""),
     contacto: str = Form(""),
+    dni: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     cliente = servicio_clientes.crear_cliente(
@@ -125,6 +126,7 @@ def crear_cliente(
         razon_social=razon_social,
         cuit=cuit,
         contacto=contacto,
+        dni=dni,
     )
     return redireccionar_con_mensaje(f"/clientes/{cliente.id}", "success", f"Cliente '{cliente.nombre}' creado correctamente.")
 
@@ -181,6 +183,7 @@ def editar_cliente(
     razon_social: str = Form(""),
     cuit: str = Form(""),
     contacto: str = Form(""),
+    dni: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     cliente = servicio_clientes.editar_cliente(
@@ -196,6 +199,7 @@ def editar_cliente(
         razon_social=razon_social,
         cuit=cuit,
         contacto=contacto,
+        dni=dni,
     )
     return redireccionar_con_mensaje(f"/clientes/{cliente_id}", "success", f"Cliente '{cliente.nombre}' actualizado correctamente.")
 
@@ -297,6 +301,7 @@ def agregar_comprador_autorizado(
     nombre: str = Form(""),
     documento: str = Form(""),
     contacto: str = Form(""),
+    dni: str = Form(""),
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     comprador = servicio_clientes.agregar_comprador_autorizado(

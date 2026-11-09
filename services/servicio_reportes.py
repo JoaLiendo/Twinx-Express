@@ -30,6 +30,7 @@ from domain.reportes_operativos import (
     ProductoRotacion,
     ReportePerdidas,
     ResumenSesionCaja,
+    VentasDeCliente,
     resumir_perdidas,
     resumir_perdidas_por_categoria,
     resumir_perdidas_por_mes,
@@ -532,3 +533,35 @@ def generar_reporte_perdidas(
 def listar_productos_con_perdidas() -> list[tuple[int, str]]:
     """Opciones del filtro por producto del reporte de pérdidas."""
     return repositorio_ajustes_stock.listar_productos_con_perdidas()
+
+
+@dataclass
+class ReporteClientes:
+    """Ventas por cliente identificado en el período, con frecuencia, deuda y cobros (cierre operativo, B1)."""
+
+    fecha_desde: str
+    fecha_hasta: str
+    filas: list[VentasDeCliente]
+
+    @property
+    def dias_del_periodo(self) -> int:
+        return (date.fromisoformat(self.fecha_hasta) - date.fromisoformat(self.fecha_desde)).days + 1
+
+    @property
+    def total_ventas(self) -> int:
+        return sum(fila.cantidad_ventas for fila in self.filas)
+
+    @property
+    def total_centavos(self) -> int:
+        return sum(fila.total_centavos for fila in self.filas)
+
+    @property
+    def total_deuda_centavos(self) -> int:
+        return sum(max(fila.saldo_centavos, 0) for fila in self.filas)
+
+
+def generar_reporte_clientes(fecha_desde: str | None = None, fecha_hasta: str | None = None) -> ReporteClientes:
+    """Ventas activas con cliente identificado, agrupadas por cliente (las ventas anónimas no se atribuyen a
+    nadie), con la deuda actual y los cobros del período. Solo lectura."""
+    desde, hasta, inicio, fin = _limites_del_periodo(fecha_desde, fecha_hasta)
+    return ReporteClientes(desde, hasta, repositorio_clientes.resumir_ventas_por_cliente(inicio, fin))

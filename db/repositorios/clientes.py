@@ -19,12 +19,12 @@ from domain.cliente import (
     ResumenCuenta,
     SaldoTrasVenta,
 )
-from domain.reportes_operativos import CobranzaDeCliente, DeudorCuenta
-from excepciones import CuitClienteDuplicadoError, DatosInvalidosError
+from domain.reportes_operativos import CobranzaDeCliente, DeudorCuenta, VentasDeCliente
+from excepciones import CuitClienteDuplicadoError, DatosInvalidosError, DniClienteDuplicadoError
 
 _COLUMNAS = (
     "id, nombre, telefono, email, direccion, observaciones, activo, fecha_creacion,"
-    " tipo_cliente, condicion_fiscal, razon_social, cuit, contacto"
+    " tipo_cliente, condicion_fiscal, razon_social, cuit, contacto, dni"
 )
 _COLUMNAS_MOVIMIENTO = (
     "id, fecha, cliente_id, tipo, monto_centavos, descripcion, venta_id, caja_movimiento_id, usuario_id"
@@ -48,6 +48,7 @@ def _fila_a_cliente(fila: sqlite3.Row) -> Cliente:
         razon_social=fila["razon_social"],
         cuit=fila["cuit"],
         contacto=fila["contacto"],
+        dni=fila["dni"],
     )
 
 
@@ -63,6 +64,7 @@ def _parametros_de_datos(cliente: Cliente) -> tuple:
         cliente.razon_social,
         cliente.cuit,
         cliente.contacto,
+        cliente.dni,
     )
 
 
@@ -72,6 +74,8 @@ def _traducir_integridad(error: sqlite3.IntegrityError, cliente: Cliente) -> Exc
     texto = str(error)
     if "clientes.cuit" in texto:
         return CuitClienteDuplicadoError(f"Ya existe un cliente con el CUIT {cliente.cuit_formateado}.")
+    if "clientes.dni" in texto:
+        return DniClienteDuplicadoError(f"Ya existe un cliente con el DNI {cliente.dni_formateado}: revisá si es la misma persona.")
     return DatosInvalidosError(texto if "CHECK" not in texto else "Los datos del cliente no son válidos.")
 
 
@@ -99,8 +103,8 @@ def crear_cliente_en_conexion(conexion: sqlite3.Connection, cliente: Cliente) ->
         fila = conexion.execute(
             f"""
             INSERT INTO clientes (nombre, telefono, email, direccion, observaciones,
-                                  tipo_cliente, condicion_fiscal, razon_social, cuit, contacto)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  tipo_cliente, condicion_fiscal, razon_social, cuit, contacto, dni)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING {_COLUMNAS}
             """,
             _parametros_de_datos(cliente),
@@ -123,7 +127,7 @@ def actualizar_cliente_en_conexion(conexion: sqlite3.Connection, cliente: Client
             f"""
             UPDATE clientes
             SET nombre = ?, telefono = ?, email = ?, direccion = ?, observaciones = ?,
-                tipo_cliente = ?, condicion_fiscal = ?, razon_social = ?, cuit = ?, contacto = ?
+                tipo_cliente = ?, condicion_fiscal = ?, razon_social = ?, cuit = ?, contacto = ?, dni = ?
             WHERE id = ?
             RETURNING {_COLUMNAS}
             """,
@@ -291,16 +295,16 @@ def listar_con_saldo(texto: str | None = None, estado: str = "activos", limite: 
         patron = f"%{_escapar_comodines_like(texto)}%"
         condiciones.append(
             "(c.nombre LIKE ? ESCAPE '\\' OR c.telefono LIKE ? ESCAPE '\\'"
-            " OR c.razon_social LIKE ? ESCAPE '\\' OR c.cuit LIKE ? ESCAPE '\\')"
+            " OR c.razon_social LIKE ? ESCAPE '\\' OR c.cuit LIKE ? ESCAPE '\\' OR c.dni LIKE ? ESCAPE '\\')"
         )
-        parametros.extend([patron, patron, patron, patron])
+        parametros.extend([patron, patron, patron, patron, patron])
     where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
     tope = "LIMIT ?" if limite is not None else ""
     if limite is not None:
         parametros.append(limite)
     consulta = f"""
         SELECT c.id, c.nombre, c.telefono, c.email, c.direccion, c.observaciones, c.activo, c.fecha_creacion,
-               c.tipo_cliente, c.condicion_fiscal, c.razon_social, c.cuit, c.contacto,
+               c.tipo_cliente, c.condicion_fiscal, c.razon_social, c.cuit, c.contacto, c.dni,
                COALESCE(m.saldo, 0) AS saldo
         FROM clientes c
         LEFT JOIN (
@@ -390,3 +394,65 @@ def obtener_cobro_por_clave(clave_idempotencia: str) -> tuple[MovimientoCuenta, 
     """Ver `obtener_cobro_por_clave_en_conexion`."""
     with obtener_conexion() as conexion:
         return obtener_cobro_por_clave_en_conexion(conexion, clave_idempotencia)
+
+
+def resumir_ventas_por_cliente(desde_inicio: str, hasta_exclusivo: str) -> list[VentasDeCliente]:
+    """Ventas ACTIVAS con cliente identificado en `[desde_inicio, hasta_exclusivo)`, agregadas por cliente en
+    SQL (cantidad, total, unidades, primera y última, días distintos), junto con el saldo actual de su cuenta
+    y los cobros del mismo período. Mayor facturación primero."""
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            """
+            WITH ventas_periodo AS (
+                SELECT v.id, v.cliente_id, v.fecha, v.total_centavos
+                FROM ventas v
+                WHERE v.estado = 'ACTIVA' AND v.cliente_id IS NOT NULL AND v.fecha >= ? AND v.fecha < ?
+            ),
+            unidades AS (
+                SELECT vp.cliente_id, SUM(d.cantidad) AS unidades
+                FROM ventas_periodo vp JOIN detalle_venta d ON d.venta_id = vp.id
+                GROUP BY vp.cliente_id
+            ),
+            cobros AS (
+                SELECT cliente_id, COUNT(*) AS cantidad, SUM(monto_centavos) AS total
+                FROM movimientos_cuenta WHERE tipo = 'COBRO' AND fecha >= ? AND fecha < ?
+                GROUP BY cliente_id
+            ),
+            saldos AS (
+                SELECT cliente_id, SUM(CASE tipo WHEN 'CARGO' THEN monto_centavos ELSE -monto_centavos END) AS saldo
+                FROM movimientos_cuenta GROUP BY cliente_id
+            )
+            SELECT c.id, c.nombre, c.activo,
+                   COUNT(vp.id) AS cantidad_ventas, SUM(vp.total_centavos) AS total,
+                   COALESCE(u.unidades, 0) AS unidades,
+                   MIN(substr(vp.fecha, 1, 10)) AS primera, MAX(substr(vp.fecha, 1, 10)) AS ultima,
+                   COUNT(DISTINCT substr(vp.fecha, 1, 10)) AS dias,
+                   COALESCE(s.saldo, 0) AS saldo,
+                   COALESCE(co.cantidad, 0) AS cobros, COALESCE(co.total, 0) AS cobrado
+            FROM ventas_periodo vp
+            JOIN clientes c ON c.id = vp.cliente_id
+            LEFT JOIN unidades u ON u.cliente_id = c.id
+            LEFT JOIN cobros co ON co.cliente_id = c.id
+            LEFT JOIN saldos s ON s.cliente_id = c.id
+            GROUP BY c.id
+            ORDER BY total DESC, c.nombre COLLATE NOCASE, c.id
+            """,
+            (desde_inicio, hasta_exclusivo, desde_inicio, hasta_exclusivo),
+        ).fetchall()
+    return [
+        VentasDeCliente(
+            cliente_id=fila["id"],
+            cliente_nombre=fila["nombre"],
+            activo=bool(fila["activo"]),
+            cantidad_ventas=fila["cantidad_ventas"],
+            total_centavos=fila["total"],
+            unidades=fila["unidades"],
+            primera_venta=fila["primera"],
+            ultima_venta=fila["ultima"],
+            dias_con_compras=fila["dias"],
+            saldo_centavos=fila["saldo"],
+            cantidad_cobros=fila["cobros"],
+            cobrado_centavos=fila["cobrado"],
+        )
+        for fila in filas
+    ]
