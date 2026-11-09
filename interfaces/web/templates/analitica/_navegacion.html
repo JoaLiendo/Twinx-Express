@@ -1,5 +1,5 @@
 {# Navegación de la analítica (V1.17); `seccion` indica la activa. Pérdidas y reposición enlazan a sus pantallas. #}
-{% set secciones = [('resumen', '/analitica', 'Resumen'), ('ventas', '/analitica/ventas', 'Ventas'), ('margen', '/analitica/margen', 'Margen bruto'), ('precios', '/analitica/precios', 'Precios y costos'), ('perdidas', '/reportes/perdidas', 'Pérdidas'), ('deuda', '/analitica/deuda', 'Deuda'), ('proveedores', '/analitica/proveedores', 'Proveedores'), ('reposicion', '/reposicion', 'Reposición')] %}
+{% set secciones = [('resumen', '/analitica', 'Resumen'), ('ventas', '/analitica/ventas', 'Ventas'), ('margen', '/analitica/margen', 'Margen bruto'), ('resultado', '/analitica/resultado', 'Resultado'), ('precios', '/analitica/precios', 'Precios y costos'), ('perdidas', '/reportes/perdidas', 'Pérdidas'), ('deuda', '/analitica/deuda', 'Deuda'), ('proveedores', '/analitica/proveedores', 'Proveedores'), ('reposicion', '/reposicion', 'Reposición')] %}
 <nav id="navegacion-analitica" class="flex flex-wrap gap-2" aria-label="Analítica">
   {% for clave, href, etiqueta in secciones %}
     <a href="{{ href }}" {{ 'aria-current="page"' | safe if clave == seccion else '' }}

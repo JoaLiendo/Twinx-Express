@@ -292,6 +292,14 @@ class CompraYaAnuladaError(ErrorAplicacion):
     """La compra ya fue anulada anteriormente: no se puede anular dos veces."""
 
 
+class GastoNoEncontradoError(ErrorAplicacion):
+    """No existe un gasto operativo con el id solicitado (migración 048)."""
+
+
+class GastoYaAnuladoError(ErrorAplicacion):
+    """El gasto ya está anulado: no se modifica ni se anula dos veces."""
+
+
 class VencimientoNoEditableError(ErrorAplicacion):
     """El vencimiento de la compra no puede editarse: solo existe en compras a crédito ACTIVAS
     (ver `services.servicio_compras.actualizar_vencimiento_compra`)."""
@@ -513,3 +521,7 @@ class FiscalizacionNoDisponibleError(ErrorFiscal):
 class MotorIAError(ErrorAplicacion):
     """El motor de IA local del asistente (V1.18) no está disponible, no respondió a tiempo, respondió mal o
     su configuración es inválida. Nunca interrumpe la aplicación: el asistente degrada a la ayuda integrada."""
+
+
+class ComprobanteProveedorDuplicadoError(DatosInvalidosError):
+    """Ese tipo y número de comprobante del proveedor ya está cargado en otra compra activa (migración 049)."""

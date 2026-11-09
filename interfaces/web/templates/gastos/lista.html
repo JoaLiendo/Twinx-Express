@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Gastos{% endblock %}
+{% block header %}<h1 class="page-title">Gastos operativos</h1>{% endblock %}
+
+{% block content %}
+<div class="page">
+  <p class="page-intro">Gastos del comercio que no son mercadería (alquiler, servicios, salarios, impuestos…). La mercadería se registra en Compras y su costo se reconoce al vender; acá no va, para no contarla dos veces.</p>
+
+  <div class="flex flex-wrap items-center justify-between gap-4 gap-y-3">
+    <form method="get" action="/gastos" class="flex flex-wrap items-end gap-2" id="filtros-gastos">
+      <div>
+        <label class="label">Desde</label>
+        <input type="date" name="fecha_desde" value="{{ filtros.fecha_desde }}" class="input" />
+      </div>
+      <div>
+        <label class="label">Hasta</label>
+        <input type="date" name="fecha_hasta" value="{{ filtros.fecha_hasta }}" class="input" />
+      </div>
+      <div>
+        <label class="label">Categoría</label>
+        <select name="categoria" class="input" onchange="this.form.submit()">
+          <option value="">Todas</option>
+          {% for clave, etiqueta in categorias %}
+            <option value="{{ clave }}" {{ 'selected' if filtros.categoria == clave else '' }}>{{ etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label">Medio de pago</label>
+        <select name="medio_pago" class="input" onchange="this.form.submit()">
+          <option value="">Todos</option>
+          {% for clave, etiqueta in medios_pago %}
+            <option value="{{ clave }}" {{ 'selected' if filtros.medio_pago == clave else '' }}>{{ etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label">Estado</label>
+        <select name="estado" class="input" onchange="this.form.submit()">
+          <option value="">Todos</option>
+          {% for clave, etiqueta in estados %}
+            <option value="{{ clave }}" {{ 'selected' if filtros.estado == clave else '' }}>{{ etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label">Buscar</label>
+        <input type="search" name="q" value="{{ filtros.q }}" placeholder="Descripción, referencia…" class="input max-w-[12rem]" />
+      </div>
+      <button type="submit" class="btn btn-dark">Filtrar</button>
+      {% if hay_filtro_activo %}
+        <a href="/gastos" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2 py-2">Quitar filtros</a>
+      {% endif %}
+    </form>
+
+    <div class="flex items-center gap-2">
+      <a href="/gastos/exportar{{ '?' ~ consulta_filtros if consulta_filtros else '' }}" data-accion="exportar-csv" class="btn btn-outline">Exportar CSV</a>
+      <a href="/gastos/nuevo" class="btn btn-primary" id="boton-nuevo-gasto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14M5 12h14"/></svg>
+        Nuevo gasto
+      </a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="kpis-gastos">
+    <div class="kpi">
+      <p class="kpi-label">Gastos vigentes {{ '(con filtros)' if hay_filtro_activo else '' }}</p>
+      <p class="kpi-value" id="total-gastos-vigentes">${{ listado.total_vigente_centavos | dinero_ar }}</p>
+      <p class="kpi-detail">{{ listado.cantidad }} registro(s), anulados excluidos del total</p>
+    </div>
+    <a href="/analitica/resultado" class="kpi card-hover">
+      <p class="kpi-label">Resultado operativo</p>
+      <p class="kpi-value text-primary">Ver análisis →</p>
+      <p class="kpi-detail">Ventas, margen bruto y gastos del período</p>
+    </a>
+  </div>
+
+  {% if listado.gastos %}
+    <div class="card overflow-hidden">
+      <p class="sm:hidden text-xs text-slate-400 dark:text-slate-500 px-5 pt-3">Desliza hacia la derecha para ver más →</p>
+      <div class="table-wrap">
+        <table class="data-table" id="tabla-gastos">
+          <thead>
+            <tr class="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <th class="px-5 py-3">N°</th>
+              <th class="px-5 py-3">Fecha</th>
+              <th class="px-5 py-3">Categoría</th>
+              <th class="px-5 py-3">Descripción</th>
+              <th class="px-5 py-3">Medio de pago</th>
+              <th class="px-5 py-3">Responsable</th>
+              <th class="px-5 py-3 text-right">Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for gasto in listado.gastos %}
+              <tr data-gasto="{{ gasto.id }}" data-estado="{{ gasto.estado }}"
+                  class="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer dark:border-slate-800 dark:hover:bg-slate-800/60 {{ 'opacity-60' if not gasto.vigente else '' }}"
+                  onclick="window.location.href='/gastos/{{ gasto.id }}'">
+                <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">#{{ gasto.id }}{% if not gasto.vigente %} {{ ui.badge('ANULADO', 'alerta') }}{% endif %}</td>
+                <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ gasto.fecha | fecha_corta }}</td>
+                <td class="px-5 py-3.5 font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">{{ gasto.categoria_etiqueta.replace(' (con descripción)', '') }}</td>
+                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ gasto.descripcion or '—' }}{% if gasto.referencia %} <span class="text-xs text-slate-400">· {{ gasto.referencia }}</span>{% endif %}</td>
+                <td class="px-5 py-3.5 whitespace-nowrap">{% if gasto.paga_con_caja %}{{ ui.badge('Caja', 'info') }}{% else %}<span class="text-slate-600 dark:text-slate-400">{{ gasto.medio_pago_etiqueta }}</span>{% endif %}</td>
+                <td class="px-5 py-3.5 text-slate-600 dark:text-slate-400">{{ gasto.responsable or '—' }}</td>
+                <td class="px-5 py-3.5 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums {{ 'line-through' if not gasto.vigente else '' }}">${{ gasto.importe_centavos | dinero_ar }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if listado.total_paginas > 1 %}
+      {% set base_enlace = '/gastos?' ~ (consulta_filtros ~ '&' if consulta_filtros else '') ~ 'pagina=' %}
+      <nav id="paginacion-gastos" class="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400" aria-label="Paginación">
+        <span>{{ listado.cantidad }} gastos · página {{ listado.pagina }} de {{ listado.total_paginas }}</span>
+        <span class="flex gap-4">
+          {% if listado.pagina > 1 %}<a href="{{ base_enlace }}{{ listado.pagina - 1 }}" class="font-medium text-primary hover:text-primary-hover">← Anterior</a>{% endif %}
+          {% if listado.pagina < listado.total_paginas %}<a href="{{ base_enlace }}{{ listado.pagina + 1 }}" class="font-medium text-primary hover:text-primary-hover">Siguiente →</a>{% endif %}
+        </span>
+      </nav>
+    {% endif %}
+  {% else %}
+    {{ ui.estado_vacio("No se encontraron gastos con esos filtros." if hay_filtro_activo else "Todavía no hay gastos registrados.", none if hay_filtro_activo else "Registrá el alquiler, los servicios, los salarios y demás gastos para conocer el resultado operativo del negocio.") }}
+  {% endif %}
+</div>
+{% endblock %}

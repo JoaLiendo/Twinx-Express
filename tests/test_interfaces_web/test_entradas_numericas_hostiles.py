@@ -43,7 +43,7 @@ TABLAS = (
     "movimientos_proveedor", "ajustes_stock", "auditoria", "inventarios", "inventario_lineas", "productos",
     "clientes", "proveedores", "producto_proveedor", "historial_precios", "lotes_precios",
     "proveedor_categorias", "evaluaciones_proveedor", "reclamos_proveedor", "reclamos_proveedor_cambios",
-    "documentos_proveedor",
+    "documentos_proveedor", "gastos",
 )
 
 
@@ -171,6 +171,14 @@ CASOS = [
         {"valor": "monto"},
     ),
     ("caja_abrir", "POST", "/caja/abrir", {"monto_inicial": "1.00", "descripcion": ""}, {"monto_inicial": "monto"}),
+    # Cierre operativo (048): gastos.
+    (
+        "gasto_nuevo",
+        "POST",
+        "/gastos/nuevo",
+        {"fecha": "2026-01-02", "categoria": "AGUA", "descripcion": "Aysa", "importe": "1.00", "medio_pago": "EFECTIVO", "referencia": "", "responsable": "", "observaciones": "", "clave_idempotencia": "k-gasto"},
+        {"importe": "monto"},
+    ),
     (
         "inventario_nuevo",
         "POST",
@@ -249,6 +257,11 @@ RUTAS_CON_ID = [
     ("POST", "/compras/{id}/anular"),
     ("GET", "/compras/{id}/vencimiento"),
     ("POST", "/compras/{id}/vencimiento"),
+    ("GET", "/gastos/{id}"),
+    ("GET", "/gastos/{id}/editar"),
+    ("POST", "/gastos/{id}/editar"),
+    ("GET", "/gastos/{id}/anular"),
+    ("POST", "/gastos/{id}/anular"),
     ("GET", "/proveedores/{id}"),
     ("GET", "/proveedores/{id}/editar"),
     ("GET", "/proveedores/{id}/pagos/nuevo"),

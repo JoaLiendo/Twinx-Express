@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% import "_componentes.html" as ui %}
+
+{% block titulo %}Gasto #{{ gasto.id }}{% endblock %}
+{% block header %}<h1 class="page-title">Gasto #{{ gasto.id }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <a href="/gastos" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">← Volver a gastos</a>
+    <div class="flex items-center gap-2">
+      {% if gasto.vigente %}
+        <a href="/gastos/{{ gasto.id }}/editar" class="btn btn-outline" id="boton-editar-gasto">Corregir datos</a>
+        <a href="/gastos/{{ gasto.id }}/anular" class="btn btn-danger" id="boton-anular-gasto">Anular gasto</a>
+      {% else %}
+        {{ ui.badge('ANULADO', 'alerta') }}
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not gasto.vigente %}
+    <div class="alert alert-error" id="aviso-anulado">
+      <div>
+        <p>Gasto anulado el {{ gasto.anulado_en }} por {{ gasto.anulado_por_nombre }}: <strong>{{ gasto.motivo_anulacion }}</strong>.</p>
+        {% if gasto.paga_con_caja %}
+          <p class="mt-1">{% if gasto.anulado_con_reintegro %}El efectivo volvió a la caja con el ingreso #{{ gasto.caja_movimiento_reintegro_id }}.{% else %}Sin reintegro a la caja: el egreso #{{ gasto.caja_movimiento_id }} sigue en su sesión de caja.{% endif %}</p>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="card p-6">
+    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 text-sm">
+      <div>
+        <dt class="label">Importe</dt>
+        <dd class="text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100 {{ 'line-through opacity-60' if not gasto.vigente else '' }}" id="gasto-importe">${{ gasto.importe_centavos | dinero_ar }}</dd>
+      </div>
+      <div>
+        <dt class="label">Fecha</dt>
+        <dd class="font-medium text-slate-900 dark:text-slate-100">{{ gasto.fecha | fecha_corta }}</dd>
+      </div>
+      <div>
+        <dt class="label">Categoría</dt>
+        <dd class="font-medium text-slate-900 dark:text-slate-100" id="gasto-categoria">{{ gasto.categoria_etiqueta.replace(' (con descripción)', '') }}</dd>
+      </div>
+      <div>
+        <dt class="label">Medio de pago</dt>
+        <dd class="font-medium text-slate-900 dark:text-slate-100">{{ gasto.medio_pago_etiqueta }}{% if gasto.paga_con_caja %} <span class="text-xs text-slate-500">· egreso de caja #{{ gasto.caja_movimiento_id }}</span>{% endif %}</dd>
+      </div>
+      <div class="sm:col-span-2">
+        <dt class="label">Descripción</dt>
+        <dd class="text-slate-800 dark:text-slate-200" id="gasto-descripcion">{{ gasto.descripcion or '—' }}</dd>
+      </div>
+      <div>
+        <dt class="label">Referencia</dt>
+        <dd class="text-slate-800 dark:text-slate-200">{{ gasto.referencia or '—' }}</dd>
+      </div>
+      <div>
+        <dt class="label">Responsable</dt>
+        <dd class="text-slate-800 dark:text-slate-200">{{ gasto.responsable or '—' }}</dd>
+      </div>
+      <div class="sm:col-span-2">
+        <dt class="label">Observaciones</dt>
+        <dd class="text-slate-800 dark:text-slate-200 whitespace-pre-line">{{ gasto.observaciones or '—' }}</dd>
+      </div>
+      <div>
+        <dt class="label">Registrado por</dt>
+        <dd class="text-slate-600 dark:text-slate-400">{{ gasto.usuario_nombre }} · {{ gasto.creado_en }}</dd>
+      </div>
+      {% if gasto.modificado_en %}
+      <div>
+        <dt class="label">Última corrección</dt>
+        <dd class="text-slate-600 dark:text-slate-400">{{ gasto.modificado_en }} <a href="/auditoria" class="underline">(ver auditoría)</a></dd>
+      </div>
+      {% endif %}
+    </dl>
+  </div>
+  <p class="text-xs muted">Fecha, importe y medio de pago no se modifican: si están mal, anulá el gasto (queda en el historial con su motivo) y registrá uno nuevo.</p>
+</div>
+{% endblock %}

@@ -18,6 +18,7 @@ from services import (
     servicio_backup,
     servicio_caja,
     servicio_configuracion,
+    servicio_gastos,
     servicio_partidas,
     servicio_reportes,
     servicio_stock,
@@ -48,5 +49,8 @@ def ver_dashboard(request: Request, usuario_actual: Usuario = Depends(obtener_us
         # RC4: la misma alerta persistente de backup fallido que muestran Backup y Caja.
         contexto["alerta_backup"] = servicio_backup.alerta_de_backup()
         # V1.17: los últimos 30 días y las decisiones a revisar, los mismos de /analitica.
-        contexto["resumen_analitica"] = servicio_analitica.resumen_ejecutivo()
+        resumen = servicio_analitica.resumen_ejecutivo()
+        contexto["resumen_analitica"] = resumen
+        # Cierre operativo (048): gastos del mismo período y resultado operativo estimado (margen − gastos).
+        contexto["gastos_30"] = servicio_gastos.resumir_periodo(resumen.fecha_desde, resumen.fecha_hasta)
     return templates.TemplateResponse(request, "dashboard.html", contexto)

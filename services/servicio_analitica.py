@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from db.repositorios import analitica as repositorio_analitica
+from db.repositorios import gastos as repositorio_gastos
+from db.repositorios.gastos import TotalCategoria
 from db.repositorios import evaluaciones_proveedor as repositorio_evaluaciones
 from db.repositorios import proveedores as repositorio_proveedores
 from db.repositorios import reclamos_proveedor as repositorio_reclamos
@@ -18,6 +20,7 @@ from domain.analitica import (
     CAMPO_COSTO,
     CAMPO_VENTA,
     GRANULARIDAD_DIA,
+    GRANULARIDAD_MES,
     GRANULARIDADES,
     ORDEN_ESTADOS_DEUDA,
     UMBRAL_CAMBIO_RELEVANTE_POR_DEFECTO,
@@ -44,6 +47,7 @@ from domain.analitica import (
     porcentaje,
 )
 from domain.credito import ESTADO_CRITICA, ESTADO_DEMORADO
+from domain.resultado import ResultadoPeriodo, agrupar_resultado
 from domain.deuda_proveedores import ReporteDeudaProveedores
 from domain.reclamo_proveedor import ESTADOS_ABIERTOS
 from excepciones import DatosInvalidosError
@@ -540,3 +544,35 @@ def _decisiones(margen, precios, deuda, proveedores, sin_rotacion, reposicion) -
         ),
     ]
     return [decision for decision in candidatas if decision.cantidad > 0]
+
+
+# --- Resultado operativo estimado (cierre operativo, bloque A3) ---------------------------------------
+
+
+@dataclass(frozen=True)
+class AnalisisResultado:
+    fecha_desde: str
+    fecha_hasta: str
+    granularidad: str
+    total: ResultadoPeriodo
+    periodos: list[ResultadoPeriodo]
+    gastos_por_categoria: list[TotalCategoria]
+
+
+def analizar_resultado(
+    fecha_desde: str | None = None, fecha_hasta: str | None = None, granularidad: str | None = None
+) -> AnalisisResultado:
+    """Ventas activas, anulaciones, margen bruto (costo de referencia; el real y el desconocido se informan
+    aparte), gastos operativos vigentes y resultado operativo estimado, por período y en total. Lee los
+    mismos datos que `/analitica/margen` y `/gastos`; no proyecta ni inventa nada.
+
+    Raises:
+        DatosInvalidosError: fechas o granularidad inválidas.
+    """
+    granularidad = _validar_opcion(granularidad, GRANULARIDADES, GRANULARIDAD_MES, "Agrupación")
+    desde, hasta, inicio, fin = limites_del_periodo(fecha_desde, fecha_hasta)
+    lineas = repositorio_analitica.lineas_de_venta_por_dia(inicio, fin)
+    anulaciones = repositorio_analitica.anulaciones_por_dia(inicio, fin)
+    gastos = repositorio_gastos.totales_por_dia(inicio, fin)
+    total, periodos = agrupar_resultado(lineas, anulaciones, gastos, granularidad)
+    return AnalisisResultado(desde, hasta, granularidad, total, periodos, repositorio_gastos.totales_por_categoria(inicio, fin))

@@ -101,6 +101,7 @@ def registrar_movimiento_en_conexion(
     movimiento: MovimientoCaja,
     usuario_id: int | None = None,
     clave_idempotencia: str | None = None,
+    auditar: bool = True,
 ) -> MovimientoCaja:
     """Registra un movimiento de caja dentro de la transacción recibida (que
     debe haberse abierto con `BEGIN IMMEDIATE`) y devuelve la entidad persistida.
@@ -124,6 +125,10 @@ def registrar_movimiento_en_conexion(
     misma clave quedan serializados y el segundo ve la fila del primero.
 
     `movimiento.origen` (migración 020) se persiste tal cual y ya no cambia.
+
+    `auditar=False` (migración 048): el movimiento MANUAL que respalda un gasto operativo lo audita el
+    servicio de gastos con su propia acción (`GASTO_REGISTRADO` / `GASTO_ANULADO`), así la auditoría no
+    muestra dos entradas por una sola operación. Cualquier otro movimiento manual se audita acá.
 
     `movimiento.diferencia_centavos` (migración 011) viaja en el propio
     `MovimientoCaja`: este repositorio no lo calcula, lo persiste tal cual
@@ -195,7 +200,7 @@ def registrar_movimiento_en_conexion(
 
     # El INGRESO de un cobro de cuenta lo audita quien lo origina, con la acción
     # única `COBRO_CUENTA`: acá no se duplica como `CAJA_INGRESO`.
-    if usuario_id is not None and movimiento.origen == "MANUAL":
+    if auditar and usuario_id is not None and movimiento.origen == "MANUAL":
         repositorio_auditoria.registrar_en_conexion(
             conexion, usuario_id, f"CAJA_{movimiento.tipo}", "CAJA", fila["id"], _resumen_de_movimiento(movimiento)
         )

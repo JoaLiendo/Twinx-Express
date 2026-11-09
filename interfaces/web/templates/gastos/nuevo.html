@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block titulo %}Nuevo gasto{% endblock %}
+{% block header %}<h1 class="page-title">Nuevo gasto operativo</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <div class="card p-5 sm:p-8">
+    <div class="mb-5 alert alert-neutral">
+      <p>Registrá acá lo que el comercio paga y <strong>no es mercadería</strong>. La mercadería va en <a href="/compras/nueva" class="underline">Compras</a>: su costo se reconoce al vender y no se cuenta dos veces.</p>
+    </div>
+
+    <form method="post" action="/gastos/nuevo" class="space-y-5" id="form-nuevo-gasto">
+      <input type="hidden" name="clave_idempotencia" value="{{ clave_idempotencia }}" />
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="label-lg">Fecha</label>
+          <input type="date" name="fecha" value="{{ hoy }}" max="{{ hoy }}" required class="input input-lg" />
+        </div>
+        <div>
+          <label class="label-lg">Importe</label>
+          <input type="text" name="importe" inputmode="decimal" placeholder="0,00" required class="input input-lg" id="input-importe" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="label-lg">Categoría</label>
+          <select name="categoria" id="select-categoria" required class="input input-lg">
+            <option value="">Elegí una categoría…</option>
+            {% for clave, etiqueta in categorias %}
+              <option value="{{ clave }}">{{ etiqueta }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="label-lg">Medio de pago</label>
+          <select name="medio_pago" id="select-medio-pago" required class="input input-lg">
+            <option value="">¿Cómo se pagó?</option>
+            {% for clave, etiqueta in medios_pago %}
+              <option value="{{ clave }}" {{ 'disabled' if clave == medio_efectivo_caja and not caja_abierta else '' }}>{{ etiqueta }}{{ ' (caja cerrada)' if clave == medio_efectivo_caja and not caja_abierta else '' }}</option>
+            {% endfor %}
+          </select>
+          <p id="aviso-caja" class="hidden mt-1.5 text-xs text-info">Se registra un egreso en la caja abierta por el mismo importe, en la misma operación.</p>
+        </div>
+      </div>
+
+      <div>
+        <label class="label-lg">Descripción <span id="descripcion-requerida" class="hidden text-error">(obligatoria para «Otros»)</span></label>
+        <input type="text" name="descripcion" id="input-descripcion" maxlength="200" placeholder="Ej.: factura de luz de octubre" class="input input-lg" />
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="label-lg">Referencia <span class="muted font-normal">(opcional)</span></label>
+          <input type="text" name="referencia" maxlength="80" placeholder="N° de factura, recibo…" class="input input-lg" />
+        </div>
+        <div>
+          <label class="label-lg">Responsable <span class="muted font-normal">(opcional)</span></label>
+          <input type="text" name="responsable" maxlength="80" placeholder="Quién pagó o gestionó" class="input input-lg" />
+        </div>
+      </div>
+
+      <div>
+        <label class="label-lg">Observaciones <span class="muted font-normal">(opcional)</span></label>
+        <textarea name="observaciones" rows="3" maxlength="1000" class="input input-lg"></textarea>
+      </div>
+
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="btn btn-primary">Registrar gasto</button>
+        <a href="/gastos" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Ayuda visual: las reglas reales (descripción obligatoria para OTRO, caja abierta) se validan en el servidor.
+  const selectCategoria = document.getElementById('select-categoria');
+  const inputDescripcion = document.getElementById('input-descripcion');
+  const avisoDescripcion = document.getElementById('descripcion-requerida');
+  const selectMedio = document.getElementById('select-medio-pago');
+  const avisoCaja = document.getElementById('aviso-caja');
+  function actualizar() {
+    const esOtro = selectCategoria.value === 'OTRO';
+    inputDescripcion.required = esOtro;
+    avisoDescripcion.classList.toggle('hidden', !esOtro);
+    avisoCaja.classList.toggle('hidden', selectMedio.value !== '{{ medio_efectivo_caja }}');
+  }
+  selectCategoria.addEventListener('change', actualizar);
+  selectMedio.addEventListener('change', actualizar);
+  actualizar();
+</script>
+{% endblock %}

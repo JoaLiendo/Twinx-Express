@@ -87,6 +87,12 @@ ACCIONES_VALIDAS = frozenset(
         "COMPRA_REGISTRADA",
         "COMPRA_ANULADA",
         "VENCIMIENTO_COMPRA_MODIFICADO",
+        # Migración 048: gastos operativos (alta, corrección descriptiva y anulación).
+        "GASTO_REGISTRADO",
+        "GASTO_MODIFICADO",
+        "GASTO_ANULADO",
+        # Migración 049: comprobante del proveedor en una compra.
+        "COMPROBANTE_COMPRA_MODIFICADO",
         "VENTA_ANULADA",
         "CAJA_APERTURA",
         "CAJA_CIERRE",

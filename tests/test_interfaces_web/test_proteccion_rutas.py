@@ -22,7 +22,7 @@ pytestmark = pytest.mark.usefixtures("caja_abierta")
 _RUTAS_OWNER_Y_CASHIER = [
     "/", "/ventas", "/caja", "/caja/arqueo", "/productos", "/ventas/historial", "/ventas/1", "/clientes", "/clientes/nuevo",
 ]
-_RUTAS_SOLO_OWNER = ["/pedidos", "/precios", "/proveedores", "/compras", "/reportes", "/empleados"]
+_RUTAS_SOLO_OWNER = ["/pedidos", "/precios", "/proveedores", "/compras", "/reportes", "/empleados", "/gastos", "/gastos/nuevo"]
 _RUTAS_PRODUCTOS_SOLO_OWNER = ["/productos/nuevo", "/productos/importar"]
 
 

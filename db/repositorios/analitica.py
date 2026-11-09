@@ -14,6 +14,7 @@ jamás se trata como 0.
 from collections.abc import Iterable
 
 from db.conexion import obtener_conexion
+from domain.resultado import AnulacionesDia
 from domain.analitica import (
     CambioPrecioListado,
     CompraCategoriaProveedor,
@@ -437,3 +438,18 @@ def contadores_de_proveedores() -> dict[int, tuple[int, int, int]]:
             """
         ).fetchall()
     return {fila["id"]: (fila["evaluaciones"], fila["reclamos"], fila["saldo"]) for fila in filas}
+
+
+def anulaciones_por_dia(inicio: str, fin_exclusivo: str) -> list[AnulacionesDia]:
+    """Ventas del período (por su propia fecha) que terminaron anuladas, con lo que habían facturado: solo
+    para informarlas junto al resultado; ya no cuentan en ventas ni en margen."""
+    with obtener_conexion() as conexion:
+        filas = conexion.execute(
+            """
+            SELECT substr(fecha, 1, 10) AS fecha, COUNT(*) AS cantidad, SUM(total_centavos) AS total
+            FROM ventas WHERE estado = 'ANULADA' AND fecha >= ? AND fecha < ?
+            GROUP BY substr(fecha, 1, 10) ORDER BY fecha
+            """,
+            (inicio, fin_exclusivo),
+        ).fetchall()
+    return [AnulacionesDia(fila["fecha"], fila["cantidad"], fila["total"]) for fila in filas]

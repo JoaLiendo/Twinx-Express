@@ -29,6 +29,7 @@ from services import (
     servicio_auditoria,
     servicio_compras,
     servicio_deuda_proveedores,
+    servicio_gastos,
     servicio_movimientos_stock,
     servicio_reportes,
     servicio_ventas,
@@ -319,3 +320,49 @@ def csv_auditoria(
     lotes = servicio_auditoria.lotes_para_exportar(accion, usuario_id, fecha_desde, fecha_hasta)
     primero = next(lotes, [])
     return generar_csv_por_lotes(COLUMNAS_AUDITORIA, ([_fila_auditoria(e) for e in lote] for lote in chain([primero], lotes)))
+
+
+COLUMNAS_GASTOS = (
+    "gasto", "fecha", "estado", "categoria", "descripcion", "importe", "medio_pago", "referencia", "responsable",
+    "observaciones", "usuario", "egreso_caja", "motivo_anulacion", "fecha_anulacion", "reintegro_caja",
+)
+
+
+def csv_gastos(filtros) -> bytes:
+    """Gastos operativos que cumplen los filtros del listado (sin paginar). Los anulados salen con su estado y
+    motivo: la suma del período debe hacerse solo sobre los VIGENTES."""
+    gastos = servicio_gastos.listar_para_exportar(filtros)
+    return generar_csv(
+        COLUMNAS_GASTOS,
+        (
+            (
+                numero(g.id), g.fecha, g.estado, g.categoria_etiqueta, g.descripcion, dinero(g.importe_centavos),
+                g.medio_pago_etiqueta, g.referencia, g.responsable, g.observaciones, g.usuario_nombre,
+                numero(g.caja_movimiento_id), g.motivo_anulacion, g.anulado_en, numero(g.caja_movimiento_reintegro_id),
+            )
+            for g in gastos
+        ),
+    )
+
+
+COLUMNAS_RESULTADO = (
+    "periodo", "unidades", "facturado", "anulaciones", "anulado", "costo_conocido", "unidades_sin_costo",
+    "margen_bruto", "costo_real", "gastos_operativos", "resultado_operativo_estimado", "resultado_porcentual",
+)
+
+
+def csv_resultado(fecha_desde: str | None, fecha_hasta: str | None, granularidad: str | None) -> bytes:
+    """El mismo agregado de `/analitica/resultado` (mismo servicio). Última fila: el total del período. Un
+    período sin costo conocido sale con margen y resultado vacíos, nunca con 0."""
+    analisis = servicio_analitica.analizar_resultado(fecha_desde, fecha_hasta, granularidad)
+
+    def fila(p):
+        return (
+            p.etiqueta, numero(p.margen.unidades), dinero(p.facturado_centavos), numero(p.anulaciones_cantidad),
+            dinero(p.anulaciones_centavos), dinero(p.costo_conocido_centavos if p.margen.unidades_con_costo_ref else None),
+            numero(p.unidades_sin_costo), dinero(p.margen_bruto_centavos),
+            dinero(p.margen.costo_real_centavos if p.margen.unidades_costo_real else None), dinero(p.gastos_centavos),
+            dinero(p.resultado_operativo_centavos), _porcentaje(p.resultado_operativo_porcentual),
+        )
+
+    return generar_csv(COLUMNAS_RESULTADO, chain((fila(p) for p in analisis.periodos), [fila(analisis.total)]))

@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request
 
 from domain.analitica import GRANULARIDADES
+from domain.gasto import ETIQUETAS_CATEGORIA as ETIQUETAS_CATEGORIA_GASTO
 from interfaces.web.auth import requiere_rol
 from interfaces.web.plantillas import templates
 from interfaces.web.utilidades import contexto_base, entero_opcional, respuesta_csv
@@ -157,3 +158,26 @@ def ver_proveedores(request: Request, fecha_desde: str | None = None, fecha_hast
     analisis = servicio_analitica.analizar_proveedores(**_periodo(fecha_desde, fecha_hasta))
     contexto = {**contexto_base(request), "analisis": analisis, "seccion": "proveedores"}
     return templates.TemplateResponse(request, "analitica/proveedores.html", contexto)
+
+
+@router.get("/resultado")
+def ver_resultado(request: Request, fecha_desde: str | None = None, fecha_hasta: str | None = None, granularidad: str = ""):
+    """Resultado operativo estimado (cierre operativo): ventas, margen bruto, gastos y resultado por período."""
+    analisis = servicio_analitica.analizar_resultado(**_periodo(fecha_desde, fecha_hasta), granularidad=granularidad or None)
+    contexto = {
+        **contexto_base(request),
+        "analisis": analisis,
+        "granularidades": list(ETIQUETAS_GRANULARIDAD.items()),
+        "etiquetas_categoria": ETIQUETAS_CATEGORIA_GASTO,
+        "url_exportar": "/analitica/resultado/exportar?" + _query(
+            fecha_desde=analisis.fecha_desde, fecha_hasta=analisis.fecha_hasta, granularidad=analisis.granularidad
+        ),
+        "seccion": "resultado",
+    }
+    return templates.TemplateResponse(request, "analitica/resultado.html", contexto)
+
+
+@router.get("/resultado/exportar")
+def exportar_resultado(fecha_desde: str | None = None, fecha_hasta: str | None = None, granularidad: str = ""):
+    contenido = servicio_exportacion_csv.csv_resultado(**_periodo(fecha_desde, fecha_hasta), granularidad=granularidad or None)
+    return respuesta_csv(contenido, "resultado_operativo")

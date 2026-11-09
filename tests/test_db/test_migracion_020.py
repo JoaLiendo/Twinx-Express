@@ -434,6 +434,8 @@ def test_migracion_desde_base_completamente_vacia_aplica_todo(tmp_path, monkeypa
             " AND name <> 'trg_ventas_fiscalizada_no_anulable'"
             # V1.16 RC4 (047): origen del pago de compras.
             " AND name NOT LIKE 'trg_compras_%'"
+            # Cierre operativo (048): gastos operativos.
+            " AND name NOT LIKE 'trg_gastos_%'"
         ).fetchall()
         assert len(triggers_019_020) == 20
     finally:

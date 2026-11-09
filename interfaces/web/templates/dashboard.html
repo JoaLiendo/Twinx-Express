@@ -170,7 +170,7 @@
         </div>
         <a href="/analitica" class="text-xs font-semibold text-primary hover:text-primary-hover">Ver analítica →</a>
       </div>
-      <div class="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-slate-800">
+      <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 divide-y xl:divide-y-0 xl:divide-x divide-slate-100 dark:divide-slate-800">
         <div class="p-4" data-indicador="ventas-30">
           <p class="kpi-label">Ventas</p>
           <p class="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">${{ ventas30.total_centavos | dinero_ar }}</p>
@@ -183,6 +183,19 @@
           <p class="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">{% if margen30.margen_ref_centavos is not none %}${{ margen30.margen_ref_centavos | dinero_ar }}{% else %}—{% endif %}</p>
           <p class="text-xs muted">{{ margen30.margen_ref_porcentual | porcentaje }} sobre ventas con costo</p>
         </div>
+        {% if gastos_30 %}
+        {% set resultado30 = (margen30.margen_ref_centavos - gastos_30.total_centavos) if margen30.margen_ref_centavos is not none else none %}
+        <a href="/gastos?fecha_desde={{ gastos_30.fecha_desde }}&fecha_hasta={{ gastos_30.fecha_hasta }}" class="p-4 block hover:bg-slate-50 dark:hover:bg-slate-800/40 transition" data-indicador="gastos-30">
+          <p class="kpi-label">Gastos operativos</p>
+          <p class="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">${{ gastos_30.total_centavos | dinero_ar }}</p>
+          <p class="text-xs muted">{{ gastos_30.por_categoria | length }} categoría{{ 's' if (gastos_30.por_categoria | length) != 1 else '' }}</p>
+        </a>
+        <a href="/analitica/resultado" class="p-4 block hover:bg-slate-50 dark:hover:bg-slate-800/40 transition" data-indicador="resultado-30">
+          <p class="kpi-label">Resultado operativo est.</p>
+          <p class="text-xl font-bold tabular-nums {{ 'text-error' if resultado30 is not none and resultado30 < 0 else 'text-slate-900 dark:text-slate-100' }}">{% if resultado30 is not none %}{{ '−' if resultado30 < 0 else '' }}${{ (resultado30 | abs) | dinero_ar }}{% else %}—{% endif %}</p>
+          <p class="text-xs muted">margen bruto − gastos · estimado</p>
+        </a>
+        {% endif %}
         <div class="p-4" data-indicador="deuda-30">
           <p class="kpi-label">Deuda de clientes</p>
           <p class="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-100">${{ resumen_analitica.deuda.clientes.total_centavos | dinero_ar }}</p>

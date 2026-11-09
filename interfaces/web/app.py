@@ -44,6 +44,7 @@ from interfaces.web.rutas import (
     dashboard,
     empleados,
     fiscal,
+    gastos,
     inventario,
     pedidos,
     precios,
@@ -174,6 +175,7 @@ app.include_router(precios.router)
 app.include_router(proveedores.router)
 app.include_router(inventario.router)
 app.include_router(compras.router)
+app.include_router(gastos.router)
 app.include_router(reportes.router)
 app.include_router(analitica.router)
 app.include_router(asistente.router)

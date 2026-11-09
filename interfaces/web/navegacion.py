@@ -29,6 +29,8 @@ NAV_ITEMS: list[dict[str, object]] = [
     {"href": "/proveedores", "etiqueta": "Proveedores", "icono": "proveedores", "roles": _SOLO_OWNER},
     {"href": "/compras", "etiqueta": "Compras", "icono": "compras", "roles": _SOLO_OWNER},
     {"href": "/reposicion", "etiqueta": "Reposición", "icono": "pedidos", "roles": _SOLO_OWNER},
+    # Cierre operativo (048): gastos del comercio; información del resultado, solo OWNER.
+    {"href": "/gastos", "etiqueta": "Gastos", "icono": "caja", "roles": _SOLO_OWNER},
     {"href": "/reportes", "etiqueta": "Reportes", "icono": "reportes", "roles": _SOLO_OWNER},
     # V1.17: analítica del dueño (ventas, margen, precios, deuda, proveedores). El CASHIER no ve costos.
     {"href": "/analitica", "etiqueta": "Analítica", "icono": "analitica", "roles": _SOLO_OWNER},

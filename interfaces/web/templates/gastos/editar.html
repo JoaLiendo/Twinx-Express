@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block titulo %}Corregir gasto{% endblock %}
+{% block header %}<h1 class="page-title">Corregir gasto #{{ gasto.id }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <div class="card p-5 sm:p-8">
+    <dl class="grid grid-cols-3 gap-4 text-sm mb-5">
+      <div><dt class="label">Fecha</dt><dd class="font-medium text-slate-900 dark:text-slate-100">{{ gasto.fecha | fecha_corta }}</dd></div>
+      <div><dt class="label">Importe</dt><dd class="font-semibold tabular-nums text-slate-900 dark:text-slate-100">${{ gasto.importe_centavos | dinero_ar }}</dd></div>
+      <div><dt class="label">Medio de pago</dt><dd class="font-medium text-slate-900 dark:text-slate-100">{{ gasto.medio_pago_etiqueta }}</dd></div>
+    </dl>
+    <p class="mb-5 text-xs muted">Lo económico (fecha, importe, medio de pago) no se edita: para corregirlo, anulá este gasto y registrá otro. Acá solo se corrigen los datos descriptivos; cada cambio queda en la auditoría.</p>
+
+    <form method="post" action="/gastos/{{ gasto.id }}/editar" class="space-y-5" id="form-editar-gasto">
+      <div>
+        <label class="label-lg">Categoría</label>
+        <select name="categoria" id="select-categoria" required class="input input-lg">
+          {% for clave, etiqueta in categorias %}
+            <option value="{{ clave }}" {{ 'selected' if gasto.categoria == clave else '' }}>{{ etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label-lg">Descripción <span id="descripcion-requerida" class="hidden text-error">(obligatoria para «Otros»)</span></label>
+        <input type="text" name="descripcion" id="input-descripcion" maxlength="200" value="{{ gasto.descripcion or '' }}" class="input input-lg" />
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="label-lg">Referencia</label>
+          <input type="text" name="referencia" maxlength="80" value="{{ gasto.referencia or '' }}" class="input input-lg" />
+        </div>
+        <div>
+          <label class="label-lg">Responsable</label>
+          <input type="text" name="responsable" maxlength="80" value="{{ gasto.responsable or '' }}" class="input input-lg" />
+        </div>
+      </div>
+      <div>
+        <label class="label-lg">Observaciones</label>
+        <textarea name="observaciones" rows="3" maxlength="1000" class="input input-lg">{{ gasto.observaciones or '' }}</textarea>
+      </div>
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="btn btn-primary">Guardar corrección</button>
+        <a href="/gastos/{{ gasto.id }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const selectCategoria = document.getElementById('select-categoria');
+  const inputDescripcion = document.getElementById('input-descripcion');
+  const avisoDescripcion = document.getElementById('descripcion-requerida');
+  function actualizar() {
+    const esOtro = selectCategoria.value === 'OTRO';
+    inputDescripcion.required = esOtro;
+    avisoDescripcion.classList.toggle('hidden', !esOtro);
+  }
+  selectCategoria.addEventListener('change', actualizar);
+  actualizar();
+</script>
+{% endblock %}

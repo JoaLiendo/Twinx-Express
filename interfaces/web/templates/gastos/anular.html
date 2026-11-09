@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block titulo %}Anular gasto{% endblock %}
+{% block header %}<h1 class="page-title">Anular gasto #{{ gasto.id }}</h1>{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <div class="card p-5 sm:p-8">
+    <div class="mb-5 alert alert-error">
+      <p>El gasto queda marcado como <strong>ANULADO</strong> de forma permanente, con el motivo, la fecha y tu usuario. No se borra: sigue en el historial y en la auditoría. No se puede deshacer.</p>
+    </div>
+
+    <dl class="grid grid-cols-2 gap-4 text-sm mb-6">
+      <div><dt class="label">Categoría</dt><dd class="font-medium text-slate-900 dark:text-slate-100">{{ gasto.categoria_etiqueta.replace(' (con descripción)', '') }}</dd></div>
+      <div><dt class="label">Importe</dt><dd class="font-semibold tabular-nums text-slate-900 dark:text-slate-100">${{ gasto.importe_centavos | dinero_ar }}</dd></div>
+      <div><dt class="label">Fecha</dt><dd class="text-slate-800 dark:text-slate-200">{{ gasto.fecha | fecha_corta }}</dd></div>
+      <div><dt class="label">Medio de pago</dt><dd class="text-slate-800 dark:text-slate-200">{{ gasto.medio_pago_etiqueta }}</dd></div>
+    </dl>
+
+    <form method="post" action="/gastos/{{ gasto.id }}/anular" class="space-y-5" id="form-anular-gasto"
+          onsubmit="return confirm('¿Confirmás anular este gasto? No se puede deshacer.');">
+      <div>
+        <label class="label-lg">Motivo</label>
+        <textarea name="motivo" rows="3" required maxlength="300" class="input input-lg" placeholder="Ej.: cargado dos veces, importe equivocado"></textarea>
+      </div>
+      {% if gasto.paga_con_caja %}
+      <fieldset id="reintegro-caja">
+        <legend class="label-lg">Este gasto se pagó con efectivo de la caja. ¿El efectivo vuelve a la caja?</legend>
+        <div class="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <label class="inline-flex items-center gap-2">
+            <input type="radio" name="reintegro_a_caja" value="SI" required class="text-primary focus:ring-primary" {{ 'disabled' if not caja_abierta else '' }} />
+            Sí: se registra un ingreso de ${{ gasto.importe_centavos | dinero_ar }} en la caja abierta{{ ' (requiere caja abierta)' if not caja_abierta else '' }}
+          </label>
+          <label class="inline-flex items-center gap-2">
+            <input type="radio" name="reintegro_a_caja" value="NO" required class="text-primary focus:ring-primary" />
+            No: la caja queda como está
+          </label>
+        </div>
+        <p class="mt-1 text-xs muted">El egreso original no se borra: queda en la sesión de caja en que salió el efectivo.</p>
+      </fieldset>
+      {% endif %}
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit" class="rounded-lg bg-error hover:bg-error/90 transition text-white text-sm font-semibold px-5 py-2.5 shadow-sm">Anular gasto</button>
+        <a href="/gastos/{{ gasto.id }}" class="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
