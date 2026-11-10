@@ -37,6 +37,9 @@ homologación real con ARCA y la firma del ejecutable siguen pendientes y extern
   con ARCA y lista lo que falta para emitir; el hilo del backup programado espera antes de consultar y se detiene al
   cerrar; tests desactualizados por las migraciones 048–051 alineados y huecos de cobertura cerrados (precio
   cambiado entre pedido y venta, recorrido del cajero, custodia ante una copia con el comprobante todavía incierto).
+  Auditoría visual: en tema oscuro la pestaña activa de Analítica y Reportes vuelve a distinguirse, los íconos de
+  calendario y reloj se ven y el resultado negativo sale en rojo; el panel de Backup nombra el tipo del último
+  backup en castellano («automático», «cierre de caja») y los porcentajes llevan punto de miles.
 
 ## 1.17.0 — candidato (rama `dev/v1.17`)
 

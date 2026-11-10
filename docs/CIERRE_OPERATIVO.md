@@ -100,3 +100,51 @@ negocio. Base: `feature/v1.18-asistente-ia` en `b913b6a` (certificado). Versión
 Comparación lado a lado de proveedores por producto; listado de movimientos de caja entre sesiones con filtro por
 origen; eventos de demanda no satisfecha (solo si el negocio define cómo registrarlos sin inventar ventas);
 intereses/recargos/cuotas (fuera de alcance de V1.14).
+
+## 6. Certificación del candidato (2026-11-09)
+
+Código congelado en `a4eb799` (`build/snapshot-a4eb799`, extraído con `git archive`), verificado en secuencia
+estricta, sin suites pesadas en paralelo. Una primera corrida completa sobre `7b7ab09` había dado 6502 tests en
+verde y 0 fallos (1 h 10 min 40 s). Los cambios posteriores (manual, ayuda y auditoría visual: CSS, cuatro
+templates y el filtro de porcentajes) se verificaron con los tests de cada zona (129 + 359 + 23 en verde) y con
+JS y E2E completos. La segunda corrida completa sobre `a4eb799` se cortó al 68 % porque el equipo se quedó sin
+memoria (4518 tests en verde, 0 fallos hasta ese punto): **falta repetirla completa**.
+
+| Verificación | Resultado |
+|---|---|
+| Suite Python completa (`pytest -p no:cacheprovider`) | `7b7ab09`: 6502/0 (1 h 10 min 40 s). `a4eb799`: cortada al 68 % por falta de memoria del equipo, 4518 en verde y 0 fallos hasta ahí; pendiente repetirla completa |
+| JS (`npm run test:js`) | 82/82 |
+| E2E desktop (`npm run test:e2e`) | 61/61 (1,8 min) |
+| E2E responsive (`npm run test:e2e:responsive`) | 36/36 (55 s) |
+| Build (`Construir_entregable.ps1`) | Válido: 308 archivos, 48,6 MB, 51 migraciones; sin bases, ZIP, `data\`, imágenes ni backups; el `twinx.css` del bundle es idéntico al versionado |
+| `KioscoApp.exe --version` | «Twinx Express 1.18.0», sin crear datos |
+| Primer arranque (`LOCALAPPDATA` aislado) | Base nueva con 51 migraciones; pide la configuración inicial; CSS y JS servidos sin red; 114 MB de memoria |
+| Recorrido de instalación nueva (`build/cert118/recorrido.js`) | 21/21: configuración inicial, comercio, caja, categoría, producto, compra con comprobante del proveedor, cliente con DNI, pedido sin tocar stock, venta del pedido desde el POS, ticket «no válido como factura», gasto con efectivo, resultado operativo, backup manual, estado de preparación fiscal, perfil fiscal sin ARCA, borrador sin validez y sin comprobante fiscal creado, cierre de caja con backup, ninguna conexión fuera de 127.0.0.1 |
+| Segundo arranque sobre los mismos datos | Inicia; venta, gasto, pedido, cliente y 42 productos conservados; `integrity_check` ok; sin violaciones de claves foráneas |
+| Upgrade 1.17.0 → 1.18.0 (`build/cert118/certificar.ps1`, ejecutables reales) | `Instalar.ps1` detecta la instalación y usa `--actualizar`: backup `PRE_UPDATE`, 47 → 51 migraciones, 41 productos, `integrity_check` ok, 1.17.0 y 1.18.0 archivadas en `versiones\` |
+| Rollback (`versiones\1.18.0\KioscoApp.exe --rollback 1.17.0`) | Programa 1.17.0, base de vuelta en 47 migraciones sin la tabla `gastos`, 41 productos, copia de seguridad de los datos reemplazados |
+| Re-actualización a 1.18.0 | 51 migraciones, 41 productos |
+| Desinstalación (`Desinstalar.ps1` sobre la carpeta de prueba) | Programa y acceso directo eliminados; base y 3 backups conservados e informados |
+| Capturas | 200 PNG (25 pantallas × 1366×768, 1440×900, 1920×1080 y 375×812 × claro/oscuro) con Brave headless en `..\capturas-v1.18-cierre\` |
+
+**Corregido durante la certificación** (cada corrección con su test):
+
+- 10 tests desactualizados por las migraciones 048–051 (`d69a1fc`).
+- El hilo del backup programado consultaba la base antes de su primer intervalo y sobrevivía al cierre (`faf9f63`).
+- La desinstalación por doble clic dentro de la carpeta instalada fallaba: Windows no borra la carpeta en la que
+  está parado un proceso (`904d807`).
+- El borrador fiscal exigía las tablas de parámetros de ARCA. Ahora se genera sin conexión y lista lo que falta
+  para emitir; la emisión real las sigue exigiendo (`4b07288`).
+- Auditoría visual (`1b6712a`). En tema oscuro:
+  - la pestaña activa de Analítica y Reportes no se distinguía;
+  - los íconos de calendario y reloj quedaban negros;
+  - la tarjeta de resultado negativo perdía el rojo.
+
+  Además, el panel de Backup mostraba el tipo interno («automatico») y los porcentajes no tenían punto de miles.
+
+**Observado y aceptado sin cambios** (bajo, en su mayoría preexistente):
+
+- en 375 px los títulos largos de la cabecera se recortan con «…»;
+- la fila «Total» del detalle de un pedido queda unos 4 px corrida respecto de sus columnas;
+- el botón «×» para quitar una línea del pedido se ve tenue cuando hay una sola línea (está deshabilitado);
+- los pedidos y gastos muestran la marca de tiempo en formato `AAAA-MM-DD hh:mm`, igual que las ventas.
