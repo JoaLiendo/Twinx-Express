@@ -80,6 +80,7 @@ class TestBorrador:
         assert "BORRADOR — SIN VALIDEZ FISCAL" in html and 'data-estado="BORRADOR"' in html
         assert "00003-BORRADOR" in html and "no solicitado" in html
         assert "fe/qr" not in html and "comprobante-qr" not in html and "Descargar PDF" not in html
+        assert 'id="borrador-pendientes"' not in html  # con perfil validado y tablas, no falta nada
         assert "Factura B".upper() in html.upper() and "$ 121,00" in html
         assert servicio_facturacion.comprobantes_de_venta(venta.id) == []
         assert fiscal.autorizaciones == 0
@@ -97,6 +98,31 @@ class TestBorrador:
         sin_iva = uf.vender([(uf.producto(500, None), 1)])
         respuesta = solicitud("GET", f"/fiscal/ventas/{sin_iva.id}/borrador", cookies=owner[1])
         assert respuesta.status == 303 and "tipo=warning" in respuesta.header("location")
+
+    def test_sin_arca_el_borrador_igual_se_genera_y_dice_que_falta(self, owner, arca_falso):
+        """Instalación del piloto: perfil cargado pero sin validar contra ARCA y sin tablas descargadas. El
+        borrador se arma igual (no depende de ARCA), lo dice, y no crea comprobante ni consulta a ARCA."""
+        from db.conexion import obtener_conexion
+
+        uf.guardar_perfil_validado()
+        with obtener_conexion() as conexion:
+            conexion.execute("UPDATE perfil_fiscal SET punto_venta_cae_validado = NULL")
+        venta = _venta()
+        html = solicitud("GET", f"/fiscal/ventas/{venta.id}/borrador", cookies=owner[1]).texto
+        assert "BORRADOR — SIN VALIDEZ FISCAL" in html and "00003-BORRADOR" in html and "$ 121,00" in html
+        assert 'id="borrador-pendientes"' in html
+        assert "no fue validado con ARCA" in html and "Falta la tabla de ARCA" in html
+        assert "fe/qr" not in html and "comprobante-qr" not in html
+        assert servicio_facturacion.comprobantes_de_venta(venta.id) == []
+        assert arca_falso.autorizaciones == 0
+
+    def test_la_emision_real_sigue_exigiendo_las_tablas_de_arca(self, owner, arca_falso):
+        """El relajo es solo del borrador: emitir sin tablas de ARCA en caché sigue bloqueado."""
+        from excepciones import FiscalizacionBloqueadaError
+
+        perfil = uf.guardar_perfil_validado()
+        with pytest.raises(FiscalizacionBloqueadaError, match="Falta la tabla de ARCA"):
+            servicio_facturacion.preparar_principal(perfil, _venta().id, owner[0].id)
 
     def test_el_cajero_no_accede_al_borrador(self, fiscal, owner):
         _, cajero = usuario_logueado("CASHIER", "cajera")

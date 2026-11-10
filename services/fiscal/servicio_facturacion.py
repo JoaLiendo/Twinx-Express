@@ -134,9 +134,18 @@ class _Preparado:
     nuevo: repositorio_fiscal.NuevoComprobante
 
 
-def preparar_principal(perfil: PerfilFiscal, venta_id: int, usuario_id: int | None, punto_venta: int | None = None) -> _Preparado:
+def preparar_principal(
+    perfil: PerfilFiscal,
+    venta_id: int,
+    usuario_id: int | None,
+    punto_venta: int | None = None,
+    *,
+    validar_parametros: bool = True,
+) -> _Preparado:
     """Snapshot del comprobante principal de la venta (sin escribir nada). `punto_venta` es el de CAE salvo
-    que se emita bajo CAEA (ver `servicio_caea`)."""
+    que se emita bajo CAEA (ver `servicio_caea`). `validar_parametros=False` solo lo usa la vista previa
+    (`previsualizar_venta`): omite la validación contra las tablas de ARCA en caché, que es requisito para
+    emitir pero no para mostrar un borrador sin validez fiscal."""
     with obtener_conexion() as conexion:
         venta = repositorio_fiscal.venta_para_fiscalizar_en_conexion(conexion, venta_id)
         if venta is None:
@@ -153,9 +162,10 @@ def preparar_principal(perfil: PerfilFiscal, venta_id: int, usuario_id: int | No
     importes = calcular_importes(list(venta.lineas), clase, receptor_consumidor_final=receptor.es_consumidor_final)
     if importes.total_centavos != venta.total_centavos:
         raise FiscalizacionBloqueadaError("Los importes fiscales no reconcilian con el total de la venta.")
-    servicio_parametros.validar_codigos(
-        perfil.ambiente, clase, tipo, receptor.doc_tipo, receptor.condicion_iva_receptor_id, importes, hoy
-    )
+    if validar_parametros:
+        servicio_parametros.validar_codigos(
+            perfil.ambiente, clase, tipo, receptor.doc_tipo, receptor.condicion_iva_receptor_id, importes, hoy
+        )
     emisor = perfil.snapshot(punto_venta or perfil.punto_venta_cae)
     return _Preparado(
         repositorio_fiscal.NuevoComprobante(
@@ -712,18 +722,32 @@ def intentos(comprobante_id: int):
 def previsualizar_venta(venta_id: int, usuario_id: int | None):
     """Borrador del comprobante principal que se emitiría para la venta: mismo snapshot que la emisión
     (`preparar_principal`), pero sin crear el comprobante, sin número, sin CAE ni QR. No escribe nada ni
-    llama a ARCA. Si la venta no podría fiscalizarse, lanza el mismo error que bloquearía la emisión.
+    llama a ARCA, así que funciona también antes de homologar: lo que falta contra ARCA (tablas de parámetros
+    sin descargar, códigos no vigentes) no impide el borrador, se muestra en él como lo que bloquearía la
+    emisión real. Lo que impide armar el comprobante mismo (producto sin IVA clasificado, venta anulada)
+    sí se rechaza.
 
     Raises:
-        ConfiguracionFiscalError: sin perfil del emisor.
-        FiscalizacionBloqueadaError / DatosInvalidosError / VentaNoEncontradaError: lo que bloquearía emitir.
+        ConfiguracionFiscalError: sin perfil del emisor o sin punto de venta.
+        FiscalizacionBloqueadaError / DatosInvalidosError / VentaNoEncontradaError / OperacionFiscalInvalidaError.
     """
     perfil = repositorio_fiscal.obtener_perfil()
     if perfil is None:
         raise ConfiguracionFiscalError("Todavía no hay perfil fiscal del emisor: no hay nada que previsualizar.")
     if perfil.punto_venta_cae is None:
         raise ConfiguracionFiscalError("El perfil fiscal no tiene punto de venta: completalo para previsualizar.")
-    return armar_borrador(preparar_principal(perfil, venta_id, usuario_id).nuevo)
+    nuevo = preparar_principal(perfil, venta_id, usuario_id, validar_parametros=False).nuevo
+    pendientes: list[str] = []
+    try:
+        servicio_parametros.validar_codigos(
+            nuevo.ambiente, nuevo.clase, nuevo.tipo_comprobante, nuevo.receptor.doc_tipo,
+            nuevo.receptor.condicion_iva_receptor_id, nuevo.importes, date.today(),
+        )
+    except FiscalizacionBloqueadaError as error:
+        pendientes = list(error.motivos)
+    if not perfil.punto_venta_cae_listo:
+        pendientes.insert(0, "El punto de venta todavía no fue validado con ARCA en el ambiente en uso.")
+    return armar_borrador(nuevo, tuple(pendientes))
 
 
 # --- Cierre operativo (E6): listado informativo de autorizados ---------------------------------------

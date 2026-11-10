@@ -71,6 +71,8 @@ class DocumentoFiscal:
     ambiente_prueba: bool
     # Cierre operativo (E3): vista previa sin emitir. Sin número, CAE ni QR; nunca avanza numeración.
     borrador: bool = False
+    # Solo en un borrador: lo que hoy bloquearía la emisión real (punto de venta sin validar, tablas de ARCA).
+    pendientes_para_emitir: tuple[str, ...] = ()
 
 
 def _contenido(comprobante) -> dict:
@@ -179,10 +181,11 @@ def armar(comprobante: ComprobanteFiscal, asociado: ComprobanteFiscal | None = N
     )
 
 
-def armar_borrador(nuevo) -> DocumentoFiscal:
+def armar_borrador(nuevo, pendientes_para_emitir: tuple[str, ...] = ()) -> DocumentoFiscal:
     """Vista previa de lo que se emitiría para una venta (cierre operativo, E3), a partir del snapshot que
     `servicio_facturacion.preparar_principal` arma SIN escribir nada: sin número (no se avanza la
-    numeración), sin CAE ni QR (no se inventan) y marcada como BORRADOR — SIN VALIDEZ FISCAL."""
+    numeración), sin CAE ni QR (no se inventan) y marcada como BORRADOR — SIN VALIDEZ FISCAL.
+    `pendientes_para_emitir` lista lo que hoy bloquearía la emisión real (se muestra, no impide el borrador)."""
     return DocumentoFiscal(
         **_contenido(nuevo),
         numero=f"{nuevo.emisor.punto_venta:05d}-BORRADOR",
@@ -191,4 +194,5 @@ def armar_borrador(nuevo) -> DocumentoFiscal:
         asociado=None,
         qr_url="",
         borrador=True,
+        pendientes_para_emitir=tuple(pendientes_para_emitir),
     )

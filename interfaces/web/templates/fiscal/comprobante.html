@@ -40,6 +40,12 @@
 <body>
   <div class="hoja" id="comprobante-fiscal" data-estado="{{ 'BORRADOR' if documento.borrador else comprobante.estado }}">
     {% if documento.borrador %}<p class="prueba" id="comprobante-borrador" style="color:#b91c1c;border-color:#b91c1c;font-size:15px">BORRADOR — SIN VALIDEZ FISCAL · sin número, sin CAE, sin QR · no se envió a ARCA</p>{% endif %}
+    {% if documento.borrador and documento.pendientes_para_emitir %}
+    <div class="prueba" id="borrador-pendientes" style="text-align:left;font-weight:normal">
+      <p style="margin:0 0 4px;font-weight:bold">Para emitir este comprobante de verdad falta:</p>
+      <ul style="margin:0;padding-left:18px">{% for pendiente in documento.pendientes_para_emitir %}<li>{{ pendiente }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
     {% if documento.ambiente_prueba %}<p class="prueba" id="comprobante-homologacion">HOMOLOGACIÓN (PRUEBAS) · SIN VALIDEZ FISCAL</p>{% endif %}
     <div class="cabecera">
       <div class="emisor">
