@@ -15,7 +15,7 @@
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4" id="kpis-clientes">
     <div class="kpi"><p class="kpi-label">Clientes con compras</p><p class="kpi-value" id="clientes-cantidad">{{ reporte.filas | length }}</p><p class="kpi-detail">{{ reporte.total_ventas }} venta(s) identificada(s)</p></div>
     <div class="kpi"><p class="kpi-label">Vendido a clientes identificados</p><p class="kpi-value" id="clientes-total">${{ reporte.total_centavos | dinero_ar }}</p></div>
-    <div class="kpi"><p class="kpi-label">Deuda actual de estos clientes</p><p class="kpi-value {{ 'text-error' if reporte.total_deuda_centavos else '' }}" id="clientes-deuda">${{ reporte.total_deuda_centavos | dinero_ar }}</p></div>
+    <div class="kpi"><p class="kpi-label">Deuda actual de estos clientes</p><p class="kpi-value {{ 'text-error dark:text-error' if reporte.total_deuda_centavos else '' }}" id="clientes-deuda">${{ reporte.total_deuda_centavos | dinero_ar }}</p></div>
   </div>
 
   <div class="flex items-center justify-end">

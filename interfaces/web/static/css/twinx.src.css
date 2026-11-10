@@ -33,7 +33,9 @@
 }
 
 .dark {
-  --color-primary: #6366f1;        --color-primary-rgb: 99 102 241;
+  /* Controles nativos (íconos de calendario y reloj, listas de <select>) en oscuro: si no, quedan negros. */
+  color-scheme: dark;
+  --color-primary: #6366f1;       --color-primary-rgb: 99 102 241;
   --color-primary-hover: #818cf8;  --color-primary-hover-rgb: 129 140 248;
   --color-primary-subtle: #332c66; --color-primary-subtle-rgb: 51 44 102;
   --color-success: #34d399;        --color-success-rgb: 52 211 153;
@@ -159,7 +161,8 @@
 
   /* --- Navegación secundaria (pastillas) y control segmentado ---------------------------- */
   .nav-pill { @apply rounded-lg px-3.5 py-2 text-sm font-medium transition bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700; }
-  .nav-pill-active { @apply bg-primary text-white shadow-sm hover:bg-primary-hover; }
+  /* Las variantes dark: repiten el color porque las de .nav-pill tienen más especificidad y lo taparían. */
+  .nav-pill-active { @apply bg-primary text-white shadow-sm hover:bg-primary-hover dark:bg-primary dark:text-white dark:hover:bg-primary-hover; }
   .segmented { @apply inline-flex rounded-lg border border-slate-300 overflow-hidden text-sm font-medium dark:border-slate-700; }
   .segmented > * { @apply px-3.5 py-1.5 bg-white text-slate-600 hover:bg-slate-50 border-l border-slate-300 first:border-l-0 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700 dark:hover:bg-slate-800; }
   .segmented > .segmented-active { @apply bg-slate-900 text-white hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-700; }

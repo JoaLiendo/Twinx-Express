@@ -26,9 +26,9 @@
     {{ g.kpi("Ventas", "$" ~ (total.facturado_centavos | dinero_ar), total.margen.unidades ~ " unidades · " ~ total.anulaciones_cantidad ~ " venta(s) anulada(s) por $" ~ (total.anulaciones_centavos | dinero_ar), id="resultado-ventas") }}
     {{ g.kpi("Margen bruto", dinero_o_guion(total.margen_bruto_centavos), ((total.margen.margen_ref_porcentual | porcentaje) ~ " · costo conocido $" ~ (total.costo_conocido_centavos | dinero_ar)) if total.margen_bruto_centavos is not none else "sin unidades con costo conocido", id="resultado-margen") }}
     {{ g.kpi("Gastos operativos", "$" ~ (total.gastos_centavos | dinero_ar), (analisis.gastos_por_categoria | length) ~ " categoría(s)", id="resultado-gastos", href="/gastos?fecha_desde=" ~ analisis.fecha_desde ~ "&fecha_hasta=" ~ analisis.fecha_hasta) }}
-    <div class="kpi {{ 'border-error/40' if total.resultado_operativo_centavos is not none and total.resultado_operativo_centavos < 0 else '' }}" id="resultado-operativo">
+    <div class="kpi {{ 'border-error/40 dark:border-error/40' if total.resultado_operativo_centavos is not none and total.resultado_operativo_centavos < 0 else '' }}" id="resultado-operativo">
       <p class="kpi-label">Resultado operativo estimado</p>
-      <p class="kpi-value {{ 'text-error' if total.resultado_operativo_centavos is not none and total.resultado_operativo_centavos < 0 else '' }}">{{ dinero_o_guion(total.resultado_operativo_centavos) }}</p>
+      <p class="kpi-value {{ 'text-error dark:text-error' if total.resultado_operativo_centavos is not none and total.resultado_operativo_centavos < 0 else '' }}">{{ dinero_o_guion(total.resultado_operativo_centavos) }}</p>
       <p class="kpi-detail">{% if total.resultado_operativo_porcentual is not none %}{{ total.resultado_operativo_porcentual | porcentaje }} sobre lo facturado con costo{% else %}estimación no disponible{% endif %}</p>
     </div>
   </div>

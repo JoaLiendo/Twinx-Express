@@ -17,7 +17,7 @@
         {% if estado.ultimo_backup %}
         <p id="backup-ultimo" class="mt-1 text-base font-semibold text-slate-900 dark:text-slate-100">
           {{ estado.ultimo_backup.fecha.strftime('%d/%m/%Y %H:%M') }}
-          <span class="ml-1 text-sm font-normal text-slate-500 dark:text-slate-400">({{ estado.ultimo_backup.tipo | replace('_', ' ') | lower }})</span>
+          <span class="ml-1 text-sm font-normal text-slate-500 dark:text-slate-400">{% set etiquetas_tipo = {'MANUAL': 'manual', 'AUTOMATICO': 'automático', 'CIERRE_CAJA': 'cierre de caja', 'PRE_UPDATE': 'antes de actualizar', 'SEGURIDAD': 'de seguridad'} %}({{ etiquetas_tipo.get(estado.ultimo_backup.tipo, estado.ultimo_backup.tipo | replace('_', ' ') | lower) }})</span>
         </p>
         {% else %}
         <p id="backup-ultimo" class="mt-1 text-base font-semibold text-warning">Todavía no hay ningún backup.</p>

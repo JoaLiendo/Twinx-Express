@@ -48,3 +48,11 @@ def test_el_css_compilado_existe_y_define_las_clases_de_componentes_usadas():
     assert ".dark" in css and "--color-primary" in css
     faltantes = sorted(clase for clase in _clases_de_componentes_usadas() if f".{clase}" not in css)
     assert faltantes == [], f"Clases usadas en templates sin definir en twinx.css (¿falta `npm run build:css`?): {faltantes}"
+
+
+def test_en_oscuro_la_pestana_activa_se_distingue_y_los_controles_nativos_son_oscuros():
+    """Auditoría visual del cierre: `.nav-pill` en oscuro tapaba el color de la pestaña activa, y los íconos de
+    calendario/reloj de los `<input type="date|time">` quedaban negros sobre fondo oscuro."""
+    css = CSS.read_text(encoding="utf-8")
+    assert ".nav-pill-active:is(.dark *){" in css
+    assert re.search(r"\.dark\{[^}]*color-scheme:dark", css)

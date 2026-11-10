@@ -236,3 +236,11 @@ def test_backup_manual_auditado(base_datos_temporal):
 
     assert resultado.ok
     assert _acciones_backup() == ["BACKUP_MANUAL_OK"]
+
+
+def test_el_panel_nombra_en_castellano_el_tipo_del_ultimo_backup(caja_abierta_por_owner):
+    """Auditoría visual del cierre: el panel mostraba el valor interno («cierre caja», «automatico»)."""
+    _, cookies = caja_abierta_por_owner
+    _cerrar(cookies)
+    html = solicitud("GET", "/backup", cookies=cookies).texto
+    assert "(cierre de caja)" in html and "(cierre caja)" not in html

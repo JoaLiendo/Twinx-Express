@@ -26,11 +26,11 @@ templates.env.filters["fecha_corta"] = fecha_corta
 
 
 def formato_porcentaje(valor: float | None, decimales: int = 1) -> str:
-    """Porcentaje para lectura (V1.17): `12,5 %`, con signo cuando es una variación negativa; `None`
-    (sin datos) se muestra como un guion, nunca como 0 %."""
+    """Porcentaje para lectura (V1.17): `12,5 %` o `-1.250,0 %` (miles con punto, como los importes), con
+    signo cuando es negativo; `None` (sin datos) se muestra como un guion, nunca como 0 %."""
     if valor is None:
         return "—"
-    return f"{valor:.{decimales}f}".replace(".", ",") + " %"
+    return f"{valor:,.{decimales}f}".replace(",", "_").replace(".", ",").replace("_", ".") + " %"
 
 
 templates.env.filters["porcentaje"] = formato_porcentaje
