@@ -101,18 +101,23 @@ Comparación lado a lado de proveedores por producto; listado de movimientos de 
 origen; eventos de demanda no satisfecha (solo si el negocio define cómo registrarlos sin inventar ventas);
 intereses/recargos/cuotas (fuera de alcance de V1.14).
 
-## 6. Certificación del candidato (2026-11-09)
+## 6. Certificación del candidato (2026-11-09/10) — CERRADA
 
-Código congelado en `a4eb799` (`build/snapshot-a4eb799`, extraído con `git archive`), verificado en secuencia
-estricta, sin suites pesadas en paralelo. Una primera corrida completa sobre `7b7ab09` había dado 6502 tests en
-verde y 0 fallos (1 h 10 min 40 s). Los cambios posteriores (manual, ayuda y auditoría visual: CSS, cuatro
-templates y el filtro de porcentajes) se verificaron con los tests de cada zona (129 + 359 + 23 en verde) y con
-JS y E2E completos. La segunda corrida completa sobre `a4eb799` se cortó al 68 % porque el equipo se quedó sin
-memoria (4518 tests en verde, 0 fallos hasta ese punto): **falta repetirla completa**.
+Código ejecutable congelado en `a4eb799`, verificado en secuencia estricta y sin suites pesadas en paralelo. Para
+la suite se usó `build/snapshot-a4eb799`, regenerado limpio con `git archive` (690 archivos). Entre `a4eb799` y el
+commit que cierra esta certificación solo cambian `PROGRESS.md`, `docs/CHANGELOG.md` y
+`docs/CIERRE_OPERATIVO.md`: no hay cambios ejecutables posteriores. Por eso JS, E2E, build, instalación, upgrade,
+rollback y desinstalación, todos sobre `a4eb799`, siguen valiendo.
+
+Hubo dos corridas previas de la suite completa:
+
+- sobre `7b7ab09`: 6502 en verde, 0 fallos (1 h 10 min 40 s);
+- sobre `a4eb799`: se cortó al 68 % porque el equipo se quedó sin memoria (4518 en verde y 0 fallos hasta ese
+  punto). Se repitió completa en solitario.
 
 | Verificación | Resultado |
 |---|---|
-| Suite Python completa (`pytest -p no:cacheprovider`) | `7b7ab09`: 6502/0 (1 h 10 min 40 s). `a4eb799`: cortada al 68 % por falta de memoria del equipo, 4518 en verde y 0 fallos hasta ahí; pendiente repetirla completa |
+| Suite Python completa (`pytest -p no:cacheprovider -q --no-header --tb=short`) sobre `a4eb799` | **6510 tests: 6510 passed, 0 failed, 0 errores, 0 warnings, 1 h 11 min 38 s** (2026-11-10, 00:01–01:13). Son los 6502 de `7b7ab09` más los 8 de regresión de la auditoría visual |
 | JS (`npm run test:js`) | 82/82 |
 | E2E desktop (`npm run test:e2e`) | 61/61 (1,8 min) |
 | E2E responsive (`npm run test:e2e:responsive`) | 36/36 (55 s) |

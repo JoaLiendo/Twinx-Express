@@ -1,6 +1,6 @@
 # PROGRESS.md — Estado del proyecto
 
-> Contexto resumido para retomar en la próxima sesión. Última actualización: certificación del cierre operativo en `feature/cierre-roadmap-operativo` (2026-11-09, candidato **1.18.0** para piloto NO fiscal verificado sobre `a4eb799`, con la suite Python completa pendiente de repetir porque la corrida se cortó por falta de memoria; detalle en `docs/CIERRE_OPERATIVO.md` §6; homologación externa con ARCA y firma de código pendientes, sin merge a `main` ni tag). El detalle por versión está en `README.md` y las novedades para el usuario en `LEEME.txt`.
+> Contexto resumido para retomar en la próxima sesión. Última actualización: certificación del cierre operativo en `feature/cierre-roadmap-operativo` (2026-11-09, candidato **1.18.0** para piloto NO fiscal certificado sobre `a4eb799` (suite completa 6510/0, 2026-11-10); detalle en `docs/CIERRE_OPERATIVO.md` §6; homologación externa con ARCA y firma de código pendientes, sin merge a `main` ni tag). El detalle por versión está en `README.md` y las novedades para el usuario en `LEEME.txt`.
 
 ## 1. Funcionalidad implementada
 
@@ -63,7 +63,11 @@
 ## 3. Estado de tests
 
 - **Cierre operativo 1.18.0 (2026-11-09, `feature/cierre-roadmap-operativo`, código congelado `a4eb799`)**:
-  - Suites: Python completa sobre `7b7ab09` 6502/0 en 1 h 10 min 40 s; la repetición sobre `a4eb799` se cortó al 68 % por falta de memoria del equipo (4518 en verde, 0 fallos) y **falta repetirla completa**; los cambios posteriores a `7b7ab09` tienen sus tests focalizados en verde; JS 82/82; E2E desktop 61/61; responsive 36/36.
+  - Suites:
+    - Python completa sobre `a4eb799`: **6510 passed, 0 failed, 0 warnings, 1 h 11 min 38 s**, en solitario, sobre el snapshot limpio. La corrida anterior se había cortado al 68 % por falta de memoria del equipo, sin fallos hasta ahí.
+    - Antes, sobre `7b7ab09`: 6502/0.
+    - JS 82/82; E2E desktop 61/61; responsive 36/36.
+  - Después de `a4eb799` solo cambió documentación.
   - Build válido: 308 archivos, 48,6 MB, 51 migraciones.
   - Smoke del EXE con `LOCALAPPDATA` aislado: `--version` sin crear datos; recorrido de instalación nueva 21/21; segundo arranque con los datos conservados.
   - Instalación con ejecutables reales: upgrade 1.17.0 → 1.18.0 (`PRE_UPDATE`, 47 → 51 migraciones), rollback a 1.17.0, re-actualización y desinstalación conservando los datos.
