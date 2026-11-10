@@ -123,7 +123,6 @@ async function capturar(page, carpeta, nombre) {
 
     for (const viewport of VIEWPORTS) {
       for (const tema of ['claro', 'oscuro']) {
-        if (tema === 'oscuro' && viewport.width !== 1440) continue;
         const carpeta = path.join(SALIDA, `${viewport.nombre}-${tema}`);
         fs.mkdirSync(carpeta, { recursive: true });
         const contexto = await navegador.newContext({
