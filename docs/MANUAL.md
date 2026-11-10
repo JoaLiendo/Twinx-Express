@@ -60,7 +60,9 @@ dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consult
   venta activa con un motivo: el stock vuelve y, si fue en efectivo, se registra el egreso de caja. Las ventas a cuenta
   no se anulan; las fiscalizadas se cancelan con nota de crédito desde el panel fiscal.
 - **Borrador de factura** (dueño): desde el detalle de una venta, *Ver borrador de la factura* muestra lo que se
-  emitiría, marcado «BORRADOR — SIN VALIDEZ FISCAL», sin número, CAE ni QR. No emite ni consulta a ARCA.
+  emitiría, marcado «BORRADOR — SIN VALIDEZ FISCAL», sin número, CAE ni QR. No emite ni consulta a ARCA. Funciona
+  antes de homologar (basta el perfil fiscal con punto de venta) y lista lo que todavía falta para emitir de verdad;
+  no se arma si un producto no tiene el IVA clasificado o el cliente de la venta no tiene condición fiscal.
 
 ## Pedidos
 

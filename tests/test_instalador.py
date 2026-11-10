@@ -193,7 +193,7 @@ def _estado(destino: Path, accesos: Path, datos: Path) -> dict:
 
 def test_desinstalar_parado_dentro_de_la_carpeta_instalada(tmp_path):
     """Regresión: Windows no deja borrar la carpeta que es el directorio actual de un proceso (doble clic en
-    Desinstalar.bat dentro de C:\KioscoApp). El script sale de la carpeta antes de borrarla."""
+    Desinstalar.bat dentro de la carpeta instalada). El script sale de la carpeta antes de borrarla."""
     destino, accesos, localappdata, datos = _instalacion_con_datos(tmp_path)
     comando = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "Desinstalar.ps1", "-Si", "-Destino", ".",
                "-CarpetaAccesosDirectos", str(accesos)]

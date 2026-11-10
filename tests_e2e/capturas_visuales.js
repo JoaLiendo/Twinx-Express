@@ -61,7 +61,25 @@ const PANTALLAS = [
   ['fiscal-listado', '/fiscal/listado'],
   ['reportes-clientes', '/reportes/clientes'],
   ['backup', '/backup'],
+  ['gasto-detalle', '/gastos/1'],
+  ['pedido-detalle', '/pedidos/1'],
 ];
+
+/** Un gasto y un pedido reales (por los mismos formularios de la app) para que las pantallas nuevas no salgan vacías. */
+async function sembrarCierreOperativo(page) {
+  const clave = async (ruta) => /name="clave_idempotencia" value="([^"]+)"/.exec(await (await page.request.get(`${BASE_URL}${ruta}`)).text())[1];
+  const d = new Date();
+  const hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  await page.request.post(`${BASE_URL}/gastos/nuevo`, {
+    form: { fecha: hoy, categoria: 'ALQUILER', descripcion: 'Alquiler del local', importe: '250000', medio_pago: 'TRANSFERENCIA',
+            referencia: 'Recibo 11/2026', responsable: 'Dueño', observaciones: '', clave_idempotencia: await clave('/gastos/nuevo') },
+  });
+  const producto = await (await page.request.get(`${BASE_URL}/api/productos/buscar-codigo/7790000000001`)).json();
+  await page.request.post(`${BASE_URL}/pedidos/nuevo`, {
+    form: { cliente_id: '', contacto_nombre: 'Marta (vecina)', contacto_telefono: '11-5555-1234', notas: 'Pasa el viernes a la tarde',
+            fecha_entrega: '', producto_id: String(producto.id), cantidad: '6', clave_idempotencia: await clave('/pedidos/nuevo') },
+  });
+}
 
 async function login(page) {
   await page.goto(`${BASE_URL}/login`);
@@ -100,6 +118,7 @@ async function capturar(page, carpeta, nombre) {
     const paginaDatos = await contextoDatos.newPage();
     await login(paginaDatos);
     await venderAlgo(paginaDatos);
+    await sembrarCierreOperativo(paginaDatos);
     await contextoDatos.close();
 
     for (const viewport of VIEWPORTS) {

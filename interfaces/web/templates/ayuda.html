@@ -64,7 +64,7 @@
           <li><strong>Mercadería vencida</strong>: si una venta solo se puede completar con unidades vencidas, el sistema pide autorización del dueño (su usuario y contraseña en el puesto del cajero) y lo registra en la auditoría.</li>
           <li><strong>Después de cobrar</strong>: se puede imprimir el ticket interno y, si la facturación ARCA está configurada, la factura; <em>Nueva venta</em> deja todo listo para el siguiente cliente.</li>
           <li><strong>Historial</strong> (<em>Ventas › Ver historial</em>): detalle de cada venta, ticket e impresión. El dueño puede <strong>anular</strong> una venta activa con un motivo: el stock vuelve y, si fue en efectivo, se registra el egreso de caja. Las ventas a cuenta no se anulan; las fiscalizadas se cancelan con nota de crédito desde el panel fiscal.</li>
-          <li><strong>Borrador de factura</strong> (dueño): desde el detalle de una venta, <em>Ver borrador de la factura</em> muestra lo que se emitiría, marcado «BORRADOR — SIN VALIDEZ FISCAL», sin número, CAE ni QR. No emite ni consulta a ARCA.</li>
+          <li><strong>Borrador de factura</strong> (dueño): desde el detalle de una venta, <em>Ver borrador de la factura</em> muestra lo que se emitiría, marcado «BORRADOR — SIN VALIDEZ FISCAL», sin número, CAE ni QR. No emite ni consulta a ARCA. Funciona antes de homologar (basta el perfil fiscal con punto de venta) y lista lo que todavía falta para emitir de verdad; no se arma si un producto no tiene el IVA clasificado o el cliente de la venta no tiene condición fiscal.</li>
         </ul>
       </section>
 

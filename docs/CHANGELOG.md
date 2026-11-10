@@ -32,6 +32,11 @@ homologación real con ARCA y la firma del ejecutable siguen pendientes y extern
 - **Desinstalación**: `Desinstalar.bat` / `Desinstalar.ps1` quitan el programa y los accesos directos sin tocar los
   datos, e informan dónde quedan.
 - **Manual y ayuda** actualizados y sincronizados; menú con *Pedidos* (ambos roles) y *Gastos* (OWNER).
+- **Correcciones de la certificación**: la desinstalación por doble clic dentro de `C:\KioscoApp` fallaba (Windows
+  no borra la carpeta en la que está parado un proceso) y ahora funciona; el borrador fiscal se genera sin conexión
+  con ARCA y lista lo que falta para emitir; el hilo del backup programado espera antes de consultar y se detiene al
+  cerrar; tests desactualizados por las migraciones 048–051 alineados y huecos de cobertura cerrados (precio
+  cambiado entre pedido y venta, recorrido del cajero, custodia ante una copia con el comprobante todavía incierto).
 
 ## 1.17.0 — candidato (rama `dev/v1.17`)
 

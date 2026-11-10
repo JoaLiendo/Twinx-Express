@@ -68,8 +68,23 @@ negocio. Base: `feature/v1.18-asistente-ia` en `b913b6a` (certificado). Versión
   demostrado (ejecutable archivado de una versión anterior) ya no pasa inadvertido: la app no inicia.
 - **Facturación**: no se tocaron WSAA, WSFEv1, CAEA, ENVIANDO, INCIERTO ni conciliación. Nada llama a ARCA real;
   el ARCA falso solo vive en tests y en el servidor E2E, siempre en ambiente de homologación («SIN VALIDEZ FISCAL»).
-- **Backup programado**: solo mientras la aplicación está abierta; ningún servicio ni tarea de Windows.
-- **Desinstalador**: nunca borra datos; se niega sobre la carpeta de datos o con la app abierta.
+- **Backup programado**: solo mientras la aplicación está abierta; ningún servicio ni tarea de Windows. El hilo
+  espera el primer intervalo (60 s) antes de consultar la base y el lifespan lo detiene y espera al cerrar: nunca
+  compite con la migración de arranque ni sobrevive al proceso que lo creó.
+- **Desinstalador**: nunca borra datos; se niega sobre la carpeta de datos, la raíz de una unidad, el perfil del
+  usuario o con la app abierta. Se usa el `Desinstalar.bat` **de la carpeta instalada** (quita la carpeta donde
+  está, después de pedir «SI» y mostrarla). Funciona por doble clic aunque cmd y PowerShell estén parados dentro de
+  esa carpeta (sale a `%TEMP%`, ejecuta todo en una línea ya leída y cierra el lote con `(goto) 2>nul`).
+- **Borrador fiscal sin ARCA**: la vista previa no exige las tablas de ARCA en caché ni el punto de venta validado
+  (requisitos para emitir, no para previsualizar); los lista en el propio borrador como «Para emitir este
+  comprobante de verdad falta». Sigue rechazando lo que impide armar el comprobante: producto sin IVA clasificado,
+  cliente asociado sin condición fiscal, venta anulada. La emisión real valida exactamente igual que antes.
+- **Custodia fiscal, criterio conservador**: la 041 obliga a que PENDIENTE y DESCARTADO no tengan número, así que
+  una conciliación INCIERTO → PENDIENTE no deja rastro comparable con lo custodiado. Si el proceso se corta justo
+  entre el commit de esa conciliación y el refresco de la custodia, el próximo arranque se bloquea aunque no haya
+  pérdida real. Se acepta: la dirección segura es bloquear, el mensaje lo explica y el técnico lo resuelve con
+  `--aceptar-historia-fiscal` (auditado). Distinguirlo de una base vieja donde el comprobante todavía era PENDIENTE
+  no es posible con los datos persistidos.
 
 ## 4. Pendientes externos (no son código)
 
