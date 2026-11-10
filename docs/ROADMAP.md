@@ -2,7 +2,10 @@
 
 > Roadmap vivo, no retrospectivo (el detalle de lo ya implementado por versión está en `README.md`,
 > `LEEME.txt` y `PROGRESS.md`). Se actualiza a medida que cada versión se define o se cierra.
-> V1.11–V1.15 están cerradas; V1.16 es candidato a release (falta la homologación externa con ARCA); V1.17–V1.18 tienen el alcance acordado que se detalla abajo.
+> V1.11–V1.15 están cerradas; V1.16 es candidato a release (falta la homologación externa con ARCA); V1.17 quedó
+> certificada en `14035b4`; V1.18 (asistente + cierre operativo, migraciones 048–051) es el candidato **1.18.0 para
+> piloto no fiscal** de la rama `feature/cierre-roadmap-operativo` (ver «Cierre operativo» al final y
+> `docs/CIERRE_OPERATIVO.md`). Sin tag ni release: homologación ARCA, producción fiscal y firma de código siguen externas.
 
 ## V1.11 — Trazabilidad de ajustes de stock
 

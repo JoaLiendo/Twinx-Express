@@ -995,5 +995,6 @@ ya terminado; detalle por bloque en `docs/ROADMAP.md` y novedades en `docs/CHANG
 - [x] Clientes persona/empresa, políticas de crédito, venta mixta, obligaciones con FIFO persistido, estados, cierres, strikes y veto (V1.14, ver «Clientes y crédito (V1.14)»)
 - [x] Facturación fiscal ARCA: WSAA + WSFEv1, factura A/B/C con CAE, QR, A4/80 mm/PDF, notas de crédito, conciliación de inciertos y contingencia CAEA (V1.16, ver «Facturación fiscal ARCA (V1.16)»; homologación externa pendiente)
 - [x] Analítica del dueño: ventas por período, margen bruto con costo real de partidas, precios y costos, pérdidas por categoría, deuda por antigüedad, proveedores y reposición explicada (V1.17, ver «Analítica (V1.17)»)
-- [ ] Pedidos: solo cascarón visual, sin lógica de negocio todavía (oculto del menú)
-- [ ] Exportación de datos y backup automático/programado
+- [x] Cierre operativo 1.18.0: gastos operativos y resultado operativo estimado, pedidos de clientes con conversión atómica en venta, comprobante del proveedor, DNI y reporte por cliente, facturación utilizable sin homologación (estado de preparación, borrador, listado informativo, custodia de la historia fiscal), backup diario programado y desinstalador (ver «Cierre operativo (1.18.0, piloto no fiscal)»)
+- [x] Exportación de datos (CSV/XLSX de productos, CSV operativos) y backups automáticos (al abrir, al cerrar la caja, antes de actualizar, diario a hora fija con la app abierta)
+- [ ] Homologación real con ARCA, habilitación de producción y firma del ejecutable (pendientes externos al código)

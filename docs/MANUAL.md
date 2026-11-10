@@ -235,7 +235,8 @@ dueño (OWNER); el cajero (CASHIER) vende, cobra, abre y cierra la caja, consult
   Si la base se reemplaza por una copia anterior por fuera del procedimiento (versión vieja del programa, copia
   manual), la aplicación **no inicia** y explica cómo recuperar la base; el técnico puede aceptar la pérdida con
   `KioscoApp.exe --aceptar-historia-fiscal` (queda auditado).
-- **Desinstalar**: `Desinstalar.bat` (en la carpeta del programa o del entregable) quita el programa y los accesos
+- **Desinstalar**: doble clic en `Desinstalar.bat` **de la carpeta instalada** (por ejemplo `C:\KioscoApp`; pide
+  escribir SI y muestra qué carpeta va a quitar) quita esa carpeta del programa y los accesos
   directos, y **nunca borra los datos**: la base, las imágenes, los backups, las versiones archivadas y el material
   fiscal quedan en `%LOCALAPPDATA%\KioscoApp` y el script lo informa. Reinstalar vuelve a abrir esos mismos datos.
   Borrar los datos es una decisión manual y deliberada, fuera de Twinx.
